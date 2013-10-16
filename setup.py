@@ -26,7 +26,6 @@ setup(
     classifiers=[
         "Programming Language :: Python",
         "Development Status :: 3 - Alpha",
-        "Topic :: Utilities :: Library",
         "Intended Audience :: Developers",
         "Operating System :: OS Independent",
         "Topic :: Software Development :: Libraries :: Python Modules",

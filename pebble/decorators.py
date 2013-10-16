@@ -14,12 +14,11 @@
 # along with Pebble.  If not, see <http://www.gnu.org/licenses/>.
 
 
-from Queue import Queue
 from threading import Thread
 from multiprocessing import Process
 from multiprocessing.queues import SimpleQueue
 
-from pebble import Task, thread_task, process_task
+from pebble import ThreadTask, ProcessTask, thread_worker, process_worker
 
 
 class Asynchronous(object):
@@ -37,14 +36,14 @@ class Asynchronous(object):
             raise ValueError("Decorator accepts only keyword arguments.")
 
     def wrapper(self, *args, **kwargs):
-        inqueue = Queue()
+        t = ThreadTask(self.callback, self.error_callback)
         args = list(args)
         args.insert(0, self._function)
-        args.insert(1, inqueue)
-        t = Thread(target=thread_task, args=(args), kwargs=(kwargs))
-        t.daemon = True
-        t.start()
-        return Task(t, inqueue, self.callback, self.error_callback)
+        args.insert(1, t)
+        t._worker = Thread(target=thread_worker, args=(args), kwargs=(kwargs))
+        t._worker.daemon = True
+        t._worker.start()
+        return t
 
     def __call__(self, *args, **kwargs):
         if self._function is None:
@@ -73,10 +72,10 @@ class Concurrent(object):
         args = list(args)
         args.insert(0, self._function)
         args.insert(1, inqueue)
-        p = Process(target=process_task, args=(args), kwargs=(kwargs))
+        p = Process(target=process_worker, args=(args), kwargs=(kwargs))
         p.daemon = True
         p.start()
-        return Task(p, inqueue, self.callback, self.error_callback)
+        return ProcessTask(p, inqueue, self.callback, self.error_callback)
 
     def __call__(self, *args, **kwargs):
         if self._function is None:

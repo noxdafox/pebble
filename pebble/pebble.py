@@ -16,17 +16,42 @@
 
 from uuid import uuid4
 
-from threading import Thread, Condition
+from threading import Thread
 
 
-def thread_task(function, outqueue, *args, **kwargs):
+def thread_worker(function, task, *args, **kwargs):
     try:
-        outqueue.put(function(*args, **kwargs))
+        results = function(*args, **kwargs)
+        task._set(results)
     except Exception as error:
-        outqueue.put(error)
+        task._set(error)
 
 
-def process_task(function, outqueue, *args, **kwargs):
+class ThreadTask(object):
+    def __init__(self, callback=None, error_callback=None):
+        self.id = uuid4()
+        self._results = None
+        self._worker = None  # set by Asynchronous._wrapper
+        self._callback = callback
+        self._error_callback = error_callback
+
+    def get(self, block=True, timeout=None):
+        self._worker.join(timeout)
+        if (isinstance(self._results, Exception)):
+            raise self._results
+        elif self._results is not None:
+            return self._results
+
+    def _set(self, results):
+        self._results = results
+        if (isinstance(self._results, Exception) and
+                self._error_callback is not None):
+            self._error_callback(self.id, self._results)
+        elif self._callback is not None:
+            self._callback(self.id, self._results)
+
+
+def process_worker(function, outqueue, *args, **kwargs):
     try:
         outqueue._reader.close()
         outqueue.put(function(*args, **kwargs))
@@ -36,7 +61,7 @@ def process_task(function, outqueue, *args, **kwargs):
         outqueue.put(error)
 
 
-class Task(object):
+class ProcessTask(object):
     def __init__(self, worker, inqueue, callback=None, error_callback=None):
         self.id = uuid4()
         self._results = None
@@ -44,31 +69,25 @@ class Task(object):
         self._worker = worker
         self._callback = callback
         self._error_callback = error_callback
-        self._ready = Condition()
-        t = Thread(target=self._set)
-        t.daemon = True
-        t.start()
+        self._worker_listener = Thread(target=self._set)
+        self._worker_listener.daemon = True
+        self._worker_listener.start()
 
     def get(self, block=True, timeout=None):
-        with self._ready:
-            while self._results is None:
-                self._ready.wait(timeout)
-            if (isinstance(self._results, Exception)):
-                raise self._results
-            elif self._results is not None:
-                return self._results
+        self._worker_listener.join(timeout)
+        if (isinstance(self._results, Exception)):
+            raise self._results
+        elif self._results is not None:
+            return self._results
 
     def _set(self):
         try:
-            results = self._inqueue.get()
+            self._results = self._inqueue.get()
         except (IOError, OSError) as error:  # pipe was closed
-            results = error
-        with self._ready:
-            self._results = results
-            self._ready.notify_all()
-            if (isinstance(self._results, Exception) and
-                    self._error_callback is not None):
-                self._error_callback(self.id, self._results)
-            elif self._callback is not None:
-                self._callback(self.id, self._results)
-            self._worker.join()
+            self._results = error
+        if (isinstance(self._results, Exception) and
+                self._error_callback is not None):
+            self._error_callback(self.id, self._results)
+        elif self._callback is not None:
+            self._callback(self.id, self._results)
+        self._worker.join()

@@ -19,7 +19,7 @@ setup(
     author_email="noxdafox@gmail.com",
     description=("Threading and multiprocessing eye-candy."),
     license="LGPL",
-    keywords="threading mutltiprocessing pool decorators",
+    keywords="thread process pool decorator",
     url="https://github.com/noxdafox/pebble",
     packages=['pebble', 'tests'],
     long_description=read('README.txt'),

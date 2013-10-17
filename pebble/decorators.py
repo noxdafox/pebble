@@ -22,6 +22,16 @@ from pebble import ThreadTask, ProcessTask, thread_worker, process_worker
 
 
 class Asynchronous(object):
+    """Turns a *function* into a Thread and runs its logic within.
+
+    A decorated *function* will return a *Task* object once is called.
+
+    If *callback* is a callable, it will be called once the task has ended
+    with the task identifier and the *function* return values.
+    If *error_callback* is a callable, it will be called if the task has raised
+    an exception, passing the task identifier and the raised exception.
+
+    """
     def __init__(self, *args, **kwargs):
         self._function = None
         self.callback = None
@@ -35,7 +45,7 @@ class Asynchronous(object):
         else:
             raise ValueError("Decorator accepts only keyword arguments.")
 
-    def wrapper(self, *args, **kwargs):
+    def _wrapper(self, *args, **kwargs):
         t = ThreadTask(self.callback, self.error_callback)
         args = list(args)
         args.insert(0, self._function)
@@ -48,12 +58,22 @@ class Asynchronous(object):
     def __call__(self, *args, **kwargs):
         if self._function is None:
             self._function = args[0]
-            return self.wrapper
+            return self._wrapper
         else:
-            return self.wrapper(*args, **kwargs)
+            return self._wrapper(*args, **kwargs)
 
 
 class Concurrent(object):
+    """Turns a *function* into a Process and runs its logic within.
+
+    A decorated *function* will return a *Task* object once is called.
+
+    If *callback* is a callable, it will be called once the task has ended
+    with the task identifier and the *function* return values.
+    If *error_callback* is a callable, it will be called if the task has raised
+    an exception, passing the task identifier and the raised exception.
+
+    """
     def __init__(self, *args, **kwargs):
         self._function = None
         self.callback = None
@@ -67,7 +87,7 @@ class Concurrent(object):
         else:
             raise ValueError("Decorator accepts only keyword arguments.")
 
-    def wrapper(self, *args, **kwargs):
+    def _wrapper(self, *args, **kwargs):
         inqueue = SimpleQueue()
         args = list(args)
         args.insert(0, self._function)
@@ -80,6 +100,6 @@ class Concurrent(object):
     def __call__(self, *args, **kwargs):
         if self._function is None:
             self._function = args[0]
-            return self.wrapper
+            return self._wrapper
         else:
-            return self.wrapper(*args, **kwargs)
+            return self._wrapper(*args, **kwargs)

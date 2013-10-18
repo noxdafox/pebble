@@ -27,6 +27,16 @@ def thread_worker(function, task, *args, **kwargs):
         task._set(error)
 
 
+def process_worker(function, outqueue, *args, **kwargs):
+    try:
+        outqueue._reader.close()
+        outqueue.put(function(*args, **kwargs))
+    except (IOError, OSError):  # pipe was closed
+        return
+    except Exception as error:
+        outqueue.put(error)
+
+
 class PuddleError(Exception):
     """Puddle base exception."""
     pass
@@ -45,8 +55,9 @@ class TimeoutError(PuddleError):
 
 
 class ThreadTask(object):
-    def __init__(self, callback=None, error_callback=None):
+    def __init__(self, task_nr, callback=None, error_callback=None):
         self.id = uuid4()
+        self.number = task_nr
         self._results = None
         self._worker = None  # set by Asynchronous._wrapper
         self._callback = callback
@@ -71,19 +82,11 @@ class ThreadTask(object):
             self._callback(self.id, self._results)
 
 
-def process_worker(function, outqueue, *args, **kwargs):
-    try:
-        outqueue._reader.close()
-        outqueue.put(function(*args, **kwargs))
-    except (IOError, OSError):  # pipe was closed
-        return
-    except Exception as error:
-        outqueue.put(error)
-
-
 class ProcessTask(object):
-    def __init__(self, worker, inqueue, callback=None, error_callback=None):
+    def __init__(self, task_nr, worker, inqueue,
+                 callback=None, error_callback=None):
         self.id = uuid4()
+        self.number = task_nr
         self._results = None
         self._inqueue = inqueue
         self._worker = worker

@@ -45,6 +45,11 @@ def ajob_long():
     return 1
 
 
+@Asynchronous
+def ajob_count():
+    return None
+
+
 @Concurrent
 def cjob(argument, keyword_argument=0):
     return argument + keyword_argument
@@ -64,6 +69,11 @@ def cjob_callback(argument, keyword_argument=0):
 def cjob_long():
     time.sleep(1)
     return 1
+
+
+@Concurrent
+def cjob_count():
+    return None
 
 
 class TestPebbleDecorators(unittest.TestCase):
@@ -143,6 +153,12 @@ class TestPebbleDecorators(unittest.TestCase):
         task = ajob_long()
         self.assertRaises(TimeoutError, task.get, 0)
 
+    def test_asynchronous_task_number(self):
+        """Task number are correctly assigned."""
+        for i in range(0, 5):
+            task = ajob_count(1, 1)
+        self.assertEqual(task.number, 4)
+
     def test_concurrent_wrong_decoration(self):
         """Decorator raises ValueError if given wrong params."""
         try:
@@ -199,3 +215,9 @@ class TestPebbleDecorators(unittest.TestCase):
         """TimeoutError is raised if task has not yet finished."""
         task = cjob_long()
         self.assertRaises(TimeoutError, task.get, 0)
+
+    def test_concurrent_task_number(self):
+        """Task number are correctly assigned."""
+        for i in range(0, 5):
+            task = cjob_count(1, 1)
+        self.assertEqual(task.number, 4)

@@ -14,6 +14,7 @@
 # along with Pebble.  If not, see <http://www.gnu.org/licenses/>.
 
 
+from itertools import count
 from threading import Thread
 from multiprocessing import Process
 from multiprocessing.queues import SimpleQueue
@@ -34,6 +35,7 @@ class Asynchronous(object):
     """
     def __init__(self, *args, **kwargs):
         self._function = None
+        self._counter = count()
         self.callback = None
         self.error_callback = None
 
@@ -46,7 +48,8 @@ class Asynchronous(object):
             raise ValueError("Decorator accepts only keyword arguments.")
 
     def _wrapper(self, *args, **kwargs):
-        t = ThreadTask(self.callback, self.error_callback)
+        t = ThreadTask(self._counter.next(),
+                       self.callback, self.error_callback)
         args = list(args)
         args.insert(0, self._function)
         args.insert(1, t)
@@ -76,6 +79,7 @@ class Concurrent(object):
     """
     def __init__(self, *args, **kwargs):
         self._function = None
+        self._counter = count()
         self.callback = None
         self.error_callback = None
 
@@ -95,7 +99,8 @@ class Concurrent(object):
         p = Process(target=process_worker, args=(args), kwargs=(kwargs))
         p.daemon = True
         p.start()
-        return ProcessTask(p, inqueue, self.callback, self.error_callback)
+        return ProcessTask(self._counter.next(), p, inqueue,
+                           self.callback, self.error_callback)
 
     def __call__(self, *args, **kwargs):
         if self._function is None:

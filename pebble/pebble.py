@@ -27,6 +27,23 @@ def thread_worker(function, task, *args, **kwargs):
         task._set(error)
 
 
+class PuddleError(Exception):
+    """Puddle base exception."""
+    pass
+
+
+class TimeoutError(PuddleError):
+    """Raised when Task.get() timeout expires."""
+    def __init__(self, msg):
+        self.msg = msg
+
+    def __repr__(self):
+        return str(self.msg)
+
+    def __str__(self):
+        return str(self.msg)
+
+
 class ThreadTask(object):
     def __init__(self, callback=None, error_callback=None):
         self.id = uuid4()
@@ -35,12 +52,15 @@ class ThreadTask(object):
         self._callback = callback
         self._error_callback = error_callback
 
-    def get(self, block=True, timeout=None):
+    def get(self, timeout=None):
         self._worker.join(timeout)
-        if (isinstance(self._results, Exception)):
-            raise self._results
-        elif self._results is not None:
-            return self._results
+        if not self._worker.is_alive():
+            if (isinstance(self._results, Exception)):
+                raise self._results
+            elif self._results is not None:
+                return self._results
+        else:
+            raise TimeoutError("Task is still running")
 
     def _set(self, results):
         self._results = results
@@ -73,12 +93,15 @@ class ProcessTask(object):
         self._worker_listener.daemon = True
         self._worker_listener.start()
 
-    def get(self, block=True, timeout=None):
+    def get(self, timeout=None):
         self._worker_listener.join(timeout)
-        if (isinstance(self._results, Exception)):
-            raise self._results
-        elif self._results is not None:
-            return self._results
+        if not self._worker_listener.is_alive():
+            if (isinstance(self._results, Exception)):
+                raise self._results
+            elif self._results is not None:
+                return self._results
+        else:
+            raise TimeoutError("Task is still running")
 
     def _set(self):
         try:

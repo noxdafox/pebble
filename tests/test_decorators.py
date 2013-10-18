@@ -1,5 +1,7 @@
+import time
 import unittest
 
+from pebble.pebble import TimeoutError
 from pebble.decorators import Asynchronous, Concurrent
 
 
@@ -37,6 +39,12 @@ def ajob_callback(argument, keyword_argument=0):
     return argument + keyword_argument
 
 
+@Asynchronous
+def ajob_long():
+    time.sleep(1)
+    return 1
+
+
 @Concurrent
 def cjob(argument, keyword_argument=0):
     return argument + keyword_argument
@@ -50,6 +58,12 @@ def cjob_error(argument, keyword_argument=0):
 @Concurrent(callback=callback)
 def cjob_callback(argument, keyword_argument=0):
     return argument + keyword_argument
+
+
+@Concurrent
+def cjob_long():
+    time.sleep(1)
+    return 1
 
 
 class TestPebbleDecorators(unittest.TestCase):
@@ -119,6 +133,16 @@ class TestPebbleDecorators(unittest.TestCase):
         self.assertEqual((task.id, 'BOOM!'),
                          (self.task_id, str(self.exception)))
 
+    def test_asynchronous_task_long(self):
+        """Test timeout get parameter works."""
+        task = ajob_long()
+        self.assertEqual(task.get(2), 1)
+
+    def test_asynchronous_timeout_error(self):
+        """TimeoutError is raised if task has not yet finished."""
+        task = ajob_long()
+        self.assertRaises(TimeoutError, task.get, 0)
+
     def test_concurrent_wrong_decoration(self):
         """Decorator raises ValueError if given wrong params."""
         try:
@@ -165,3 +189,13 @@ class TestPebbleDecorators(unittest.TestCase):
             pass
         self.assertEqual((task.id, 'BOOM!'),
                          (self.task_id, str(self.exception)))
+
+    def test_concurrent_task_long(self):
+        """Test timeout get parameter works."""
+        task = cjob_long()
+        self.assertEqual(task.get(2), 1)
+
+    def test_concurrent_timeout_error(self):
+        """TimeoutError is raised if task has not yet finished."""
+        task = cjob_long()
+        self.assertRaises(TimeoutError, task.get, 0)

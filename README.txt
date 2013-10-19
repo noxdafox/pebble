@@ -100,9 +100,7 @@ TODO
 A roadmap::
 
  * Python3
- * add task.number
  * return traceback in error callbacks
- * add block and timeout to get() method
  * add timeout to Concurrent decorator
  * implement pebbles (pools of workers) and make it possible to bind decorators to them
  * memoization as decorator parameter

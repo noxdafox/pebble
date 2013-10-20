@@ -24,13 +24,15 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
        If *callback* is not None, it will be called once the task has ended with the task identifier and the *function* return values.
        If *error_callback* is defined, it will be called if the task has raised an exception, passing the task identifier and the raised exception.
 
-    .. decorator:: concurrent(callback=None, error_callback=None)
+    .. decorator:: concurrent(callback=None, error_callback=None, timeout=None)
 
        When called, the *function* will be run in a separate process, a *Task* object will be returned to the caller.
 
        *callback* and *error_callback* must be callables.
        If *callback* is not None, it will be called once the task has ended with the task identifier and the *function* return values.
        If *error_callback* is defined, it will be called if the task has raised an exception, passing the task identifier and the raised exception.
+       A *timeout* value greater than 0 will terminate the running process if it has not yet finished once the *timeout* expires; any *get()* call will return immediately a None value.
+
 
 :mod:`pebble`
 -------------

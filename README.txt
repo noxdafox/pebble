@@ -15,7 +15,7 @@ Examples
 
 Launch a task in a thread and wait for its results::
 
-    from pebble.decorators import Asynchronous
+    from pebble import Asynchronous
 
 
     @Asynchronous
@@ -29,7 +29,7 @@ Launch a task in a thread and wait for its results::
 
 Launch five tasks in separate processes and handle their results in a callback::
 
-    from pebble.decorators import Concurrent
+    from pebble import Concurrent
 
 
     def task_done(task_id, results):
@@ -49,7 +49,7 @@ Launch five tasks in separate processes and handle their results in a callback::
 
 Callbacks can be dynamically (re)assigned, useful to set instance methods as callback::
 
-    from pebble.decorators import Concurrent
+    from pebble import Concurrent
 
 
     class Foo(object):

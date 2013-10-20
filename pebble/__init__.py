@@ -1,4 +1,4 @@
-__all__ = ['Asynchronous', 'Concurrent', 'TimeoutError']
+__all__ = ['asynchronous', 'concurrent', 'TimeoutError']
 
 from pebble import TimeoutError
-from decorators import Asynchronous, Concurrent
+from decorators import asynchronous, concurrent

@@ -27,14 +27,13 @@ def thread_worker(function, task, *args, **kwargs):
         task._set(error)
 
 
-def process_worker(function, outqueue, *args, **kwargs):
+def process_worker(function, writer, *args, **kwargs):
     try:
-        outqueue._reader.close()
-        outqueue.put(function(*args, **kwargs))
+        writer.send(function(*args, **kwargs))
     except (IOError, OSError):  # pipe was closed
         return
     except Exception as error:
-        outqueue.put(error)
+        writer.send(error)
 
 
 class PuddleError(Exception):
@@ -55,7 +54,7 @@ class TimeoutError(PuddleError):
 
 
 class ThreadTask(object):
-    def __init__(self, task_nr, callback=None, error_callback=None):
+    def __init__(self, task_nr, callback, error_callback):
         self.id = uuid4()
         self.number = task_nr
         self._results = None
@@ -68,7 +67,7 @@ class ThreadTask(object):
         if not self._worker.is_alive():
             if (isinstance(self._results, Exception)):
                 raise self._results
-            elif self._results is not None:
+            else:
                 return self._results
         else:
             raise TimeoutError("Task is still running")
@@ -83,12 +82,13 @@ class ThreadTask(object):
 
 
 class ProcessTask(object):
-    def __init__(self, task_nr, worker, inqueue,
-                 callback=None, error_callback=None):
+    def __init__(self, task_nr, worker, reader,
+                 callback, error_callback, timeout):
         self.id = uuid4()
         self.number = task_nr
+        self._timeout = timeout
         self._results = None
-        self._inqueue = inqueue
+        self._reader = reader
         self._worker = worker
         self._callback = callback
         self._error_callback = error_callback
@@ -101,19 +101,23 @@ class ProcessTask(object):
         if not self._worker_listener.is_alive():
             if (isinstance(self._results, Exception)):
                 raise self._results
-            elif self._results is not None:
+            else:
                 return self._results
         else:
             raise TimeoutError("Task is still running")
 
     def _set(self):
         try:
-            self._results = self._inqueue.get()
+            if self._reader.poll(self._timeout):
+                self._results = self._reader.recv()
+                if (isinstance(self._results, Exception) and
+                        self._error_callback is not None):
+                    self._error_callback(self.id, self._results)
+                elif self._callback is not None:
+                    self._callback(self.id, self._results)
+            elif self._worker.is_alive():
+                self._worker.terminate()
         except (IOError, OSError) as error:  # pipe was closed
             self._results = error
-        if (isinstance(self._results, Exception) and
-                self._error_callback is not None):
-            self._error_callback(self.id, self._results)
-        elif self._callback is not None:
-            self._callback(self.id, self._results)
-        self._worker.join()
+        finally:
+            self._worker.join()

@@ -1,7 +1,10 @@
 Pebble
 ======
 
-Threading and multiprocessing eye-candy.
+
+.. note::
+
+    Since Pebble 1.0.0 decorators are functions and not classes anymore.
 
 
 Description
@@ -15,10 +18,10 @@ Examples
 
 Launch a task in a thread and wait for its results::
 
-    from pebble import Asynchronous
+    from pebble import asynchronous
 
 
-    @Asynchronous
+    @asynchronous
     def do_job(foo, bar=0):
     	return foo + bar
 
@@ -29,14 +32,14 @@ Launch a task in a thread and wait for its results::
 
 Launch five tasks in separate processes and handle their results in a callback::
 
-    from pebble import Concurrent
+    from pebble import concurrent
 
 
     def task_done(task_id, results):
     	print "Task %s has returned %d" % (task_id, results)
 
 
-    @Concurrent(callback=task_done)
+    @concurrent(callback=task_done)
     def do_job(foo, bar=0):
     	return foo + bar
 
@@ -49,7 +52,7 @@ Launch five tasks in separate processes and handle their results in a callback::
 
 Callbacks can be dynamically (re)assigned, useful to set instance methods as callback::
 
-    from pebble import Concurrent
+    from pebble import concurrent
 
 
     class Foo(object):
@@ -65,11 +68,11 @@ Callbacks can be dynamically (re)assigned, useful to set instance methods as cal
 	def task_error(self, task_id, exception):
 	    self.errors += 1
 
-	@Concurrent
+	@concurrent
 	def do_job():
 	    return 1
 
-	@Concurrent
+	@concurrent
 	def do_wrong_job():
 	    raise Exception("Ops!")
 
@@ -101,6 +104,5 @@ A roadmap::
 
  * Python3
  * return traceback in error callbacks
- * add timeout to Concurrent decorator
  * implement pebbles (pools of workers) and make it possible to bind decorators to them
  * memoization as decorator parameter

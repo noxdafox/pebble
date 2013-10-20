@@ -14,40 +14,22 @@
 # along with Pebble.  If not, see <http://www.gnu.org/licenses/>.
 
 
+from functools import wraps
 from itertools import count
 from threading import Thread
-from multiprocessing import Process
-from multiprocessing.queues import SimpleQueue
+from multiprocessing import Process, Pipe
 
 from pebble import ThreadTask, ProcessTask, thread_worker, process_worker
 
 
-class Asynchronous(object):
-    """Turns a *function* into a Thread and runs its logic within.
-
-    A decorated *function* will return a *Task* object once is called.
-
-    If *callback* is a callable, it will be called once the task has ended
-    with the task identifier and the *function* return values.
-    If *error_callback* is a callable, it will be called if the task has raised
-    an exception, passing the task identifier and the raised exception.
-
-    """
-    def __init__(self, *args, **kwargs):
-        self._function = None
+class AsynchronousWrapper(object):
+    def __init__(self, function, callback, error_callback):
+        self._function = function
         self._counter = count()
-        self.callback = None
-        self.error_callback = None
+        self.callback = callback
+        self.error_callback = error_callback
 
-        if len(args) == 1 and not len(kwargs) and callable(args[0]):
-            self._function = args[0]
-        elif not len(args) and len(kwargs):
-            self.callback = kwargs.get('callback', None)
-            self.error_callback = kwargs.get('error_callback', None)
-        else:
-            raise ValueError("Decorator accepts only keyword arguments.")
-
-    def _wrapper(self, *args, **kwargs):
+    def __call__(self, *args, **kwargs):
         t = ThreadTask(self._counter.next(),
                        self.callback, self.error_callback)
         args = list(args)
@@ -58,15 +40,53 @@ class Asynchronous(object):
         t._worker.start()
         return t
 
+
+def asynchronous(*args, **kwargs):
+    """Turns a *function* into a Thread and runs its logic within.
+
+    A decorated *function* will return a *Task* object once is called.
+
+    If *callback* is a callable, it will be called once the task has ended
+    with the task identifier and the *function* return values.
+    If *error_callback* is a callable, it will be called if the task has raised
+    an exception, passing the task identifier and the raised exception.
+
+    """
+    def wrapper(function):
+        return AsynchronousWrapper(function, callback, error_callback)
+
+    if len(args) == 1 and not len(kwargs) and callable(args[0]):
+        return AsynchronousWrapper(args[0], None, None)
+    elif not len(args) and len(kwargs):
+        callback = kwargs.get('callback', None)
+        error_callback = kwargs.get('error_callback', None)
+
+        return wrapper
+    else:
+        raise ValueError("Decorator accepts only keyword arguments.")
+
+
+class ConcurrentWrapper(object):
+    def __init__(self, function, timeout, callback, error_callback):
+        self._function = function
+        self._counter = count()
+        self.timeout = timeout
+        self.callback = callback
+        self.error_callback = error_callback
+
     def __call__(self, *args, **kwargs):
-        if self._function is None:
-            self._function = args[0]
-            return self._wrapper
-        else:
-            return self._wrapper(*args, **kwargs)
+        reader, writer = Pipe(duplex=False)
+        args = list(args)
+        args.insert(0, self._function)
+        args.insert(1, writer)
+        p = Process(target=process_worker, args=(args), kwargs=(kwargs))
+        p.daemon = True
+        p.start()
+        return ProcessTask(self._counter.next(), p, reader,
+                           self.callback, self.error_callback, self.timeout)
 
 
-class Concurrent(object):
+def concurrent(*args, **kwargs):
     """Turns a *function* into a Process and runs its logic within.
 
     A decorated *function* will return a *Task* object once is called.
@@ -77,34 +97,16 @@ class Concurrent(object):
     an exception, passing the task identifier and the raised exception.
 
     """
-    def __init__(self, *args, **kwargs):
-        self._function = None
-        self._counter = count()
-        self.callback = None
-        self.error_callback = None
+    def wrapper(function):
+        return ConcurrentWrapper(function, timeout, callback, error_callback)
 
-        if len(args) == 1 and not len(kwargs) and callable(args[0]):
-            self._function = args[0]
-        elif not len(args) and len(kwargs):
-            self.callback = kwargs.get('callback', None)
-            self.error_callback = kwargs.get('error_callback', None)
-        else:
-            raise ValueError("Decorator accepts only keyword arguments.")
+    if len(args) == 1 and not len(kwargs) and callable(args[0]):
+        return ConcurrentWrapper(args[0], None, None, None)
+    elif not len(args) and len(kwargs):
+        timeout = kwargs.get('timeout', None)
+        callback = kwargs.get('callback', None)
+        error_callback = kwargs.get('error_callback', None)
 
-    def _wrapper(self, *args, **kwargs):
-        inqueue = SimpleQueue()
-        args = list(args)
-        args.insert(0, self._function)
-        args.insert(1, inqueue)
-        p = Process(target=process_worker, args=(args), kwargs=(kwargs))
-        p.daemon = True
-        p.start()
-        return ProcessTask(self._counter.next(), p, inqueue,
-                           self.callback, self.error_callback)
-
-    def __call__(self, *args, **kwargs):
-        if self._function is None:
-            self._function = args[0]
-            return self._wrapper
-        else:
-            return self._wrapper(*args, **kwargs)
+        return wrapper
+    else:
+        raise ValueError("Decorator accepts only keyword arguments.")

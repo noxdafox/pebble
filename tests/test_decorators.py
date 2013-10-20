@@ -2,7 +2,7 @@ import time
 import unittest
 
 from pebble.pebble import TimeoutError
-from pebble.decorators import Asynchronous, Concurrent
+from pebble.decorators import asynchronous, concurrent
 
 
 _task_id = ""
@@ -24,56 +24,62 @@ def error_callback(task_id, results):
     _exception = results
 
 
-@Asynchronous
+@asynchronous
 def ajob(argument, keyword_argument=0):
     return argument + keyword_argument
 
 
-@Asynchronous
+@asynchronous
 def ajob_error(argument, keyword_argument=0):
     raise Exception("BOOM!")
 
 
-@Asynchronous(callback=callback)
+@asynchronous(callback=callback)
 def ajob_callback(argument, keyword_argument=0):
     return argument + keyword_argument
 
 
-@Asynchronous
+@asynchronous
 def ajob_long():
     time.sleep(1)
     return 1
 
 
-@Asynchronous
+@asynchronous
 def ajob_count():
     return None
 
 
-@Concurrent
+@concurrent
 def cjob(argument, keyword_argument=0):
     return argument + keyword_argument
 
 
-@Concurrent
+@concurrent
 def cjob_error(argument, keyword_argument=0):
     raise Exception("BOOM!")
 
 
-@Concurrent(callback=callback)
+@concurrent(callback=callback)
 def cjob_callback(argument, keyword_argument=0):
     return argument + keyword_argument
 
 
-@Concurrent
+@concurrent
 def cjob_long():
     time.sleep(1)
     return 1
 
 
-@Concurrent
+@concurrent
 def cjob_count():
     return None
+
+
+@concurrent(timeout=1)
+def cjob_timeout():
+    time.sleep(2)
+    return 1
 
 
 class TestPebbleDecorators(unittest.TestCase):
@@ -99,7 +105,7 @@ class TestPebbleDecorators(unittest.TestCase):
     def test_asynchronous_wrong_decoration(self):
         """Decorator raises ValueError if given wrong params."""
         try:
-            @Asynchronous(callback, error_callback)
+            @asynchronous(callback, error_callback)
             def wrong(argument, keyword_argument=0):
                 return argument + keyword_argument
         except Exception as error:
@@ -162,7 +168,7 @@ class TestPebbleDecorators(unittest.TestCase):
     def test_concurrent_wrong_decoration(self):
         """Decorator raises ValueError if given wrong params."""
         try:
-            @Concurrent(callback, error_callback)
+            @concurrent(callback, error_callback)
             def wrong(argument, keyword_argument=0):
                 return argument + keyword_argument
         except Exception as error:
@@ -221,3 +227,14 @@ class TestPebbleDecorators(unittest.TestCase):
         for i in range(0, 5):
             task = cjob_count(1, 1)
         self.assertEqual(task.number, 4)
+
+    def test_concurrent_timeout(self):
+        """Timeout decorator kills the task."""
+        task = cjob_timeout()
+        self.assertFalse(task.get(), None)
+
+    def test_concurrent_timeout_not_expired(self):
+        """Timeout decorator doesn't kill the task."""
+        cjob_timeout.timeout = 5
+        task = cjob_timeout()
+        self.assertEqual(task.get(), 1)

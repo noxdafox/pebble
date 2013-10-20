@@ -16,7 +16,7 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
 
     :synopsis: Function decorators
 
-    .. decorator:: Asynchronous(callback=None, error_callback=None)
+    .. decorator:: asynchronous(callback=None, error_callback=None)
 
        When called, the *function* will be run in a separate thread, a *Task* object will be returned to the caller.
 
@@ -24,7 +24,7 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
        If *callback* is not None, it will be called once the task has ended with the task identifier and the *function* return values.
        If *error_callback* is defined, it will be called if the task has raised an exception, passing the task identifier and the raised exception.
 
-    .. decorator:: Concurrent(callback=None, error_callback=None)
+    .. decorator:: concurrent(callback=None, error_callback=None)
 
        When called, the *function* will be run in a separate process, a *Task* object will be returned to the caller.
 
@@ -43,7 +43,7 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
 
     .. class:: Task
 
-       Functions decorated by *Asynchronous* and *Concurrent* decorators, once called, will return a *Task* object.
+       Functions decorated by *asynchronous* and *concurrent* decorators, once called, will return a *Task* object.
        *Task* objects are handlers to the ongoing jobs within spawned threads and processes.
 
        .. data:: id

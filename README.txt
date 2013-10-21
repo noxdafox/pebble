@@ -102,7 +102,6 @@ TODO
 
 A roadmap::
 
- * Python3
  * return traceback in error callbacks
  * implement pebbles (pools of workers) and make it possible to bind decorators to them
  * memoization as decorator parameter

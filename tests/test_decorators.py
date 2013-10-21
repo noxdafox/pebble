@@ -238,3 +238,7 @@ class TestPebbleDecorators(unittest.TestCase):
         cjob_timeout.timeout = 5
         task = cjob_timeout()
         self.assertEqual(task.get(), 1)
+
+
+if __name__ == "__main__":
+    unittest.main()

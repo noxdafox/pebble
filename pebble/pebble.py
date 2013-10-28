@@ -17,6 +17,7 @@
 from uuid import uuid4
 
 from threading import Thread
+from pickle import PicklingError
 
 
 def thread_worker(function, task, *args, **kwargs):
@@ -33,7 +34,10 @@ def process_worker(function, writer, *args, **kwargs):
     except (IOError, OSError):  # pipe was closed
         return
     except Exception as error:
-        writer.send(error)
+        try:
+            writer.send(error)
+        except PicklingError:
+            writer.send(SerializingError(str(error), type(error)))
 
 
 class PuddleError(Exception):
@@ -47,10 +51,23 @@ class TimeoutError(PuddleError):
         self.msg = msg
 
     def __repr__(self):
-        return str(self.msg)
+        return "%s %s" % (self.__class__, self.msg)
 
     def __str__(self):
         return str(self.msg)
+
+
+class SerializingError(PuddleError):
+    """Raised if unable to serialize an Exception."""
+    def __init__(self, msg, value):
+        self.msg = msg
+        self.value = value
+
+    def __repr__(self):
+        return "%s %s: %s" % (self.__class__, self.value, self.msg)
+
+    def __str__(self):
+        return "Unable to serialize %s. Message: %s" % (self.value, self.msg)
 
 
 class ThreadTask(object):

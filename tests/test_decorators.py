@@ -1,5 +1,7 @@
 import time
+import threading
 import unittest
+from pickle import PicklingError
 
 from pebble.pebble import TimeoutError
 from pebble.decorators import asynchronous, concurrent
@@ -8,6 +10,11 @@ from pebble.decorators import asynchronous, concurrent
 _task_id = ""
 _results = 0
 _exception = None
+
+
+class UnserializeableError(Exception):
+    def __init__(self):
+        self.lock = threading.Lock()  # unpickleable
 
 
 def callback(task_id, results):
@@ -80,6 +87,16 @@ def cjob_count():
 def cjob_timeout():
     time.sleep(2)
     return 1
+
+
+@concurrent
+def cjob_unserializeable():
+    return threading.Lock()
+
+
+@concurrent
+def cjob_unserializeable_error():
+    raise UnserializeableError()
 
 
 class TestPebbleDecorators(unittest.TestCase):
@@ -195,10 +212,6 @@ class TestPebbleDecorators(unittest.TestCase):
     def test_concurrent_task_error(self):
         """Test that an exception in a concurrent task is raised by get()."""
         task = cjob_error(1, 1)
-        try:
-            task.get()
-        except:
-            pass
         self.assertRaises(Exception, task.get)
 
     def test_concurrent_task_error_callback(self):
@@ -238,3 +251,8 @@ class TestPebbleDecorators(unittest.TestCase):
         cjob_timeout.timeout = 5
         task = cjob_timeout()
         self.assertEqual(task.get(), 1)
+
+    def test_concurrent_unserializable(self):
+        """PicklingError is returned if results are not serializeable."""
+        task = cjob_unserializeable()
+        self.assertRaises(PicklingError, task.get)

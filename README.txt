@@ -90,7 +90,7 @@ Callbacks can be dynamically (re)assigned, useful to set instance methods as cal
 	for task in tasks:
 	    print "Waiting for %s" % task.id
 	    try:
-		task.get()  # wait fo task to finish
+		task.get()  # wait for task to finish
 	    except Exception:
 		pass  # exception are re-raised by the get() method
 
@@ -102,7 +102,6 @@ TODO
 
 A roadmap::
 
- * Python3
  * return traceback in error callbacks
  * implement pebbles (pools of workers) and make it possible to bind decorators to them
  * memoization as decorator parameter

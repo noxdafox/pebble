@@ -256,3 +256,7 @@ class TestPebbleDecorators(unittest.TestCase):
         """PicklingError is returned if results are not serializeable."""
         task = cjob_unserializeable()
         self.assertRaises(PicklingError, task.get)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -61,7 +61,7 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
 	  Returns the values given back by the decorated *function*; if an exception has been raised within it, it will be re-raised by the *get()* method.
 	  The *get()* method blocks until the thread or process has not finished.
 
-	  If *timeout* is a number greater than 0 it will block for the specified amount of seconds, raising a TimeoutError if the results are not ready yet; a value equal or smaller than 0 will force the methor to return immediately.
+	  If *timeout* is a number greater than 0 it will block for the specified amount of seconds, raising a TimeoutError if the results are not ready yet; a value equal or smaller than 0 will force the method to return immediately.
 
 
 .. toctree::

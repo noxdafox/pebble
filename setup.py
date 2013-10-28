@@ -14,7 +14,7 @@ def read(fname):
 
 setup(
     name="Pebble",
-    version="1.0.1",
+    version="1.1.1",
     author="Matteo Cafasso",
     author_email="noxdafox@gmail.com",
     description=("Threading and multiprocessing eye-candy."),
@@ -25,6 +25,7 @@ setup(
     long_description=read('README.txt'),
     classifiers=[
         "Programming Language :: Python",
+        "Programming Language :: Python :: 3",
         "Development Status :: 3 - Alpha",
         "Intended Audience :: Developers",
         "Operating System :: OS Independent",

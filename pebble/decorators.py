@@ -14,12 +14,13 @@
 # along with Pebble.  If not, see <http://www.gnu.org/licenses/>.
 
 
-from functools import wraps
 from itertools import count
 from threading import Thread
+from collections import Callable
+from functools import update_wrapper
 from multiprocessing import Process, Pipe
 
-from pebble import ThreadTask, ProcessTask, thread_worker, process_worker
+from .pebble import ThreadTask, ProcessTask, thread_worker, process_worker
 
 
 class AsynchronousWrapper(object):
@@ -28,9 +29,10 @@ class AsynchronousWrapper(object):
         self._counter = count()
         self.callback = callback
         self.error_callback = error_callback
+        update_wrapper(self, function)
 
     def __call__(self, *args, **kwargs):
-        t = ThreadTask(self._counter.next(),
+        t = ThreadTask(next(self._counter),
                        self.callback, self.error_callback)
         args = list(args)
         args.insert(0, self._function)
@@ -55,7 +57,7 @@ def asynchronous(*args, **kwargs):
     def wrapper(function):
         return AsynchronousWrapper(function, callback, error_callback)
 
-    if len(args) == 1 and not len(kwargs) and callable(args[0]):
+    if len(args) == 1 and not len(kwargs) and isinstance(args[0], Callable):
         return AsynchronousWrapper(args[0], None, None)
     elif not len(args) and len(kwargs):
         callback = kwargs.get('callback', None)
@@ -73,6 +75,7 @@ class ConcurrentWrapper(object):
         self.timeout = timeout
         self.callback = callback
         self.error_callback = error_callback
+        update_wrapper(self, function)
 
     def __call__(self, *args, **kwargs):
         reader, writer = Pipe(duplex=False)
@@ -82,7 +85,7 @@ class ConcurrentWrapper(object):
         p = Process(target=process_worker, args=(args), kwargs=(kwargs))
         p.daemon = True
         p.start()
-        return ProcessTask(self._counter.next(), p, reader,
+        return ProcessTask(next(self._counter), p, reader,
                            self.callback, self.error_callback, self.timeout)
 
 
@@ -100,7 +103,7 @@ def concurrent(*args, **kwargs):
     def wrapper(function):
         return ConcurrentWrapper(function, timeout, callback, error_callback)
 
-    if len(args) == 1 and not len(kwargs) and callable(args[0]):
+    if len(args) == 1 and not len(kwargs) and isinstance(args[0], Callable):
         return ConcurrentWrapper(args[0], None, None, None)
     elif not len(args) and len(kwargs):
         timeout = kwargs.get('timeout', None)

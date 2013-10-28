@@ -40,12 +40,12 @@ def process_worker(function, writer, *args, **kwargs):
             writer.send(SerializingError(str(error), type(error)))
 
 
-class PuddleError(Exception):
+class PebbleError(Exception):
     """Puddle base exception."""
     pass
 
 
-class TimeoutError(PuddleError):
+class TimeoutError(PebbleError):
     """Raised when Task.get() timeout expires."""
     def __init__(self, msg):
         self.msg = msg

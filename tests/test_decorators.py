@@ -1,7 +1,6 @@
 import time
 import threading
 import unittest
-from pickle import PicklingError
 
 from pebble.pebble import TimeoutError, SerializingError
 from pebble.decorators import asynchronous, concurrent
@@ -258,10 +257,11 @@ class TestPebbleDecorators(unittest.TestCase):
     def test_concurrent_unserializable(self):
         """PicklingError is returned if results are not serializeable."""
         task = cjob_unserializeable()
-        try:  # Python 3
-            self.assertRaises(PicklingError, task.get)
-        except:  # Python 2
+        try:  # Python 2
             from cPickle import PicklingError
+            self.assertRaises(PicklingError, task.get)
+        except ImportError:  # Python 3
+            from pickle import PicklingError
             self.assertRaises(PicklingError, task.get)
 
     def test_concurrent_unserializable_error(self):

@@ -40,8 +40,7 @@ def process_worker(function, writer, *args, **kwargs):
         try:
             writer.send(error)
         except PicklingError:
-            serror = SerializingError(str(error), type(error))
-            writer.send(serror)
+            writer.send(SerializingError(str(error), type(error)))
 
 
 class PebbleError(Exception):
@@ -64,6 +63,7 @@ class TimeoutError(PebbleError):
 class SerializingError(PebbleError):
     """Raised if unable to serialize an Exception."""
     def __init__(self, msg, value):
+        super(SerializingError, self).__init__(msg, value)
         self.msg = msg
         self.value = value
 

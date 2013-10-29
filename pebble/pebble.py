@@ -17,7 +17,10 @@
 from uuid import uuid4
 
 from threading import Thread
-from pickle import PicklingError
+try:  # Python 2
+    from cPickle import PicklingError
+except:  # Python 3
+    from pickle import PicklingError
 
 
 def thread_worker(function, task, *args, **kwargs):
@@ -37,11 +40,12 @@ def process_worker(function, writer, *args, **kwargs):
         try:
             writer.send(error)
         except PicklingError:
-            writer.send(SerializingError(str(error), type(error)))
+            serror = SerializingError(str(error), type(error))
+            writer.send(serror)
 
 
 class PebbleError(Exception):
-    """Puddle base exception."""
+    """Pebble base exception."""
     pass
 
 
@@ -57,7 +61,7 @@ class TimeoutError(PebbleError):
         return str(self.msg)
 
 
-class SerializingError(PuddleError):
+class SerializingError(PebbleError):
     """Raised if unable to serialize an Exception."""
     def __init__(self, msg, value):
         self.msg = msg

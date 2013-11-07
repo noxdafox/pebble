@@ -2,11 +2,6 @@ Pebble
 ======
 
 
-.. note::
-
-    Since Pebble 1.0.0 decorators are functions and not classes anymore.
-
-
 Description
 -----------
 
@@ -102,6 +97,5 @@ TODO
 
 A roadmap::
 
- * return traceback in error callbacks
  * implement pebbles (pools of workers) and make it possible to bind decorators to them
  * memoization as decorator parameter

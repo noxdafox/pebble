@@ -15,6 +15,7 @@
 
 
 from uuid import uuid4
+from traceback import format_exc
 
 from threading import Thread
 try:  # Python 2
@@ -28,6 +29,7 @@ def thread_worker(function, task, *args, **kwargs):
         results = function(*args, **kwargs)
         task._set(results)
     except Exception as error:
+        error.traceback = format_exc()
         task._set(error)
 
 
@@ -37,6 +39,7 @@ def process_worker(function, writer, *args, **kwargs):
     except (IOError, OSError):  # pipe was closed
         return
     except Exception as error:
+        error.traceback = format_exc()
         try:
             writer.send(error)
         except PicklingError:
@@ -68,7 +71,7 @@ class SerializingError(PebbleError):
         self.value = value
 
     def __repr__(self):
-        return "%s %s: %s" % (self.__class__, self.value, self.msg)
+        return "%s %s: %s\n%s" % (self.__class__, self.value, self.msg)
 
     def __str__(self):
         return "Unable to serialize %s. Message: %s" % (self.value, self.msg)

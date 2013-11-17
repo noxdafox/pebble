@@ -97,5 +97,4 @@ TODO
 
 A roadmap::
 
- * implement pebbles (pools of workers) and make it possible to bind decorators to them
- * memoization as decorator parameter
+ * pools of workers

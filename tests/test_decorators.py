@@ -101,14 +101,8 @@ def cjob_unserializeable_error():
     raise UnserializeableError()
 
 
-class TestPebbleDecorators(unittest.TestCase):
+class TestAsynchronousDecorators(unittest.TestCase):
     def setUp(self):
-        global _task_id
-        global _results
-        global _exception
-        _task_id = ""
-        _results = 0
-        _exception = None
         self.task_id = ''
         self.exception = None
         self.callback_results = 0
@@ -183,6 +177,27 @@ class TestPebbleDecorators(unittest.TestCase):
         for i in range(0, 5):
             task = ajob_count(1, 1)
         self.assertEqual(task.number, 4)
+
+
+class TestConcurrentDecorators(unittest.TestCase):
+    def setUp(self):
+        global _task_id
+        global _results
+        global _exception
+        _task_id = ""
+        _results = 0
+        _exception = None
+        self.task_id = ''
+        self.exception = None
+        self.callback_results = 0
+
+    def callback(self, task_id, results):
+        self.task_id = task_id
+        self.callback_results = results
+
+    def error_callback(self, task_id, exception):
+        self.task_id = task_id
+        self.exception = exception
 
     def test_concurrent_wrong_decoration(self):
         """Decorator raises ValueError if given wrong params."""

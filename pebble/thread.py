@@ -17,7 +17,8 @@
 from uuid import uuid4
 from traceback import format_exc
 from itertools import count
-from threading import Thread, TimeoutError
+from threading import Thread, current_thread
+from multiprocessing import TimeoutError
 from collections import Callable
 from functools import update_wrapper
 
@@ -66,14 +67,14 @@ class Task(object):
         If the executed code raised an error it will be re-raised.
 
         """
-        self._worker.join(timeout)
-        if not self._worker.is_alive():
-            if (isinstance(self._results, BaseException)):
-                raise self._results
-            else:
-                return self._results
+        if self._worker is not current_thread():  # called by main thread
+            self._worker.join(timeout)
+            if self._worker.is_alive():
+                raise TimeoutError("Task is still running")
+        if (isinstance(self._results, BaseException)):
+            raise self._results
         else:
-            raise TimeoutError("Task is still running")
+            return self._results
 
     def ready(self):
         """Returns True if results are ready."""

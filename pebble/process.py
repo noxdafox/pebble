@@ -34,7 +34,7 @@ def worker(function, writer, *args, **kwargs):
         writer.send(function(*args, **kwargs))
     except (IOError, OSError):  # pipe was closed
         return
-    except Exception as error:
+    except BaseException as error:
         error.traceback = format_exc()
         try:
             writer.send(error)

@@ -30,8 +30,8 @@ Launch five tasks in separate processes and handle their results in a callback::
     from pebble import concurrent
 
 
-    def task_done(task_id, results):
-    	print "Task %s has returned %d" % (task_id, results)
+    def task_done(task):
+    	print "Task %s has returned %d" % (task.id, task.get())
 
 
     @concurrent(callback=task_done)
@@ -43,10 +43,11 @@ Launch five tasks in separate processes and handle their results in a callback::
         for i in range(0, 5):
             do_job(i)
 
-	raw_input("Press any key to exit.")
+	raw_input("Press return to exit.")
 
 Callbacks can be dynamically (re)assigned, useful to set instance methods as callback::
 
+    import time
     from pebble import concurrent
 
 
@@ -55,13 +56,12 @@ Callbacks can be dynamically (re)assigned, useful to set instance methods as cal
 	    self.counter = 0
 	    self.errors = 0
 	    self.do_job.callback = self.task_done
-	    self.do_wrong_job.error_callback = self.task_error
 
-	def task_done(self, task_id, results):
-	    self.counter += results
-
-	def task_error(self, task_id, exception):
-	    self.errors += 1
+	def task_done(self, task):
+            try:
+                self.counter += task.get()
+            except:  # exception are re-raised by the get() method
+                self.errors += 1
 
 	@concurrent
 	def do_job():
@@ -82,12 +82,7 @@ Callbacks can be dynamically (re)assigned, useful to set instance methods as cal
 	    task = foo.do_wrong_job()
 	    tasks.append(task)
 
-	for task in tasks:
-	    print "Waiting for %s" % task.id
-	    try:
-		task.get()  # wait for task to finish
-	    except Exception:
-		pass  # exception are re-raised by the get() method
+        time.sleep(1)
 
 	print foo.counter
 	print foo.errors

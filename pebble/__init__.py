@@ -1,5 +1,5 @@
-__all__ = ['asynchronous', 'concurrent', 'PebbleError', 'SerializingError']
+__all__ = ['thread', 'process', 'PebbleError', 'SerializingError']
 
 from .pebble import PebbleError
-from .process import concurrent, SerializingError
-from .thread import asynchronous
+from .process import process, SerializingError
+from .thread import thread

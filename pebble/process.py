@@ -42,7 +42,7 @@ def worker(function, writer, *args, **kwargs):
             writer.send(SerializingError(str(error), type(error)))
 
 
-def concurrent(*args, **kwargs):
+def process(*args, **kwargs):
     """Turns a *function* into a Process and runs its logic within.
 
     A decorated *function* will return a *Task* object once is called.

@@ -31,7 +31,7 @@ def thread_worker(function, task, *args, **kwargs):
         task._set(error)
 
 
-def asynchronous(*args, **kwargs):
+def thread(*args, **kwargs):
     """Turns a *function* into a Thread and runs its logic within.
 
     A decorated *function* will return a *Task* object once is called.

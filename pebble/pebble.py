@@ -29,3 +29,15 @@ class TimeoutError(PebbleError):
 
     def __str__(self):
         return str(self.msg)
+
+
+class TaskCancelled(PebbleError):
+    """Raised if get is called on a cancelled task."""
+    def __init__(self, msg):
+        self.msg = msg
+
+    def __repr__(self):
+        return "%s %s" % (self.__class__, self.msg)
+
+    def __str__(self):
+        return str(self.msg)

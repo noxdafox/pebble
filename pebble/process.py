@@ -26,7 +26,7 @@ try:  # Python 2
 except:  # Python 3
     from pickle import PicklingError
 
-from .pebble import PebbleError, TimeoutError
+from .pebble import PebbleError, TimeoutError, TaskCancelled
 
 
 def worker(function, writer, *args, **kwargs):
@@ -34,7 +34,7 @@ def worker(function, writer, *args, **kwargs):
         writer.send(function(*args, **kwargs))
     except (IOError, OSError):  # pipe was closed
         return
-    except BaseException as error:
+    except Exception as error:
         error.traceback = format_exc()
         try:
             writer.send(error)
@@ -83,6 +83,7 @@ class Task(object):
     def __init__(self, task_nr, worker, reader, callback, timeout):
         self.id = uuid4()
         self.number = task_nr
+        self._ready = False
         self._cancelled = False
         self._timeout = timeout
         self._results = None
@@ -94,6 +95,10 @@ class Task(object):
         self._worker_listener.start()
 
     @property
+    def ready(self):
+        return self._ready
+
+    @property
     def cancelled(self):
         return self._cancelled
 
@@ -103,7 +108,7 @@ class Task(object):
         If the executed code raised an error it will be re-raised.
 
         """
-        if self._worker_listener is not current_thread():  # called by main thread
+        if self._worker_listener is not current_thread():
             self._worker_listener.join(timeout)
             if self._worker_listener.is_alive():
                 raise TimeoutError("Task is still running")
@@ -112,23 +117,21 @@ class Task(object):
         else:
             return self._results
 
-    def ready(self):
-        """Returns True if results are ready."""
-        return not self._worker_listener.is_alive()
-
     def cancel(self):
         """Cancels the Task terminating the running process
         and dropping the results."""
         self._cancelled = True
         self._worker.terminate()
-        self._reader.close()
 
     def _set(self):
         try:
             if self._reader.poll(self._timeout):
-                self._results = self._reader.recv()
-                if self._callback is not None:
-                    self._callback(self)
+                if not self._cancelled:
+                    self._results = self._reader.recv()
+                    if self._callback is not None:
+                        self._callback(self)
+                else:
+                    self._results = TaskCancelled("Task has been cancelled")
             elif self._worker.is_alive():
                 self._worker.terminate()
                 self._results = TimeoutError("Task timeout expired")
@@ -136,6 +139,7 @@ class Task(object):
             if not self._cancelled:
                 self._results = error
         finally:
+            self._ready = True
             self._worker.join()
 
 
@@ -155,5 +159,6 @@ class Wrapper(object):
         p = Process(target=worker, args=(args), kwargs=(kwargs))
         p.daemon = True
         p.start()
+        writer.close()
         return Task(next(self._counter), p, reader,
                     self.callback, self.timeout)

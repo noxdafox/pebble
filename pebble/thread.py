@@ -21,13 +21,13 @@ from threading import Thread, current_thread
 from collections import Callable
 from functools import update_wrapper
 
-from .pebble import TimeoutError
+from .pebble import TimeoutError, TaskCancelled
 
 
 def thread_worker(function, task, *args, **kwargs):
     try:
         task._set(function(*args, **kwargs))
-    except BaseException as error:
+    except Exception as error:
         error.traceback = format_exc()
         task._set(error)
 
@@ -58,9 +58,19 @@ class Task(object):
     def __init__(self, task_nr, callback):
         self.id = uuid4()
         self.number = task_nr
+        self._ready = False
+        self._cancelled = False
         self._results = None
         self._worker = None  # set by Asynchronous._wrapper
         self._callback = callback
+
+    @property
+    def ready(self):
+        return self._ready
+
+    @property
+    def cancelled(self):
+        return self._cancelled
 
     def get(self, timeout=None):
         """Retrieves the produced results.
@@ -77,14 +87,18 @@ class Task(object):
         else:
             return self._results
 
-    def ready(self):
-        """Returns True if results are ready."""
-        return not self._worker.is_alive()
+    def cancel(self):
+        """Cancels the Task dropping the results."""
+        self._cancelled = True
 
     def _set(self, results):
-        self._results = results
-        if self._callback is not None:
-            self._callback(self)
+        if not self._cancelled:
+            self._results = results
+            if self._callback is not None:
+                self._callback(self)
+        else:
+            self._results = TaskCancelled("Task has been cancelled")
+        self._ready = True
 
 
 class Wrapper(object):

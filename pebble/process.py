@@ -20,13 +20,13 @@ from itertools import count
 from threading import Thread, current_thread
 from collections import Callable
 from functools import update_wrapper
-from multiprocessing import Process, Pipe, TimeoutError
+from multiprocessing import Process, Pipe
 try:  # Python 2
     from cPickle import PicklingError
 except:  # Python 3
     from pickle import PicklingError
 
-from .pebble import PebbleError
+from .pebble import PebbleError, TimeoutError
 
 
 def worker(function, writer, *args, **kwargs):

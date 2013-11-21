@@ -1,6 +1,5 @@
 import time
 import unittest
-from multiprocessing import TimeoutError
 
 from pebble import thread, TimeoutError
 

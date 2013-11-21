@@ -1,9 +1,8 @@
 import time
 import threading
 import unittest
-from multiprocessing import TimeoutError
 
-from pebble import SerializingError, process
+from pebble import SerializingError, TimeoutError, process
 
 
 _results = 0

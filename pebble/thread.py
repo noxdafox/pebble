@@ -18,9 +18,10 @@ from uuid import uuid4
 from traceback import format_exc
 from itertools import count
 from threading import Thread, current_thread
-from multiprocessing import TimeoutError
 from collections import Callable
 from functools import update_wrapper
+
+from .pebble import TimeoutError
 
 
 def thread_worker(function, task, *args, **kwargs):

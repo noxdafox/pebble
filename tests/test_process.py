@@ -149,7 +149,7 @@ class TestProcessDecorator(unittest.TestCase):
     def test_process_timeout(self):
         """Timeout decorator kills the task."""
         task = cjob_timeout()
-        self.assertFalse(task.get(), None)
+        self.assertRaises(TimeoutError, task.get)
 
     def test_process_timeout_not_expired(self):
         """Timeout decorator doesn't kill the task."""

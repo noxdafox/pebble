@@ -13,10 +13,10 @@ Examples
 
 Launch a task in a thread and wait for its results::
 
-    from pebble import asynchronous
+    from pebble import thread
 
 
-    @asynchronous
+    @thread
     def do_job(foo, bar=0):
     	return foo + bar
 
@@ -27,14 +27,14 @@ Launch a task in a thread and wait for its results::
 
 Launch five tasks in separate processes and handle their results in a callback::
 
-    from pebble import concurrent
+    from pebble import process
 
 
     def task_done(task):
     	print "Task %s has returned %d" % (task.id, task.get())
 
 
-    @concurrent(callback=task_done)
+    @process(callback=task_done)
     def do_job(foo, bar=0):
     	return foo + bar
 
@@ -48,7 +48,7 @@ Launch five tasks in separate processes and handle their results in a callback::
 Callbacks can be dynamically (re)assigned, useful to set instance methods as callback::
 
     import time
-    from pebble import concurrent
+    from pebble import process
 
 
     class Foo(object):
@@ -63,11 +63,11 @@ Callbacks can be dynamically (re)assigned, useful to set instance methods as cal
             except:  # exception are re-raised by the get() method
                 self.errors += 1
 
-	@concurrent
+	@process
 	def do_job():
 	    return 1
 
-	@concurrent
+	@process
 	def do_wrong_job():
 	    raise Exception("Ops!")
 
@@ -92,4 +92,7 @@ TODO
 
 A roadmap::
 
- * pools of workers
+ * pools of workers::
+
+   - @process.pool
+   - @thread.pool

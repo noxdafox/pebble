@@ -16,24 +16,20 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
 
     :synopsis: Function decorators
 
-    .. decorator:: asynchronous(callback=None, error_callback=None)
+    .. decorator:: thread(callback=None)
 
        When called, the *function* will be run in a separate thread, a *Task* object will be returned to the caller.
 
-       *callback* and *error_callback* must be callables.
-       If *callback* is not None, it will be called once the task has ended with the task identifier and the *function* return values.
-       If *error_callback* is defined, it will be called if the task has raised an exception, passing the task identifier and the raised exception with the traceback string as extra attribute.
+       *callback* must be callable, if passed, it will be called once the task has ended with the *Task* object as parameter.
 
-    .. decorator:: concurrent(callback=None, error_callback=None, timeout=None)
+    .. decorator:: process(callback=None, timeout=None)
 
        When called, the *function* will be run in a separate process, a *Task* object will be returned to the caller.
 
        Values returned by the decorated *function* will be sent back to the caller through a *Pipe*, therefore they must be serializable into a *Pickle* object.
 
-       *callback* and *error_callback* must be callables.
-       If *callback* is not None, it will be called once the task has ended with the task identifier and the *function* return values.
-       If *error_callback* is defined, it will be called if the task has raised an exception, passing the task identifier and the raised exception with the traceback string as extra attribute.
-       A *timeout* value greater than 0 will terminate the running process if it has not yet finished once the *timeout* expires; any *Task.get()* call will return immediately a None value.
+       *callback* must be callable, if passed, it will be called once the task has ended with the *Task* object as parameter.
+       A *timeout* value greater than 0 will terminate the running process if it has not yet finished once the *timeout* expires; any *Task.get()* call will raise a TimeoutError.
 
 
 :mod:`pebble`

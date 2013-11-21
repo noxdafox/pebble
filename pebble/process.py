@@ -131,6 +131,7 @@ class Task(object):
                     self._callback(self)
             elif self._worker.is_alive():
                 self._worker.terminate()
+                self._results = TimeoutError("Task timeout expired")
         except (IOError, OSError) as error:  # pipe was closed
             if not self._cancelled:
                 self._results = error

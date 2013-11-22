@@ -18,13 +18,13 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
 
     .. decorator:: thread(callback=None)
 
-       When called, the *function* will be run in a separate thread, a *Task* object will be returned to the caller.
+       When called, the *function* will be run in a new thread, a *Task* object will be returned to the caller.
 
        *callback* must be callable, if passed, it will be called once the task has ended with the *Task* object as parameter.
 
     .. decorator:: process(callback=None, timeout=None)
 
-       When called, the *function* will be run in a separate process, a *Task* object will be returned to the caller.
+       When called, the *function* will be run in a new process, a *Task* object will be returned to the caller.
 
        Values returned by the decorated *function* will be sent back to the caller through a *Pipe*, therefore they must be serializable into a *Pickle* object.
 
@@ -45,9 +45,13 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
 
        Raised whenever a concurrent task raised an unpickleable exception; this is tipically happening with exception raised by C libraries ported through *ctypes*.
 
+    .. exception:: TaskCancelled
+
+       Raised by *Task.get()* functions if *Task.cancel()* has been called.
+
     .. class:: Task
 
-       Functions decorated by *asynchronous* and *concurrent* decorators, once called, will return a *Task* object.
+       Functions decorated by *thread* and *process* decorators, once called, will return a *Task* object.
        *Task* objects are handlers to the ongoing jobs within spawned threads and processes.
 
        .. data:: id
@@ -58,12 +62,24 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
 
           An integer representing the task number, formerly the amount of times the decorated function has been previously called.
 
+       .. data:: ready
+
+          A boolean, False if *Task* is still ongoing, True if results are ready.
+
        .. function:: get([timeout])
 
-	  Returns the values given back by the decorated *function*; if an exception has been raised within it, it will be re-raised by the *get()* method.
+	  Returns the values given back by the decorated *function*.
+          If an exception has been raised within it, it will be re-raised by the *get()* method with the traceback appended as attribute.
 	  The *get()* method blocks until the thread or process has not finished.
 
 	  If *timeout* is a number greater than 0 it will block for the specified amount of seconds, raising a TimeoutError if the results are not ready yet; a value equal or smaller than 0 will force the method to return immediately.
+
+       .. function:: cancel()
+
+          Cancel the ongoing *Task*, results will be dropped, *callbacks* won't be executed and any *Task.get()* blocking will raise *TaskCancelled* exception.
+          If the task is running into a process it will be terminated, as thread cannot be stopped, its results will simply be ignored but the function itself will keep running.
+
+          *cancel()* should not be called on *Tasks* which logic is using shared resources as *Pipes*, *Lock* or *Files*.
 
 
 .. toctree::

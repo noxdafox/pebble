@@ -47,7 +47,7 @@ def thread(*args, **kwargs):
     if len(args) == 1 and not len(kwargs) and isinstance(args[0], Callable):
         return Wrapper(args[0], None)
     elif not len(args) and len(kwargs):
-        callback = kwargs.get('callback', None)
+        callback = kwargs.get('callback')
 
         return wrapper
     else:
@@ -55,6 +55,7 @@ def thread(*args, **kwargs):
 
 
 class Task(object):
+    """Handler to the ongoing task."""
     def __init__(self, task_nr, callback):
         self.id = uuid4()
         self.number = task_nr
@@ -63,6 +64,12 @@ class Task(object):
         self._results = None
         self._worker = None  # set by Asynchronous._wrapper
         self._callback = callback
+
+    def __str__(self):
+        return self.__repr__()
+
+    def __repr__(self):
+        return "%s (Task-%d, %s)" % (self.__class__, self.number, self.id)
 
     @property
     def ready(self):

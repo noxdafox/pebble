@@ -57,8 +57,8 @@ def process(*args, **kwargs):
     if len(args) == 1 and not len(kwargs) and isinstance(args[0], Callable):
         return Wrapper(args[0], None, None)
     elif not len(args) and len(kwargs):
-        timeout = kwargs.get('timeout', None)
-        callback = kwargs.get('callback', None)
+        timeout = kwargs.get('timeout')
+        callback = kwargs.get('callback')
 
         return wrapper
     else:
@@ -80,19 +80,26 @@ class SerializingError(PebbleError):
 
 
 class Task(object):
+    """Handler to the ongoing task."""
     def __init__(self, task_nr, worker, reader, callback, timeout):
         self.id = uuid4()
         self.number = task_nr
         self._ready = False
         self._cancelled = False
-        self._timeout = timeout
         self._results = None
         self._reader = reader
         self._worker = worker
+        self._timeout = timeout
         self._callback = callback
         self._worker_listener = Thread(target=self._set)
         self._worker_listener.daemon = True
         self._worker_listener.start()
+
+    def __str__(self):
+        return self.__repr__()
+
+    def __repr__(self):
+        return "%s (Task-%d, %s)" % (self.__class__, self.number, self.id)
 
     @property
     def ready(self):

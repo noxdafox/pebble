@@ -79,7 +79,7 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
           Cancel the ongoing *Task*, results will be dropped, *callbacks* won't be executed and any *Task.get()* blocking will raise *TaskCancelled* exception.
           If the task is running into a process it will be terminated, as thread cannot be stopped, its results will simply be ignored but the function itself will keep running.
 
-          *cancel()* should not be called on *Tasks* which logic is using shared resources as *Pipes*, *Lock* or *Files*.
+          *cancel()* should not be called on *Tasks* which logic is using shared resources as *Pipes*, *Locks* or *Files*.
 
 
 .. toctree::

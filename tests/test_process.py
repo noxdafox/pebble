@@ -131,6 +131,16 @@ class TestProcessDecorator(unittest.TestCase):
         task = job_timeout()
         self.assertRaises(TimeoutError, task.get)
 
+    def test_process_timeout_callback(self):
+        """TimeoutError is raised within the callback if task times out."""
+        job_timeout.callback = self.error_callback
+        task = job_timeout()
+        try:
+            task.get()
+        except:
+            pass
+        self.assertTrue(isinstance(self.exception, TimeoutError))
+
     def test_process_no_timeout(self):
         """Timeout decorator doesn't kill the task."""
         self.assertEqual(job_long_timeout().get(), 1)

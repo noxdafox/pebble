@@ -29,7 +29,7 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
        Values returned by the decorated *function* will be sent back to the caller through a *Pipe*, therefore they must be serializable into a *Pickle* object.
 
        *callback* must be callable, if passed, it will be called once the task has ended with the *Task* object as parameter.
-       A *timeout* value greater than 0 will terminate the running process if it has not yet finished once the *timeout* expires; any *Task.get()* call will raise a TimeoutError, any callback will still be executed.
+       A *timeout* value greater than 0 will terminate the running process if it has not yet finished once the *timeout* expires; any *Task.get()* call will raise a TimeoutError, callbacks will still be executed.
 
 
 :mod:`pebble`

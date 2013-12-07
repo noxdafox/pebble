@@ -30,8 +30,9 @@ def worker(function, queue, limit=0):
         try:
             task, args, kwargs = queue.get()
             results = function(*args, **kwargs)
-        except Exception as results:
-            results.traceback = format_exc()
+        except Exception as error:
+            error.traceback = format_exc()
+            results = error
         finally:
             task._set(results)
 

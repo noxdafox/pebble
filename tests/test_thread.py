@@ -69,15 +69,15 @@ class TestThreadDecorators(unittest.TestCase):
 
     def test_thread_callback_static(self):
         """Test static callback is executed with thread task."""
-        task = job_callback(1, 1)
-        task.get()
+        job_callback(1, 1)
+        time.sleep(0.1)
         self.assertEqual(2, _results)
 
     def test_thread_callback_dynamic(self):
         """Test dynamic callback is executed with thread task."""
         job.callback = self.callback
-        task = job(1, 1)
-        task.get()
+        job(1, 1)
+        time.sleep(0.1)
         self.assertEqual(2, self.callback_results)
 
     def test_thread_error_callback(self):

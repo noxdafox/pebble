@@ -17,19 +17,23 @@
 from uuid import uuid4
 from traceback import format_exc
 from itertools import count
-from threading import Thread, current_thread
+from threading import Thread, Event
 from collections import Callable
 from functools import update_wrapper
 
 from .pebble import TimeoutError, TaskCancelled
 
 
-def thread_worker(function, task, *args, **kwargs):
-    try:
-        task._set(function(*args, **kwargs))
-    except Exception as error:
-        error.traceback = format_exc()
-        task._set(error)
+def worker(function, queue, limit=0):
+    counter = count()
+    while limit == 0 or next(counter) < limit:
+        try:
+            task, args, kwargs = queue.get()
+            results = function(*args, **kwargs)
+        except Exception as results:
+            results.traceback = format_exc()
+        finally:
+            task._set(results)
 
 
 def thread(*args, **kwargs):
@@ -62,7 +66,7 @@ class Task(object):
         self._ready = False
         self._cancelled = False
         self._results = None
-        self._worker = None  # set by Asynchronous._wrapper
+        self._event = Event()
         self._callback = callback
 
     def __str__(self):
@@ -85,27 +89,26 @@ class Task(object):
         If the executed code raised an error it will be re-raised.
 
         """
-        if self._worker is not current_thread():  # called by main thread
-            self._worker.join(timeout)
-            if self._worker.is_alive():
-                raise TimeoutError("Task is still running")
-        if (isinstance(self._results, BaseException)):
-            raise self._results
+        self._event.wait(timeout)
+        if self._ready:
+            if (isinstance(self._results, BaseException)):
+                raise self._results
+            else:
+                return self._results
         else:
-            return self._results
+            raise TimeoutError("Task is still running")
 
     def cancel(self):
         """Cancels the Task dropping the results."""
         self._cancelled = True
+        self._set(TaskCancelled("Task has been cancelled"))
 
     def _set(self, results):
-        if not self._cancelled:
-            self._results = results
-            if self._callback is not None:
-                self._callback(self)
-        else:
-            self._results = TaskCancelled("Task has been cancelled")
+        self._results = results
         self._ready = True
+        self._event.set()
+        if self._callback is not None and not self._cancelled:
+            self._callback(self)
 
 
 class Wrapper(object):
@@ -116,11 +119,17 @@ class Wrapper(object):
         update_wrapper(self, function)
 
     def __call__(self, *args, **kwargs):
-        t = Task(next(self._counter), self.callback)
-        args = list(args)
-        args.insert(0, self._function)
-        args.insert(1, t)
-        t._worker = Thread(target=thread_worker, args=(args), kwargs=(kwargs))
-        t._worker.daemon = True
-        t._worker.start()
-        return t
+        task = Task(next(self._counter), self.callback)
+        q = DummyQueue((task, args, kwargs))
+        t = Thread(target=worker, args=(self._function, q, 1))
+        t.daemon = True
+        t.start()
+        return task
+
+
+class DummyQueue(list):
+    def __init__(self, elements):
+        super(DummyQueue, self).__init__(((elements), ))
+
+    def get(self):
+        return self.pop()

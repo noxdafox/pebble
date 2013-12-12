@@ -29,17 +29,20 @@ except:  # Python 3
 from .pebble import PebbleError, TimeoutError, TaskCancelled
 
 
-def worker(function, writer, *args, **kwargs):
-    try:
-        writer.send(function(*args, **kwargs))
-    except (IOError, OSError):  # pipe was closed
-        return
-    except Exception as error:
-        error.traceback = format_exc()
+def worker(function, channel, limit=0):
+    counter = count()
+    while limit == 0 or next(counter) < limit:
         try:
-            writer.send(error)
-        except PicklingError:
-            writer.send(SerializingError(str(error), type(error)))
+            args, kwargs = channel.recv()
+            channel.send(function(*args, **kwargs))
+        except (IOError, OSError):  # pipe was closed
+            return
+        except Exception as error:
+            error.traceback = format_exc()
+            try:
+                channel.send(error)
+            except PicklingError:
+                channel.send(SerializingError(str(error), type(error)))
 
 
 def process(*args, **kwargs):
@@ -81,13 +84,13 @@ class SerializingError(PebbleError):
 
 class Task(object):
     """Handler to the ongoing task."""
-    def __init__(self, task_nr, worker, reader, callback, timeout):
+    def __init__(self, task_nr, worker, channel, callback, timeout):
         self.id = uuid4()
         self.number = task_nr
         self._ready = False
         self._cancelled = False
         self._results = None
-        self._reader = reader
+        self._channel = channel
         self._worker = worker
         self._timeout = timeout
         self._callback = callback
@@ -132,22 +135,20 @@ class Task(object):
 
     def _set(self):
         try:
-            if self._reader.poll(self._timeout):
-                if not self._cancelled:
-                    self._results = self._reader.recv()
-                    if self._callback is not None:
-                        self._callback(self)
-                else:
-                    self._results = TaskCancelled("Task has been cancelled")
+            if self._channel.poll(self._timeout):
+                self._results = self._channel.recv()
             elif self._worker.is_alive():
                 self._worker.terminate()
                 self._results = TimeoutError("Task timeout expired")
-                if self._callback is not None:
-                    self._callback(self)
-        except (IOError, OSError) as error:  # pipe was closed
-            self._results = error
+        except (IOError, OSError, EOFError) as error:  # pipe was closed
+            if not self._cancelled:
+                self._results = error
+            else:
+                self._results = TaskCancelled("Task cancelled")
         finally:
             self._ready = True
+            if self._callback is not None and not self._cancelled:
+                self._callback(self)
             self._worker.join()
 
 
@@ -160,13 +161,11 @@ class Wrapper(object):
         update_wrapper(self, function)
 
     def __call__(self, *args, **kwargs):
-        reader, writer = Pipe(duplex=False)
-        args = list(args)
-        args.insert(0, self._function)
-        args.insert(1, writer)
-        p = Process(target=worker, args=(args), kwargs=(kwargs))
+        parent, child = Pipe()
+        p = Process(target=worker, args=(self._function, child, 1))
         p.daemon = True
         p.start()
-        writer.close()
-        return Task(next(self._counter), p, reader,
+        parent.send((args, kwargs))
+        child.close()
+        return Task(next(self._counter), p, parent,
                     self.callback, self.timeout)

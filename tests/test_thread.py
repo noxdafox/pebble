@@ -1,7 +1,8 @@
 import time
 import unittest
+from threading import current_thread
 
-from pebble import thread, TimeoutError, TaskCancelled
+from pebble import thread, thread_pool, TimeoutError, TaskCancelled
 
 
 _results = 0
@@ -44,8 +45,15 @@ def job_count():
     return None
 
 
+@thread_pool(workers=2, callback=callback)
+def job_pool(argument, keyword_argument=0):
+    return argument + keyword_argument, current_thread()
+
+
 class TestThreadDecorators(unittest.TestCase):
     def setUp(self):
+        global _results
+        _results = 0
         self.exception = None
         self.callback_results = 0
 
@@ -143,3 +151,56 @@ class TestThreadTask(unittest.TestCase):
         task = job_long()
         task.cancel()
         self.assertTrue(task.cancelled)
+
+
+class TestThreadPool(unittest.TestCase):
+    def setUp(self):
+        global _results
+        _results = 0
+        self.exception = None
+        self.callback_results = 0
+
+    def callback(self, task):
+        self.callback_results = task.get()
+
+    def error_callback(self, task):
+        try:
+            task.get()
+        except Exception as error:
+            self.exception = error
+
+    def test_thread_pool(self):
+        """Multiple tasks are correctly handled."""
+        tasks = []
+        for i in range(0, 5):
+            tasks.append(job_pool(1, 1))
+        self.assertEqual(sum([t.get()[0] for t in tasks]), 10)
+
+    def test_thread_pool_different_threads(self):
+        """Multiple tasks are handled by different threads."""
+        tasks = []
+        for i in range(0, 5):
+            tasks.append(job_pool(1, 1))
+        self.assertEqual(len(set([t.get()[1] for t in tasks])), 2)
+
+    def test_thread_pool_wrong_decoration(self):
+        """Decorator raises ValueError if given wrong params."""
+        try:
+            @thread_pool(callback, 5)
+            def wrong(argument, keyword_argument=0):
+                return argument + keyword_argument
+        except Exception as error:
+            self.assertTrue(isinstance(error, ValueError))
+
+    def test_thread_callback_static(self):
+        """Test static callback is executed with thread pool."""
+        job_pool(1, 1)
+        time.sleep(0.1)
+        self.assertEqual(2, _results[0])
+
+    def test_thread_pool_callback_dynamic(self):
+        """Test dynamic callback is executed with thread pool."""
+        job_pool.callback = self.callback
+        job_pool(1, 1)
+        time.sleep(0.1)
+        self.assertEqual(2, self.callback_results[0])

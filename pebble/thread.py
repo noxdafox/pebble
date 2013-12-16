@@ -20,21 +20,35 @@ from itertools import count
 from threading import Thread, Event
 from collections import Callable
 from functools import update_wrapper
+try:  # Python 2
+    from Queue import Queue, Full
+except:  # Python 3
+    from queue import Queue, Full
 
 from .pebble import TimeoutError, TaskCancelled
 
 
-def worker(function, queue, limit=0):
+def worker(function, queue, limit, initializer, initargs):
+    error = None
+    results = None
     counter = count()
+
+    if isinstance(initializer, Callable):
+        try:
+            initializer(*initargs)
+        except Exception as error:
+            error.traceback = format_exc()
+
     while limit == 0 or next(counter) < limit:
         try:
             task, args, kwargs = queue.get()
             results = function(*args, **kwargs)
         except Exception as error:
             error.traceback = format_exc()
-            results = error
         finally:
-            task._set(results)
+            task._set(error is not None and error or results)
+            error = None
+            results = None
 
 
 def thread(*args, **kwargs):
@@ -47,12 +61,40 @@ def thread(*args, **kwargs):
 
     """
     def wrapper(function):
-        return Wrapper(function, callback)
+        return ThreadWrapper(function, callback)
 
     if len(args) == 1 and not len(kwargs) and isinstance(args[0], Callable):
-        return Wrapper(args[0], None)
+        return ThreadWrapper(args[0], None)
     elif not len(args) and len(kwargs):
         callback = kwargs.get('callback')
+
+        return wrapper
+    else:
+        raise ValueError("Decorator accepts only keyword arguments.")
+
+
+def thread_pool(*args, **kwargs):
+    """Turns a *function* into a Thread and runs its logic within.
+
+    A decorated *function* will return a *Task* object once is called.
+
+    If *callback* is a callable, it will be called once the task has ended
+    with the task identifier and the *function* return values.
+
+    """
+    def wrapper(function):
+        return PoolWrapper(function, workers, task_limit, queue,
+                           callback, initializer, initargs)
+
+    if len(args) == 1 and not len(kwargs) and isinstance(args[0], Callable):
+        return PoolWrapper(args[0], 1, 0, None, None)
+    elif not len(args) and len(kwargs):
+        queue = kwargs.get('queue')
+        workers = kwargs.get('workers', 1)
+        callback = kwargs.get('callback')
+        initargs = kwargs.get('initargs')
+        initializer = kwargs.get('initializer')
+        task_limit = kwargs.get('worker_task_limit', 0)
 
         return wrapper
     else:
@@ -112,7 +154,7 @@ class Task(object):
             self._callback(self)
 
 
-class Wrapper(object):
+class ThreadWrapper(object):
     def __init__(self, function, callback):
         self._function = function
         self._counter = count()
@@ -122,9 +164,62 @@ class Wrapper(object):
     def __call__(self, *args, **kwargs):
         task = Task(next(self._counter), self.callback)
         q = DummyQueue((task, args, kwargs))
-        t = Thread(target=worker, args=(self._function, q, 1))
+        t = Thread(target=worker, args=(self._function, q, 1, None, None))
         t.daemon = True
         t.start()
+        return task
+
+
+class PoolWrapper(object):
+    def __init__(self, function, workers, task_limit, queue, callback,
+                 initializer, initargs):
+        self._function = function
+        self._counter = count()
+        self._workers = workers
+        self._limit = task_limit
+        self._pool = []
+        self._queue = queue is not None and queue or Queue()
+        self.initializer = initializer
+        self.initargs = initargs
+        self.callback = callback
+        update_wrapper(self, function)
+
+    @property
+    def queue(self):
+        return self._queue
+
+    @queue.setter
+    def queue(self, queue):
+        while 1:
+            try:
+                queue.put(self._queue.get(False))
+            finally:
+                self._queue = queue
+
+    def _restart_workers(self):
+        """Respawn any worker missing in action."""
+        self._pool = [w for w in self._pool if w.is_alive()]
+        missing = self._workers - len(self._pool)
+        if missing:
+            for i in range(0, missing):
+                t = Thread(target=worker,
+                           args=(self._function, self._queue, self._limit,
+                                 self.initializer, self.initargs))
+                t.daemon = True
+                t.start()
+                self._pool.append(t)
+
+    def __call__(self, *args, **kwargs):
+        task = Task(next(self._counter), self.callback)
+        # loop maintaining the workers alive in case of full queue
+        while 1:
+            self._restart_workers()
+            try:
+                self._queue.put((task, args, kwargs), timeout=0.1)
+                break
+            except Full:
+                continue
+
         return task
 
 

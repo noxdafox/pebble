@@ -1,10 +1,15 @@
 import time
 import unittest
 from threading import current_thread
+try:  # Python 2
+    from Queue import Queue
+except:  # Python 3
+    from queue import Queue
 
 from pebble import thread, thread_pool, TimeoutError, TaskCancelled
 
 
+_initiarg = 0
 _results = 0
 _exception = None
 
@@ -17,6 +22,15 @@ def callback(task):
 def error_callback(task):
     global _exception
     _exception = task.get()
+
+
+def initializer(value):
+    global _initiarg
+    _initiarg = value
+
+
+def initializer_error(value):
+    raise Exception("BOOM!")
 
 
 @thread
@@ -45,9 +59,35 @@ def job_count():
     return None
 
 
+@thread_pool
+def job_pool_single(argument, keyword_argument=0):
+    return argument + keyword_argument
+
+
 @thread_pool(workers=2, callback=callback)
 def job_pool(argument, keyword_argument=0):
     return argument + keyword_argument, current_thread()
+
+
+@thread_pool(workers=2, queue=Queue, queueargs=(5, ))
+def job_pool_queue(argument, keyword_argument=0):
+    return argument + keyword_argument, current_thread()
+
+
+@thread_pool(workers=2)
+def job_pool_dyn_queue(argument, keyword_argument=0):
+    time.sleep(1)
+    return argument + keyword_argument, current_thread()
+
+
+@thread_pool(workers=2, initializer=initializer, initargs=(1, ))
+def job_pool_init(argument, keyword_argument=0):
+    return argument + keyword_argument + _initiarg
+
+
+@thread_pool(workers=2, initializer=initializer_error, initargs=(1, ))
+def job_pool_init_error(argument, keyword_argument=0):
+    return argument + keyword_argument + _initiarg
 
 
 class TestThreadDecorators(unittest.TestCase):
@@ -91,11 +131,8 @@ class TestThreadDecorators(unittest.TestCase):
     def test_thread_error_callback(self):
         """Test that an exception in a task is managed in error_callback."""
         job_error.callback = self.error_callback
-        task = job_error(1, 1)
-        try:
-            task.get()
-        except:
-            pass
+        job_error(1, 1)
+        time.sleep(0.1)
         self.assertEqual('BOOM!', str(self.exception))
 
 
@@ -169,6 +206,11 @@ class TestThreadPool(unittest.TestCase):
         except Exception as error:
             self.exception = error
 
+    def test_thread_pool_single_task(self):
+        """Single task with no parameters."""
+        task = job_pool_single(1, 1)
+        self.assertEqual(task.get(), 2)
+
     def test_thread_pool(self):
         """Multiple tasks are correctly handled."""
         tasks = []
@@ -179,7 +221,7 @@ class TestThreadPool(unittest.TestCase):
     def test_thread_pool_different_threads(self):
         """Multiple tasks are handled by different threads."""
         tasks = []
-        for i in range(0, 5):
+        for i in range(0, 10):
             tasks.append(job_pool(1, 1))
         self.assertEqual(len(set([t.get()[1] for t in tasks])), 2)
 
@@ -204,3 +246,45 @@ class TestThreadPool(unittest.TestCase):
         job_pool(1, 1)
         time.sleep(0.1)
         self.assertEqual(2, self.callback_results[0])
+
+    def test_thread_pool_default_queue(self):
+        """Default queue has same pool size."""
+        self.assertEqual(job_pool.queue.maxsize, 2)
+
+    def test_thread_pool_static_queue(self):
+        """Static queue is correctly initialized."""
+        self.assertEqual(job_pool_queue.queue.maxsize, 5)
+
+    def test_thread_pool_dynamic_queue(self):
+        """Dynamic queue is correctly initialized."""
+        job_pool_dyn_queue.queue = Queue(10)
+        self.assertEqual(job_pool_dyn_queue.queue.maxsize, 10)
+
+    def test_thread_pool_static_queue_error(self):
+        """Decorator raises ValueError if given wrong queue params."""
+        try:
+            @thread_pool(queue=5)
+            def wrong(argument, keyword_argument=0):
+                return argument + keyword_argument
+        except Exception as error:
+            self.assertTrue(isinstance(error, ValueError))
+
+    def test_thread_pool_dynamic_queue_small(self):
+        """Error is raised if too small queue is passed in."""
+        job_pool_dyn_queue.queue = Queue(4)
+        for i in range(0, 10):
+            job_pool_dyn_queue(1, 1)
+        try:
+            job_pool_dyn_queue.queue = Queue(1)
+        except Exception as error:
+            self.assertTrue(isinstance(error, ValueError))
+
+    def test_thread_pool_initializer(self):
+        """Initializer is correctly run."""
+        task = job_pool_init(1, 1)
+        self.assertEqual(task.get(), 3)
+
+    def test_thread_pool_initializer_error(self):
+        """An exception in a initializer is raised by get."""
+        task = job_pool_init_error(1, 1)
+        self.assertRaises(Exception, task.get)

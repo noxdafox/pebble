@@ -22,6 +22,19 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
 
        *callback* must be callable, if passed, it will be called once the task has ended with the *Task* object as parameter.
 
+    .. decorator:: thread_pool(callback=None, workers=1, worker_task_limit=0, initializer=None, initargs=(), queue=None, queueargs=())
+
+       When called, the *function* will be run in a worker thread, a *Task* object will be returned to the caller; if all workers are busy the *function* will block until one of them will become available.
+
+       *callback* must be callable, if passed, it will be called once the task has ended with the *Task* object as parameter.
+       *workers* is an integer representing the amount of desired thread workers managed by the pool. If *worker_task_limit* is a number greater than zero each worker will be restarted after performing an equal amount of tasks.
+       *initializer* must be callable, if passed, it will be called every time a worker is started, receiving *initargs* as arguments.
+       *queue* represents a Class which, if passed, will be constructed with *queueargs* as parameters and used internally as a task queue, allowing to call the *function* without blocking even if all workers are busy. The *queue* object resulting from its construction must expose same functionalities of Python standard *Queue* object, especially for what concerns the *put()* and *get()* methods and the *Empty* and *Full* exceptions.
+
+       .. note::
+
+          The *thread_pool* decorator is working as a simple decorator: no thread is started at decoration time but when the decorated function is actually called.
+
     .. decorator:: process(callback=None, timeout=None)
 
        When called, the *function* will be run in a new process, a *Task* object will be returned to the caller.

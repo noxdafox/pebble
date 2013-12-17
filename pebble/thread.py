@@ -210,17 +210,16 @@ class PoolWrapper(object):
                 raise ValueError("Provided queue too small")
 
     def _restart_workers(self):
-        """Respawn any worker missing in action."""
+        """Spawn one worker if pool is not full."""
         self._pool = [w for w in self._pool if w.is_alive()]
         missing = self._workers - len(self._pool)
         if missing:
-            for i in range(0, missing):
-                t = Thread(target=worker,
-                           args=(self._function, self._queue, self._limit,
-                                 self.initializer, self.initargs))
-                t.daemon = True
-                t.start()
-                self._pool.append(t)
+            t = Thread(target=worker,
+                       args=(self._function, self._queue, self._limit,
+                             self.initializer, self.initargs))
+            t.daemon = True
+            t.start()
+            self._pool.append(t)
 
     def __call__(self, *args, **kwargs):
         task = Task(next(self._counter), self.callback)

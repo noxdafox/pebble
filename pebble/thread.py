@@ -15,15 +15,16 @@
 
 
 from uuid import uuid4
+from inspect import isclass
 from traceback import format_exc
 from itertools import count
 from threading import Thread, Event
 from collections import Callable
 from functools import update_wrapper
 try:  # Python 2
-    from Queue import Queue, Full
+    from Queue import Queue, Empty, Full
 except:  # Python 3
-    from queue import Queue, Full
+    from queue import Queue, Empty, Full
 
 from .pebble import TimeoutError, TaskCancelled
 
@@ -36,14 +37,16 @@ def worker(function, queue, limit, initializer, initargs):
     if isinstance(initializer, Callable):
         try:
             initializer(*initargs)
-        except Exception as error:
+        except Exception as err:
+            error = err
             error.traceback = format_exc()
 
     while limit == 0 or next(counter) < limit:
         try:
             task, args, kwargs = queue.get()
             results = function(*args, **kwargs)
-        except Exception as error:
+        except Exception as err:
+            error = err
             error.traceback = format_exc()
         finally:
             task._set(error is not None and error or results)
@@ -83,13 +86,14 @@ def thread_pool(*args, **kwargs):
 
     """
     def wrapper(function):
-        return PoolWrapper(function, workers, task_limit, queue,
+        return PoolWrapper(function, workers, task_limit, queue, queue_args,
                            callback, initializer, initargs)
 
     if len(args) == 1 and not len(kwargs) and isinstance(args[0], Callable):
-        return PoolWrapper(args[0], 1, 0, None, None)
+        return PoolWrapper(args[0], 1, 0, None, None, None, None, None)
     elif not len(args) and len(kwargs):
         queue = kwargs.get('queue')
+        queue_args = kwargs.get('queueargs')
         workers = kwargs.get('workers', 1)
         callback = kwargs.get('callback')
         initargs = kwargs.get('initargs')
@@ -171,17 +175,23 @@ class ThreadWrapper(object):
 
 
 class PoolWrapper(object):
-    def __init__(self, function, workers, task_limit, queue, callback,
-                 initializer, initargs):
+    def __init__(self, function, workers, task_limit, queue, queueargs,
+                 callback, initializer, initargs):
         self._function = function
         self._counter = count()
         self._workers = workers
         self._limit = task_limit
         self._pool = []
-        self._queue = queue is not None and queue or Queue()
         self.initializer = initializer
         self.initargs = initargs
         self.callback = callback
+        if queue is not None:
+            if isclass(queue):
+                self._queue = queue(*queueargs)
+            else:
+                raise ValueError("Queue must be Class")
+        else:
+            self._queue = Queue(workers)
         update_wrapper(self, function)
 
     @property
@@ -192,9 +202,12 @@ class PoolWrapper(object):
     def queue(self, queue):
         while 1:
             try:
-                queue.put(self._queue.get(False))
-            finally:
+                queue.put(self._queue.get(False), False)
+            except Empty:
                 self._queue = queue
+                return
+            except Full:
+                raise ValueError("Provided queue too small")
 
     def _restart_workers(self):
         """Respawn any worker missing in action."""

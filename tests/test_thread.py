@@ -66,6 +66,7 @@ def job_pool_single(argument, keyword_argument=0):
 
 @thread_pool(workers=2, callback=callback)
 def job_pool(argument, keyword_argument=0):
+    time.sleep(0.01)
     return argument + keyword_argument, current_thread()
 
 

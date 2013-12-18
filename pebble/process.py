@@ -15,9 +15,10 @@
 
 
 from uuid import uuid4
+from inspect import isclass
 from traceback import format_exc
 from itertools import count
-from threading import Thread, current_thread
+from threading import Thread, Event
 from collections import Callable
 from functools import update_wrapper
 from multiprocessing import Process, Pipe
@@ -29,20 +30,33 @@ except:  # Python 3
 from .pebble import PebbleError, TimeoutError, TaskCancelled
 
 
-def worker(function, channel, limit=0):
+def worker(function, channel, limit, initializer, initargs):
+    error = None
     counter = count()
+
+    if isinstance(initializer, Callable):
+        try:
+            initializer(*initargs)
+        except Exception as err:
+            error = err
+            error.traceback = format_exc()
+
     while limit == 0 or next(counter) < limit:
         try:
             args, kwargs = channel.recv()
-            channel.send(function(*args, **kwargs))
+            results = function(*args, **kwargs)
         except (IOError, OSError):  # pipe was closed
             return
-        except Exception as error:
+        except Exception as err:
+            error = err
             error.traceback = format_exc()
+        finally:
             try:
-                channel.send(error)
-            except PicklingError:
-                channel.send(SerializingError(str(error), type(error)))
+                channel.send(error is not None and error or results)
+            except PicklingError as err:
+                channel.send(err)
+            error = None
+            results = None
 
 
 def process(*args, **kwargs):
@@ -68,18 +82,33 @@ def process(*args, **kwargs):
         raise ValueError("Decorator accepts only keyword arguments.")
 
 
-class SerializingError(PebbleError):
-    """Raised if unable to serialize an Exception."""
-    def __init__(self, msg, value):
-        super(SerializingError, self).__init__(msg, value)
-        self.msg = msg
-        self.value = value
+def process_pool(*args, **kwargs):
+    """Turns a *function* into a Thread and runs its logic within.
 
-    def __repr__(self):
-        return "%s %s: %s\n%s" % (self.__class__, self.value, self.msg)
+    A decorated *function* will return a *Task* object once is called.
 
-    def __str__(self):
-        return "Unable to serialize %s. Message: %s" % (self.value, self.msg)
+    If *callback* is a callable, it will be called once the task has ended
+    with the task identifier and the *function* return values.
+
+    """
+    def wrapper(function):
+        return PoolWrapper(function, workers, task_limit, queue, queue_args,
+                           callback, initializer, initargs)
+
+    if len(args) == 1 and not len(kwargs) and isinstance(args[0], Callable):
+        return PoolWrapper(args[0], 1, 0, None, None, None, None, None)
+    elif not len(args) and len(kwargs):
+        queue = kwargs.get('queue')
+        queue_args = kwargs.get('queueargs')
+        workers = kwargs.get('workers', 1)
+        callback = kwargs.get('callback')
+        initargs = kwargs.get('initargs')
+        initializer = kwargs.get('initializer')
+        task_limit = kwargs.get('worker_task_limit', 0)
+
+        return wrapper
+    else:
+        raise ValueError("Decorator accepts only keyword arguments.")
 
 
 class Task(object):
@@ -90,6 +119,7 @@ class Task(object):
         self._ready = False
         self._cancelled = False
         self._results = None
+        self._event = Event()
         self._channel = channel
         self._worker = worker
         self._timeout = timeout
@@ -118,14 +148,14 @@ class Task(object):
         If the executed code raised an error it will be re-raised.
 
         """
-        if self._worker_listener is not current_thread():
-            self._worker_listener.join(timeout)
-            if self._worker_listener.is_alive():
-                raise TimeoutError("Task is still running")
-        if (isinstance(self._results, BaseException)):
-            raise self._results
+        self._event.wait(timeout)
+        if self._ready:
+            if (isinstance(self._results, BaseException)):
+                raise self._results
+            else:
+                return self._results
         else:
-            return self._results
+            raise TimeoutError("Task is still running")
 
     def cancel(self):
         """Cancels the Task terminating the running process
@@ -146,10 +176,12 @@ class Task(object):
             else:
                 self._results = TaskCancelled("Task cancelled")
         finally:
+            if not self._worker.is_alive():  # join the process if exited
+                self._worker.join()
             self._ready = True
+            self._event.set()
             if self._callback is not None and not self._cancelled:
                 self._callback(self)
-            self._worker.join()
 
 
 class Wrapper(object):
@@ -162,10 +194,71 @@ class Wrapper(object):
 
     def __call__(self, *args, **kwargs):
         parent, child = Pipe()
-        p = Process(target=worker, args=(self._function, child, 1))
+        p = Process(target=worker, args=(self._function, child, 1, None, None))
         p.daemon = True
         p.start()
         parent.send((args, kwargs))
         child.close()
         return Task(next(self._counter), p, parent,
                     self.callback, self.timeout)
+
+
+# class PoolWrapper(object):
+#     def __init__(self, function, workers, task_limit, queue, queueargs,
+#                  callback, initializer, initargs):
+#         self._function = function
+#         self._counter = count()
+#         self._workers = workers
+#         self._limit = task_limit
+#         self._pool = []
+#         self.initializer = initializer
+#         self.initargs = initargs
+#         self.callback = callback
+#         if queue is not None:
+#             if isclass(queue):
+#                 self._queue = queue(*queueargs)
+#             else:
+#                 raise ValueError("Queue must be Class")
+#         else:
+#             self._queue = Queue(workers)
+#         update_wrapper(self, function)
+
+#     @property
+#     def queue(self):
+#         return self._queue
+
+#     @queue.setter
+#     def queue(self, queue):
+#         while 1:
+#             try:
+#                 queue.put(self._queue.get(False), False)
+#             except Empty:
+#                 self._queue = queue
+#                 return
+#             except Full:
+#                 raise ValueError("Provided queue too small")
+
+#     def _restart_workers(self):
+#         """Spawn one worker if pool is not full."""
+#         self._pool = [w for w in self._pool if w.is_alive()]
+#         missing = self._workers - len(self._pool)
+#         if missing:
+#             t = Thread(target=worker,
+#                        args=(self._function, self._queue, self._limit,
+#                              self.initializer, self.initargs))
+#             t.daemon = True
+#             t.start()
+#             self._pool.append(t)
+
+#     def __call__(self, *args, **kwargs):
+#         task = Task(next(self._counter), self.callback)
+#         # loop maintaining the workers alive in case of full queue
+#         while 1:
+#             self._restart_workers()
+#             try:
+#                 self._queue.put((task, args, kwargs), timeout=0.1)
+#                 break
+#             except Full:
+#                 continue
+
+#         return task

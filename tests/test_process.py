@@ -2,7 +2,7 @@ import time
 import threading
 import unittest
 
-from pebble import SerializingError, TimeoutError, TaskCancelled, process
+from pebble import TimeoutError, TaskCancelled, process
 
 
 _results = 0
@@ -104,12 +104,14 @@ class TestProcessDecorator(unittest.TestCase):
     def test_process_callback_static(self):
         """Test static callback is executed once task is done."""
         job_callback(1, 1).get()
+        time.sleep(0.1)
         self.assertEqual(2, _results)
 
     def test_process_callback_dynamic(self):
         """Test dynamic callback is executed once task is done."""
         job.callback = self.callback
         job(1, 1).get()
+        time.sleep(0.1)
         self.assertEqual(2, self.callback_results)
 
     def test_process_error(self):
@@ -124,6 +126,7 @@ class TestProcessDecorator(unittest.TestCase):
             task.get()
         except:
             pass
+        time.sleep(0.1)
         self.assertEqual('BOOM!', str(self.exception))
 
     def test_process_timeout(self):
@@ -139,6 +142,7 @@ class TestProcessDecorator(unittest.TestCase):
             task.get()
         except:
             pass
+        time.sleep(0.1)
         self.assertTrue(isinstance(self.exception, TimeoutError))
 
     def test_process_no_timeout(self):
@@ -158,7 +162,12 @@ class TestProcessDecorator(unittest.TestCase):
     def test_process_unserializable_error(self):
         """SerializingError is returned if exception is not serializeable."""
         task = job_unserializeable_error()
-        self.assertRaises(SerializingError, task.get)
+        try:  # Python 2
+            from cPickle import PicklingError
+            self.assertRaises(PicklingError, task.get)
+        except ImportError:  # Python 3
+            from pickle import PicklingError
+            self.assertRaises(PicklingError, task.get)
 
 
 class TestProcessTask(unittest.TestCase):

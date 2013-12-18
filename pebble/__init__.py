@@ -3,7 +3,6 @@ __all__ = ['thread',
            'process',
            'synchronized',
            'PebbleError',
-           'SerializingError',
            'TimeoutError',
            'TaskCancelled']
 

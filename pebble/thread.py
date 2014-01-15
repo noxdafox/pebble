@@ -29,7 +29,7 @@ except:  # Python 3
 from .pebble import TimeoutError, TaskCancelled
 
 
-def worker(function, queue, limit, initializer, initargs):
+def worker(queue, limit, initializer, initargs):
     error = None
     results = None
     counter = count()
@@ -43,7 +43,7 @@ def worker(function, queue, limit, initializer, initargs):
 
     while limit == 0 or next(counter) < limit:
         try:
-            task, args, kwargs = queue.get()
+            function, task, args, kwargs = queue.get()
             results = function(*args, **kwargs)
         except Exception as err:
             error = err
@@ -158,41 +158,28 @@ class Task(object):
             self._callback(self)
 
 
-class ThreadWrapper(object):
-    def __init__(self, function, callback):
-        self._function = function
-        self._counter = count()
-        self.callback = callback
-        update_wrapper(self, function)
-
-    def __call__(self, *args, **kwargs):
-        task = Task(next(self._counter), self.callback)
-        q = DummyQueue((task, args, kwargs))
-        t = Thread(target=worker, args=(self._function, q, 1, None, None))
-        t.daemon = True
-        t.start()
-        return task
-
-
-class PoolWrapper(object):
-    def __init__(self, function, workers, task_limit, queue, queueargs,
-                 callback, initializer, initargs):
-        self._function = function
+class ThreadPool(object):
+    def __init__(self, workers=1, task_limit=0, queue=None, queueargs=None,
+                 initializer=None, initargs=None):
         self._counter = count()
         self._workers = workers
         self._limit = task_limit
         self._pool = []
         self.initializer = initializer
         self.initargs = initargs
-        self.callback = callback
         if queue is not None:
             if isclass(queue):
                 self._queue = queue(*queueargs)
             else:
                 raise ValueError("Queue must be Class")
         else:
-            self._queue = Queue(workers)
-        update_wrapper(self, function)
+            self._queue = Queue()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        pass
 
     @property
     def queue(self):
@@ -215,24 +202,62 @@ class PoolWrapper(object):
         missing = self._workers - len(self._pool)
         if missing:
             t = Thread(target=worker,
-                       args=(self._function, self._queue, self._limit,
+                       args=(self._queue, self._limit,
                              self.initializer, self.initargs))
             t.daemon = True
             t.start()
             self._pool.append(t)
 
-    def __call__(self, *args, **kwargs):
-        task = Task(next(self._counter), self.callback)
+    def schedule(self, function, args=(), kwargs={}, callback=None):
+        task = Task(next(self._counter), callback)
         # loop maintaining the workers alive in case of full queue
         while 1:
             self._restart_workers()
             try:
-                self._queue.put((task, args, kwargs), timeout=0.1)
+                self._queue.put((function, task, args, kwargs), timeout=0.1)
                 break
             except Full:
                 continue
 
         return task
+
+
+class ThreadWrapper(object):
+    def __init__(self, function, callback):
+        self._function = function
+        self._counter = count()
+        self.callback = callback
+        update_wrapper(self, function)
+
+    def __call__(self, *args, **kwargs):
+        task = Task(next(self._counter), self.callback)
+        q = DummyQueue((self._function, task, args, kwargs))
+        t = Thread(target=worker, args=(q, 1, None, None))
+        t.daemon = True
+        t.start()
+        return task
+
+
+class PoolWrapper(object):
+    def __init__(self, function, workers, task_limit, queue, queueargs,
+                 callback, initializer, initargs):
+        self._function = function
+        self._pool = ThreadPool(workers, task_limit, queue, queueargs,
+                                initializer, initargs)
+        self.callback = callback
+        update_wrapper(self, function)
+
+    @property
+    def queue(self):
+        return self._pool.queue
+
+    @queue.setter
+    def queue(self, queue):
+        self._pool.queue = queue
+
+    def __call__(self, *args, **kwargs):
+        return self._pool.schedule(self._function, args=args, kwargs=kwargs,
+                                   callback=self.callback)
 
 
 class DummyQueue(list):

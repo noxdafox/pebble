@@ -24,12 +24,12 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
 
     .. decorator:: thread_pool(callback=None, workers=1, worker_task_limit=0, initializer=None, initargs=(), queue=None, queueargs=())
 
-       When called, the *function* will be run in a worker thread, a *Task* object will be returned to the caller; if all workers are busy the *function* will block until one of them will become available.
+       When called, the *function* will be run in a worker thread, a *Task* object will be returned to the caller; if all workers are busy the subsequent calls will be queued into an internal Queue.
 
        *callback* must be callable, if passed, it will be called once the task has ended with the *Task* object as parameter.
        *workers* is an integer representing the amount of desired thread workers managed by the pool. If *worker_task_limit* is a number greater than zero each worker will be restarted after performing an equal amount of tasks.
        *initializer* must be callable, if passed, it will be called every time a worker is started, receiving *initargs* as arguments.
-       *queue* represents a Class which, if passed, will be constructed with *queueargs* as parameters and used internally as a task queue, allowing to call the *function* without blocking even if all workers are busy. The *queue* object resulting from its construction must expose same functionalities of Python standard *Queue* object, especially for what concerns the *put()* and *get()* methods and the *Empty* and *Full* exceptions.
+       *queue* represents a Class which, if passed, will be constructed with *queueargs* as parameters and used internally as a task queue. The *queue* object resulting from its construction must expose same functionalities of Python standard *Queue* object, especially for what concerns the *put()* and *get()* methods and the *Empty* and *Full* exceptions.
 
        .. note::
 
@@ -43,6 +43,38 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
 
        *callback* must be callable, if passed, it will be called once the task has ended with the *Task* object as parameter.
        A *timeout* value greater than 0 will terminate the running process if it has not yet finished once the *timeout* expires; any *Task.get()* call will raise a TimeoutError, callbacks will still be executed.
+
+
+    :synopsis: Pools
+
+    .. class:: pebble.thread.ThreadPool(workers=1, task_limit=0, queue=None, queueargs=None, initializer=None, initargs=None)
+
+       A ThreadPool allows to schedule jobs into a Pool of Threads which will perform them asynchronously.
+       Thread pools work as well as *context managers*.
+
+       *workers* is an integer representing the amount of desired thread workers managed by the pool. If *worker_task_limit* is a number greater than zero each worker will be restarted after performing an equal amount of tasks.
+       *initializer* must be callable, if passed, it will be called every time a worker is started, receiving *initargs* as arguments.
+       *queue* represents a Class which, if passed, will be constructed with *queueargs* as parameters and used internally as a task queue. The *queue* object resulting from its construction must expose same functionalities of Python standard *Queue* object, especially for what concerns the *put()* and *get()* methods and the *Empty* and *Full* exceptions.
+
+       .. data:: queue
+
+          The Pool internal queue, it can be inspected and re-assigned. In case of re-assignment (for example in order to change its size) the size of the new queue must be enough to contain all the jobs queued into the ThreadPool.
+
+       .. data:: initializer
+
+          If re-assigned, the new initializer will be run only for re-spawned workers; already running workers will still be affected by the old initializer.
+
+       .. data:: initargs
+
+          If re-assigned, the new initargs will be taken into use only for re-spawned workers; old workers will still be affected by the old ones.
+
+       .. function:: schedule(function, args=(), kwargs={}, callback=None)
+
+          Schedule a job within the Pool.
+
+          *function* is the function which is about to be scheduled.
+          *args* and *kwargs* will be passed to the function respectively as its arguments and keyword arguments.
+          *callback* must be callable, if passed, it will be called once the task has ended with the *Task* object as parameter.
 
 
 :mod:`pebble`
@@ -64,7 +96,7 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
 
     .. class:: Task
 
-       Functions decorated by *thread* and *process* decorators, once called, will return a *Task* object.
+       Functions decorated by *thread*, *process* and *thread_pool* decorators, as well as the ThreadPool.schedule method, once called, will return a *Task* object.
        *Task* objects are handlers to the ongoing jobs within spawned threads and processes.
 
        .. data:: id

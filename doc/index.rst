@@ -56,10 +56,6 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
        *initializer* must be callable, if passed, it will be called every time a worker is started, receiving *initargs* as arguments.
        *queue* represents a Class which, if passed, will be constructed with *queueargs* as parameters and used internally as a task queue. The *queue* object resulting from its construction must expose same functionalities of Python standard *Queue* object, especially for what concerns the *put()* and *get()* methods and the *Empty* and *Full* exceptions.
 
-       .. data:: queue
-
-          The Pool internal queue, it can be inspected and re-assigned. In case of re-assignment (for example in order to change its size) the size of the new queue must be enough to contain all the jobs queued into the ThreadPool.
-
        .. data:: initializer
 
           If re-assigned, the new initializer will be run only for re-spawned workers; already running workers will still be affected by the old initializer.

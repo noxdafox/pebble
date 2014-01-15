@@ -103,7 +103,7 @@ Thread pools allow to execute several tasks asynchronously without the need of s
 
 
     if __name__ == "__main__":
-        with ThreadPool(callback=task_done, workers=5) as tp:
+        with ThreadPool(workers=5) as tp:
             for i in range(0, 10):
                 tp.schedule(do_job, args=(i, ), callback=task_done)
 

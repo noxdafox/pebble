@@ -272,6 +272,7 @@ class ThreadPool(object):
 
 
 class ThreadWrapper(object):
+    """Used by *thread* decorator."""
     def __init__(self, function, callback):
         self._function = function
         self._counter = count()
@@ -287,6 +288,7 @@ class ThreadWrapper(object):
 
 
 class PoolWrapper(object):
+    """Used by *thread_pool* decorator."""
     def __init__(self, function, workers, task_limit, queue, queueargs,
                  callback, initializer, initargs):
         self._function = function

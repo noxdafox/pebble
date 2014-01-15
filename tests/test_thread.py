@@ -6,7 +6,7 @@ try:  # Python 2
 except:  # Python 3
     from queue import Queue
 
-from pebble import thread, thread_pool, TimeoutError, TaskCancelled
+from pebble import thread, thread_pool, ThreadPool, TimeoutError, TaskCancelled
 
 
 _initiarg = 0
@@ -30,6 +30,14 @@ def initializer(value):
 
 
 def initializer_error(value):
+    raise Exception("BOOM!")
+
+
+def jp(argument, keyword_argument=0):
+    return argument + keyword_argument + _initiarg, current_thread()
+
+
+def jp_error(argument, keyword_argument=0):
     raise Exception("BOOM!")
 
 
@@ -195,6 +203,101 @@ class TestThreadPool(unittest.TestCase):
     def setUp(self):
         global _results
         _results = 0
+        global _initiarg
+        _initiarg = 0
+        self.exception = None
+        self.callback_results = 0
+
+    def callback(self, task):
+        self.callback_results = task.get()
+
+    def error_callback(self, task):
+        try:
+            task.get()
+        except Exception as error:
+            self.exception = error
+
+    def test_thread_pool_single_task(self):
+        """Single task with no parameters."""
+        with ThreadPool() as tp:
+            task = tp.schedule(jp, args=(1, ),
+                               kwargs={'keyword_argument': 1})
+        self.assertEqual(task.get()[0], 2)
+
+    def test_thread_pool(self):
+        """Multiple tasks are correctly handled."""
+        tasks = []
+        with ThreadPool() as tp:
+            for i in range(0, 5):
+                tasks.append(tp.schedule(jp, args=(1, ),
+                                         kwargs={'keyword_argument': 1}))
+        self.assertEqual(sum([t.get()[0] for t in tasks]), 10)
+
+    def test_thread_pool_different_threads(self):
+        """Multiple tasks are handled by different threads."""
+        tasks = []
+        with ThreadPool(workers=2) as tp:
+            for i in range(0, 20):
+                tasks.append(tp.schedule(jp, args=(1, ),
+                                         kwargs={'keyword_argument': 1}))
+        self.assertEqual(len(set([t.get()[1] for t in tasks])), 2)
+
+    def test_thread_callback(self):
+        """Test callback is executed with thread pool."""
+        with ThreadPool() as tp:
+            tp.schedule(jp, args=(1, ),
+                        kwargs={'keyword_argument': 1},
+                        callback=self.callback)
+        time.sleep(0.1)
+        self.assertEqual(2, self.callback_results[0])
+
+    def test_thread_pool_default_queue(self):
+        """Default queue has same pool size."""
+        with ThreadPool() as tp:
+            self.assertEqual(tp.queue.maxsize, 0)
+
+    def test_thread_pool_static_queue(self):
+        """Static queue is correctly initialized."""
+        with ThreadPool(queue=Queue, queueargs=(5, )) as tp:
+            self.assertEqual(tp.queue.maxsize, 5)
+
+    def test_thread_pool_dynamic_queue(self):
+        """Dynamic queue is correctly initialized."""
+        with ThreadPool() as tp:
+            tp.queue = Queue(10)
+            self.assertEqual(tp.queue.maxsize, 10)
+
+    def test_thread_pool_dynamic_queue_small(self):
+        """Error is raised if too small queue is passed in."""
+        with ThreadPool() as tp:
+            tp.queue = Queue(4)
+            for i in range(0, 10):
+                tp.schedule(jp, args=(1, ),
+                            kwargs={'keyword_argument': 1})
+            try:
+                tp.queue = Queue(4)
+            except Exception as error:
+                self.assertTrue(isinstance(error, ValueError))
+
+    def test_thread_pool_initializer(self):
+        """Initializer is correctly run."""
+        with ThreadPool(initializer=initializer, initargs=(1, )) as tp:
+            task = tp.schedule(jp, args=(1, ),
+                               kwargs={'keyword_argument': 1})
+            self.assertEqual(task.get()[0], 3)
+
+    def test_thread_pool_initializer_error(self):
+        """An exception in a initializer is raised by get."""
+        with ThreadPool(initializer=initializer, initargs=(1, )) as tp:
+            task = tp.schedule(jp, args=(1, ),
+                               kwargs={'keyword_argument': 1})
+            self.assertEqual(task.get()[0], 3)
+
+
+class TestThreadPoolDecorator(unittest.TestCase):
+    def setUp(self):
+        global _results
+        _results = 0
         self.exception = None
         self.callback_results = 0
 
@@ -222,7 +325,7 @@ class TestThreadPool(unittest.TestCase):
     def test_thread_pool_different_threads(self):
         """Multiple tasks are handled by different threads."""
         tasks = []
-        for i in range(0, 10):
+        for i in range(0, 20):
             tasks.append(job_pool(1, 1))
         self.assertEqual(len(set([t.get()[1] for t in tasks])), 2)
 

@@ -21,7 +21,12 @@ from itertools import count
 from threading import Thread, Event
 from collections import Callable
 from functools import update_wrapper
-from multiprocessing import Process, Pipe
+from multiprocessing import Process
+from multiprocessing.queues import SimpleQueue
+try:  # Python 2
+    from Queue import Queue, Empty, Full
+except:  # Python 3
+    from queue import Queue, Empty, Full
 try:  # Python 2
     from cPickle import PicklingError
 except:  # Python 3
@@ -30,7 +35,7 @@ except:  # Python 3
 from .pebble import PebbleError, TimeoutError, TaskCancelled
 
 
-def worker(function, channel, limit, initializer, initargs):
+def worker(function, tqueue, rqueue, limit, initializer, initargs):
     error = None
     counter = count()
 
@@ -43,7 +48,7 @@ def worker(function, channel, limit, initializer, initargs):
 
     while limit == 0 or next(counter) < limit:
         try:
-            args, kwargs = channel.recv()
+            args, kwargs = tqueue.get()
             results = function(*args, **kwargs)
         except (IOError, OSError):  # pipe was closed
             return
@@ -52,9 +57,9 @@ def worker(function, channel, limit, initializer, initargs):
             error.traceback = format_exc()
         finally:
             try:
-                channel.send(error is not None and error or results)
+                rqueue.put(error is not None and error or results)
             except PicklingError as err:
-                channel.send(err)
+                rqueue.put(err)
             error = None
             results = None
 
@@ -165,8 +170,8 @@ class Task(object):
 
     def _set(self):
         try:
-            if self._channel.poll(self._timeout):
-                self._results = self._channel.recv()
+            if self._channel._reader.poll(self._timeout):
+                self._results = self._channel.get()
             elif self._worker.is_alive():
                 self._worker.terminate()
                 self._results = TimeoutError("Task timeout expired")
@@ -193,72 +198,98 @@ class Wrapper(object):
         update_wrapper(self, function)
 
     def __call__(self, *args, **kwargs):
-        parent, child = Pipe()
-        p = Process(target=worker, args=(self._function, child, 1, None, None))
+        tqueue = SimpleQueue()
+        rqueue = SimpleQueue()
+        p = Process(target=worker, args=(self._function, tqueue, rqueue,
+                                         1, None, None))
         p.daemon = True
         p.start()
-        parent.send((args, kwargs))
-        child.close()
-        return Task(next(self._counter), p, parent,
+        tqueue.put((args, kwargs))
+        rqueue._writer.close()
+        return Task(next(self._counter), p, rqueue,
                     self.callback, self.timeout)
 
 
-# class PoolWrapper(object):
-#     def __init__(self, function, workers, task_limit, queue, queueargs,
-#                  callback, initializer, initargs):
-#         self._function = function
-#         self._counter = count()
-#         self._workers = workers
-#         self._limit = task_limit
-#         self._pool = []
-#         self.initializer = initializer
-#         self.initargs = initargs
-#         self.callback = callback
-#         if queue is not None:
-#             if isclass(queue):
-#                 self._queue = queue(*queueargs)
-#             else:
-#                 raise ValueError("Queue must be Class")
-#         else:
-#             self._queue = Queue(workers)
-#         update_wrapper(self, function)
+class PoolWrapper(object):
+    def __init__(self, function, workers, task_limit, queue, queueargs,
+                 callback, initializer, initargs):
+        self._alive = True
+        self._function = function
+        self._counter = count()
+        self._workers = workers
+        self._limit = task_limit
+        self._pool = []
+        self._task_channel = None
+        self._results_channel = None
+        self.initializer = initializer
+        self.initargs = initargs
+        self.callback = callback
+        if queue is not None:
+            if isclass(queue):
+                self._queue = queue(*queueargs)
+            else:
+                raise ValueError("Queue must be Class")
+        else:
+            self._queue = Queue(workers)
+        update_wrapper(self, function)
 
-#     @property
-#     def queue(self):
-#         return self._queue
+    @property
+    def queue(self):
+        return self._queue
 
-#     @queue.setter
-#     def queue(self, queue):
-#         while 1:
-#             try:
-#                 queue.put(self._queue.get(False), False)
-#             except Empty:
-#                 self._queue = queue
-#                 return
-#             except Full:
-#                 raise ValueError("Provided queue too small")
+    @queue.setter
+    def queue(self, queue):
+        while 1:
+            try:
+                queue.put(self._queue.get(False), False)
+            except Empty:
+                self._queue = queue
+                return
+            except Full:
+                raise ValueError("Provided queue too small")
 
-#     def _restart_workers(self):
-#         """Spawn one worker if pool is not full."""
-#         self._pool = [w for w in self._pool if w.is_alive()]
-#         missing = self._workers - len(self._pool)
-#         if missing:
-#             t = Thread(target=worker,
-#                        args=(self._function, self._queue, self._limit,
-#                              self.initializer, self.initargs))
-#             t.daemon = True
-#             t.start()
-#             self._pool.append(t)
+    def _schedule_tasks(self):
+        """Fetch tasks from the queue and submits to the pipe."""
+        while self._alive:
+            t = self._queue.get()
+            try:
+                self._task_channel.put(t)
+            except (IOError, OSError):
+                self._alive = False
+                raise PebbleError("Connection with workers was lost")
 
-#     def __call__(self, *args, **kwargs):
-#         task = Task(next(self._counter), self.callback)
-#         # loop maintaining the workers alive in case of full queue
-#         while 1:
-#             self._restart_workers()
-#             try:
-#                 self._queue.put((task, args, kwargs), timeout=0.1)
-#                 break
-#             except Full:
-#                 continue
+    def _restart_workers(self):
+        """Spawn one worker if pool is not full."""
+        # join terminated processes
+        exited = [w for w in self._pool if not w.is_alive()]
+        for w in exited:
+            w.join()
+        self._pool = list(set(self._pool) - set(exited))
+        if self._workers - len(self._pool):
+            p = Process(target=worker,
+                        args=(self._function,
+                              self._task_channel,
+                              self._results_channel,
+                              self._limit,
+                              self.initializer,
+                              self.initargs))
+            p.daemon = True
+            p.start()
+            self._pool.append(p)
 
-#         return task
+    def __call__(self, *args, **kwargs):
+        if self._task_channel is None or self._results_channel is None:
+            self._task_channel = SimpleQueue()
+            self._results_channel = SimpleQueue()
+        task = Task(next(self._counter), None, self._results_channel,
+                    self.callback, self.timeout)
+        # loop maintaining the workers alive in case of full queue
+        while self._alive:
+            self._restart_workers()
+            try:
+                self._queue.put((task, args, kwargs), timeout=0.1)
+                break
+            except Full:
+                continue
+
+        return task

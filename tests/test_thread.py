@@ -250,7 +250,7 @@ class TestThreadPool(unittest.TestCase):
 
     def test_thread_pool_default_queue(self):
         """Default queue has same pool size."""
-        self.assertEqual(job_pool.queue.maxsize, 2)
+        self.assertEqual(job_pool.queue.maxsize, 0)
 
     def test_thread_pool_static_queue(self):
         """Static queue is correctly initialized."""

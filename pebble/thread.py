@@ -29,31 +29,6 @@ except:  # Python 3
 from .pebble import TimeoutError, TaskCancelled
 
 
-def worker(queue, limit, initializer, initargs):
-    error = None
-    results = None
-    counter = count()
-
-    if isinstance(initializer, Callable):
-        try:
-            initializer(*initargs)
-        except Exception as err:
-            error = err
-            error.traceback = format_exc()
-
-    while limit == 0 or next(counter) < limit:
-        try:
-            function, task, args, kwargs = queue.get()
-            results = function(*args, **kwargs)
-        except Exception as err:
-            error = err
-            error.traceback = format_exc()
-        finally:
-            task._set(error is not None and error or results)
-            error = None
-            results = None
-
-
 def thread(*args, **kwargs):
     """Turns a *function* into a Thread and runs its logic within.
 
@@ -103,6 +78,44 @@ def thread_pool(*args, **kwargs):
         return wrapper
     else:
         raise ValueError("Decorator accepts only keyword arguments.")
+
+
+class Worker(Thread):
+    def __init__(self, queue, limit, initializer, initargs):
+        Thread.__init__(self)
+        self.queue = queue
+        self.limit = limit
+        self.initializer = initializer
+        self.initargs = initargs
+        self.daemon = True
+
+    def run(self):
+        error = None
+        results = None
+        counter = count()
+
+        if self.initializer is not None:
+            try:
+                self.initializer(*self.initargs)
+            except Exception as err:
+                error = err
+                error.traceback = format_exc()
+
+        while self.limit == 0 or next(counter) < self.limit:
+            function, task, args, kwargs = self.queue.get()
+            if function is None:
+                self.queue.task_done()
+                return
+            try:
+                results = function(*args, **kwargs)
+            except Exception as err:
+                error = err
+                error.traceback = format_exc()
+            finally:
+                self.queue.task_done()
+                task._set(error is not None and error or results)
+                error = None
+                results = None
 
 
 class Task(object):
@@ -165,6 +178,7 @@ class ThreadPool(object):
         self._workers = workers
         self._limit = task_limit
         self._pool = []
+        self._active = True
         self.initializer = initializer
         self.initargs = initargs
         if queue is not None:
@@ -179,36 +193,71 @@ class ThreadPool(object):
         return self
 
     def __exit__(self, *args):
-        pass
+        self.close()
+        self.join()
 
     @property
-    def queue(self):
-        return self._queue
-
-    @queue.setter
-    def queue(self, queue):
-        while 1:
-            try:
-                queue.put(self._queue.get(False), False)
-            except Empty:
-                self._queue = queue
-                return
-            except Full:
-                raise ValueError("Provided queue too small")
+    def active(self):
+        return self._active
 
     def _restart_workers(self):
         """Spawn one worker if pool is not full."""
         self._pool = [w for w in self._pool if w.is_alive()]
         missing = self._workers - len(self._pool)
         if missing:
-            t = Thread(target=worker,
-                       args=(self._queue, self._limit,
-                             self.initializer, self.initargs))
-            t.daemon = True
-            t.start()
-            self._pool.append(t)
+            w = Worker(self._queue, self._limit, self.initializer,
+                       self.initargs)
+            w.start()
+            self._pool.append(w)
+
+    def stop(self):
+        """Stops the pool without performing any pending task."""
+        self._active = False
+        for w in self._pool:
+            w.limit = - 1
+        for w in self._pool:
+            self._queue.put((None, None, None, None))
+
+    def close(self):
+        """Close the pool allowing all queued tasks to be performed."""
+        self._active = False
+        self._queue.join()
+        for w in self._pool:
+            w.limit = - 1
+        for w in self._pool:
+            self._queue.put((None, None, None, None))
+
+    def join(self, timeout=0):
+        """Joins the pool waiting until all workers exited.
+
+        If *timeout* is greater than 0,
+        it block until all workers exited or raise TimeoutError.
+
+        """
+        if timeout == 0:
+            for w in self._pool:
+                w.join()
+        else:
+            for _ in range(timeout*(10/len(self._pool))):
+                for w in self._pool:
+                    w.join(0.1)
+            if len([w for w in self._pool if w.is_alive()]):
+                raise TimeoutError('Some of the workers is still running')
 
     def schedule(self, function, args=(), kwargs={}, callback=None):
+        """Schedules *function* into the Pool, passing *args* and *kwargs*
+        respectively as arguments and keyword arguments.
+
+        If *callback* is a callable it will be executed once the function
+        execution has completed with the returned *Task* as a parameter.
+
+        A *Task* object is returned.
+
+        """
+        if not self._active:
+            raise RuntimeError('The Pool is not running')
+        if not isinstance(function, Callable):
+            raise ValueError('function must be callable')
         task = Task(next(self._counter), callback)
         # loop maintaining the workers alive in case of full queue
         while 1:
@@ -230,12 +279,11 @@ class ThreadWrapper(object):
         update_wrapper(self, function)
 
     def __call__(self, *args, **kwargs):
-        task = Task(next(self._counter), self.callback)
-        q = DummyQueue((self._function, task, args, kwargs))
-        t = Thread(target=worker, args=(q, 1, None, None))
-        t.daemon = True
-        t.start()
-        return task
+        t = Task(next(self._counter), self.callback)
+        q = DummyQueue((self._function, t, args, kwargs))
+        w = Worker(q, 1, None, None)
+        w.start()
+        return t
 
 
 class PoolWrapper(object):
@@ -266,3 +314,6 @@ class DummyQueue(list):
 
     def get(self):
         return self.pop()
+
+    def task_done(self):
+        pass

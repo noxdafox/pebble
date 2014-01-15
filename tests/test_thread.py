@@ -254,30 +254,12 @@ class TestThreadPool(unittest.TestCase):
     def test_thread_pool_default_queue(self):
         """Default queue has same pool size."""
         with ThreadPool() as tp:
-            self.assertEqual(tp.queue.maxsize, 0)
+            self.assertEqual(tp._queue.maxsize, 0)
 
-    def test_thread_pool_static_queue(self):
+    def test_thread_pool_queue(self):
         """Static queue is correctly initialized."""
         with ThreadPool(queue=Queue, queueargs=(5, )) as tp:
-            self.assertEqual(tp.queue.maxsize, 5)
-
-    def test_thread_pool_dynamic_queue(self):
-        """Dynamic queue is correctly initialized."""
-        with ThreadPool() as tp:
-            tp.queue = Queue(10)
-            self.assertEqual(tp.queue.maxsize, 10)
-
-    def test_thread_pool_dynamic_queue_small(self):
-        """Error is raised if too small queue is passed in."""
-        with ThreadPool() as tp:
-            tp.queue = Queue(4)
-            for i in range(0, 10):
-                tp.schedule(jp, args=(1, ),
-                            kwargs={'keyword_argument': 1})
-            try:
-                tp.queue = Queue(4)
-            except Exception as error:
-                self.assertTrue(isinstance(error, ValueError))
+            self.assertEqual(tp._queue.maxsize, 5)
 
     def test_thread_pool_initializer(self):
         """Initializer is correctly run."""
@@ -353,33 +335,18 @@ class TestThreadPoolDecorator(unittest.TestCase):
 
     def test_thread_pool_default_queue(self):
         """Default queue has same pool size."""
-        self.assertEqual(job_pool.queue.maxsize, 0)
+        self.assertEqual(job_pool._pool._queue.maxsize, 0)
 
-    def test_thread_pool_static_queue(self):
-        """Static queue is correctly initialized."""
-        self.assertEqual(job_pool_queue.queue.maxsize, 5)
+    def test_thread_pool_queue(self):
+        """Queue is correctly initialized."""
+        self.assertEqual(job_pool_queue._pool._queue.maxsize, 5)
 
-    def test_thread_pool_dynamic_queue(self):
-        """Dynamic queue is correctly initialized."""
-        job_pool_dyn_queue.queue = Queue(10)
-        self.assertEqual(job_pool_dyn_queue.queue.maxsize, 10)
-
-    def test_thread_pool_static_queue_error(self):
+    def test_thread_pool_queue_error(self):
         """Decorator raises ValueError if given wrong queue params."""
         try:
             @thread_pool(queue=5)
             def wrong(argument, keyword_argument=0):
                 return argument + keyword_argument
-        except Exception as error:
-            self.assertTrue(isinstance(error, ValueError))
-
-    def test_thread_pool_dynamic_queue_small(self):
-        """Error is raised if too small queue is passed in."""
-        job_pool_dyn_queue.queue = Queue(4)
-        for i in range(0, 10):
-            job_pool_dyn_queue(1, 1)
-        try:
-            job_pool_dyn_queue.queue = Queue(1)
         except Exception as error:
             self.assertTrue(isinstance(error, ValueError))
 

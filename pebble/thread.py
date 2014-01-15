@@ -295,14 +295,6 @@ class PoolWrapper(object):
         self.callback = callback
         update_wrapper(self, function)
 
-    @property
-    def queue(self):
-        return self._pool.queue
-
-    @queue.setter
-    def queue(self, queue):
-        self._pool.queue = queue
-
     def __call__(self, *args, **kwargs):
         return self._pool.schedule(self._function, args=args, kwargs=kwargs,
                                    callback=self.callback)

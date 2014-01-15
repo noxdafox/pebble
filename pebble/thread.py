@@ -22,9 +22,9 @@ from threading import Thread, Event
 from collections import Callable
 from functools import update_wrapper
 try:  # Python 2
-    from Queue import Queue, Empty, Full
+    from Queue import Queue, Full
 except:  # Python 3
-    from queue import Queue, Empty, Full
+    from queue import Queue, Full
 
 from .pebble import TimeoutError, TaskCancelled
 

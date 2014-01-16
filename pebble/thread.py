@@ -234,15 +234,20 @@ class ThreadPool(object):
         it block until all workers exited or raise TimeoutError.
 
         """
-        if timeout == 0:
-            for w in self._pool:
-                w.join()
-        else:
-            for _ in range(timeout*(10/len(self._pool))):
-                for w in self._pool:
-                    w.join(0.1)
-            if len([w for w in self._pool if w.is_alive()]):
+        while timeout > 0:
+            for w in self._pool[:]:
+                w.join(0.1)
+                if not w.is_alive():
+                    self._pool.remove(w)
+                timeout -= 0.1
+            if len(self._pool):
                 raise TimeoutError('Some of the workers is still running')
+            else:
+                break
+        # if timeout is not set
+        for w in self._pool[:]:
+            w.join()
+            self._pool.remove(w)
 
     def schedule(self, function, args=(), kwargs={}, callback=None):
         """Schedules *function* into the Pool, passing *args* and *kwargs*

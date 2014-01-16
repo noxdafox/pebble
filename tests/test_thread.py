@@ -37,6 +37,11 @@ def jp(argument, keyword_argument=0):
     return argument + keyword_argument + _initiarg, current_thread()
 
 
+def jp_long(argument, keyword_argument=0):
+    time.sleep(0.1)
+    return argument + keyword_argument + _initiarg, current_thread()
+
+
 def jp_error(argument, keyword_argument=0):
     raise Exception("BOOM!")
 
@@ -237,8 +242,8 @@ class TestThreadPool(unittest.TestCase):
         """Multiple tasks are handled by different threads."""
         tasks = []
         with ThreadPool(workers=2) as tp:
-            for i in range(0, 20):
-                tasks.append(tp.schedule(jp, args=(1, ),
+            for i in range(0, 5):
+                tasks.append(tp.schedule(jp_long, args=(1, ),
                                          kwargs={'keyword_argument': 1}))
         self.assertEqual(len(set([t.get()[1] for t in tasks])), 2)
 
@@ -274,6 +279,47 @@ class TestThreadPool(unittest.TestCase):
             task = tp.schedule(jp, args=(1, ),
                                kwargs={'keyword_argument': 1})
             self.assertEqual(task.get()[0], 3)
+
+    def test_thread_pool_stop(self):
+        """Pool is stopped without consuming more tasks."""
+        tp = ThreadPool()
+        for i in range(0, 10):
+            tp.schedule(jp, args=(1, ))
+        tp.stop()
+        tp.join()
+        self.assertFalse(tp._queue.empty())
+
+    def test_thread_pool_close(self):
+        """Pool is closed consuming all tasks."""
+        tp = ThreadPool()
+        for i in range(0, 10):
+            tp.schedule(jp, args=(1, ))
+        tp.close()
+        tp.join()
+        self.assertTrue(tp._queue.qsize() <= 1)
+
+    def test_thread_pool_no_new_tasks(self):
+        """No more tasks are allowed if Pool is closed."""
+        tp = ThreadPool()
+        tp.stop()
+        tp.join()
+        self.assertRaises(RuntimeError, tp.schedule, jp)
+
+    def test_thread_pool_wrong_function(self):
+        """Function must be callable."""
+        tp = ThreadPool()
+        self.assertRaises(ValueError, tp.schedule, None)
+        tp.stop()
+        tp.join()
+
+    def test_thread_pool_join_timeout(self):
+        """Timeout is raised if workers are still active once joined."""
+        tp = ThreadPool(queue=Queue, queueargs=(1, ))
+        for i in range(0, 20):
+            tp.schedule(jp_long, args=(1, ))
+        self.assertRaises(TimeoutError, tp.join, 1)
+        tp.stop()
+        tp.join()
 
 
 class TestThreadPoolDecorator(unittest.TestCase):

@@ -33,7 +33,7 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
 
        .. note::
 
-          The *thread_pool* decorator is working as a simple decorator: no thread is started at decoration time but when the decorated function is actually called.
+          The *thread_pool* decorator is working as a simple decorator (turns a function into a ThreadPool): no thread is started at decoration time but when the decorated function is actually called.
 
     .. decorator:: process(callback=None, timeout=None)
 
@@ -71,6 +71,21 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
           *function* is the function which is about to be scheduled.
           *args* and *kwargs* will be passed to the function respectively as its arguments and keyword arguments.
           *callback* must be callable, if passed, it will be called once the task has ended with the *Task* object as parameter.
+
+       .. function:: close()
+
+          No more job will be allowed into the Pool, existing queued jobs will be consumed.
+          To ensure the jobs are performed call ThreadPool.join() just after closing the Pool.
+
+       .. function:: stop()
+
+          The ongoing jobs will be performed, all the enqueued ones dropped; this is a fast way to terminate the Pool.
+          To ensure the Pool to be released call ThreadPool.join() after stopping the Pool.
+
+       .. function:: join(timeout=0)
+
+          Waits for all workers to exit.
+          If *timeout* is greater than 0 and some worker is still running after it expired a TimeoutError will be raised.
 
 
 :mod:`pebble`

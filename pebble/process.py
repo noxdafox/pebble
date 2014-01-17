@@ -165,8 +165,11 @@ class Task(object):
     def cancel(self):
         """Cancels the Task terminating the running process
         and dropping the results."""
-        self._cancelled = True
-        self._worker.terminate()
+        if not self._ready:
+            self._cancelled = True
+            self._worker.terminate()
+        else:
+            raise RuntimeError('A completed task cannot be cancelled')
 
     def _set(self):
         try:

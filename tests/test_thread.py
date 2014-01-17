@@ -197,6 +197,12 @@ class TestThreadTask(unittest.TestCase):
         task.cancel()
         self.assertRaises(TaskCancelled, task.get)
 
+    def test_task_cancel_error(self):
+        """Cannot cancel a completed task."""
+        task = job(1, 1)
+        task.get()
+        self.assertRaises(RuntimeError, task.cancel)
+
     def test_task_cancelled(self):
         """Cancelled is true if task is cancelled."""
         task = job_long()
@@ -320,6 +326,18 @@ class TestThreadPool(unittest.TestCase):
         self.assertRaises(TimeoutError, tp.join, 1)
         tp.stop()
         tp.join()
+
+    def test_thread_pool_active(self):
+        """Active is True if pool is running."""
+        with ThreadPool(initializer=initializer, initargs=(1, )) as tp:
+            self.assertTrue(tp.active)
+
+    def test_thread_pool_not_active(self):
+        """Active is False if pool is not running."""
+        tp = ThreadPool()
+        tp.stop()
+        tp.join()
+        self.assertFalse(tp.active)
 
 
 class TestThreadPoolDecorator(unittest.TestCase):

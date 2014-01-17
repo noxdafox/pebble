@@ -217,6 +217,12 @@ class TestProcessTask(unittest.TestCase):
         task.cancel()
         self.assertRaises(TaskCancelled, task.get)
 
+    def test_task_cancel_error(self):
+        """Cannot cancel a completed task."""
+        task = job(1, 1)
+        task.get()
+        self.assertRaises(RuntimeError, task.cancel)
+
     def test_task_cancelled(self):
         """Cancelled is true if task is cancelled."""
         task = job_long()

@@ -29,7 +29,7 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
        *callback* must be callable, if passed, it will be called once the task has ended with the *Task* object as parameter.
        *workers* is an integer representing the amount of desired thread workers managed by the pool. If *worker_task_limit* is a number greater than zero each worker will be restarted after performing an equal amount of tasks.
        *initializer* must be callable, if passed, it will be called every time a worker is started, receiving *initargs* as arguments.
-       *queue* represents a Class which, if passed, will be constructed with *queueargs* as parameters and used internally as a task queue. The *queue* object resulting from its construction must expose same functionalities of Python standard *Queue* object, especially for what concerns the *put()* and *get()* methods and the *Empty* and *Full* exceptions.
+       *queue* represents a Class which, if passed, will be constructed with *queueargs* as parameters and used internally as a task queue. The *queue* object resulting from its construction must expose same functionalities of Python standard *Queue* object, especially for what concerns the *put()*, *get()* and *join()* methods.
 
        .. note::
 
@@ -54,7 +54,7 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
 
        *workers* is an integer representing the amount of desired thread workers managed by the pool. If *worker_task_limit* is a number greater than zero each worker will be restarted after performing an equal amount of tasks.
        *initializer* must be callable, if passed, it will be called every time a worker is started, receiving *initargs* as arguments.
-       *queue* represents a Class which, if passed, will be constructed with *queueargs* as parameters and used internally as a task queue. The *queue* object resulting from its construction must expose same functionalities of Python standard *Queue* object, especially for what concerns the *put()* and *get()* methods and the *Empty* and *Full* exceptions.
+       *queue* represents a Class which, if passed, will be constructed with *queueargs* as parameters and used internally as a task queue. The *queue* object resulting from its construction must expose same functionalities of Python standard *Queue* object, especially for what concerns the *put()*, *get()* and *join()* methods.
 
        .. data:: initializer
 
@@ -74,17 +74,17 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
 
        .. function:: close()
 
-          No more job will be allowed into the Pool, existing queued jobs will be consumed.
-          To ensure the jobs are performed call ThreadPool.join() just after closing the Pool.
+          No more job will be allowed into the Pool, queued jobs will be consumed.
+          To ensure all the jobs are performed call *ThreadPool.join()* just after closing the Pool.
 
        .. function:: stop()
 
           The ongoing jobs will be performed, all the enqueued ones dropped; this is a fast way to terminate the Pool.
-          To ensure the Pool to be released call ThreadPool.join() after stopping the Pool.
+          To ensure the Pool to be released call *ThreadPool.join()* after stopping the Pool.
 
        .. function:: join(timeout=0)
 
-          Waits for all workers to exit.
+          Waits for all workers to exit, must not be called before calling either *stop()* or *close()*.
           If *timeout* is greater than 0 and some worker is still running after it expired a TimeoutError will be raised.
 
 

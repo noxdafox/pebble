@@ -42,6 +42,11 @@ def jp_long(argument, keyword_argument=0):
     return argument + keyword_argument + _initiarg, current_thread()
 
 
+def jp_very_long(argument, keyword_argument=0):
+    time.sleep(1)
+    return argument + keyword_argument + _initiarg, current_thread()
+
+
 def jp_error(argument, keyword_argument=0):
     raise Exception("BOOM!")
 
@@ -253,7 +258,16 @@ class TestThreadPool(unittest.TestCase):
                                          kwargs={'keyword_argument': 1}))
         self.assertEqual(len(set([t.get()[1] for t in tasks])), 2)
 
-    def test_thread_callback(self):
+    def test_thread_pool_restart(self):
+        """Expired threads are restarted."""
+        tasks = []
+        with ThreadPool(task_limit=2) as tp:
+            for i in range(0, 5):
+                tasks.append(tp.schedule(jp, args=(1, ),
+                                         kwargs={'keyword_argument': 1}))
+        self.assertEqual(len(set([t.get()[1] for t in tasks])), 3)
+
+    def test_thread_pool_callback(self):
         """Test callback is executed with thread pool."""
         with ThreadPool() as tp:
             tp.schedule(jp, args=(1, ),
@@ -304,6 +318,22 @@ class TestThreadPool(unittest.TestCase):
         tp.join()
         self.assertTrue(tp._queue.qsize() <= 1)
 
+    def test_thread_pool_join_running(self):
+        """RuntimeError is raised if join() is called on a running pool"""
+        tp = ThreadPool()
+        self.assertRaises(RuntimeError, tp.join, jp)
+        tp.stop()
+        tp.join()
+
+    def test_thread_pool_join_timeout(self):
+        """Timeout is raised if workers are still active once joined."""
+        tp = ThreadPool()
+        tp.schedule(jp_very_long, args=(1, ))
+        time.sleep(0.1)
+        tp.stop()
+        self.assertRaises(TimeoutError, tp.join, 0.5)
+        tp.join()
+
     def test_thread_pool_no_new_tasks(self):
         """No more tasks are allowed if Pool is closed."""
         tp = ThreadPool()
@@ -315,15 +345,6 @@ class TestThreadPool(unittest.TestCase):
         """Function must be callable."""
         tp = ThreadPool()
         self.assertRaises(ValueError, tp.schedule, None)
-        tp.stop()
-        tp.join()
-
-    def test_thread_pool_join_timeout(self):
-        """Timeout is raised if workers are still active once joined."""
-        tp = ThreadPool(queue=Queue, queueargs=(1, ))
-        for i in range(0, 20):
-            tp.schedule(jp_long, args=(1, ))
-        self.assertRaises(TimeoutError, tp.join, 1)
         tp.stop()
         tp.join()
 

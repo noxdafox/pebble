@@ -36,7 +36,7 @@ try:  # Python 2
 except:  # Python 3
     from pickle import PicklingError
 
-from .pebble import TimeoutError, TaskCancelled
+from .pebble import TimeoutError, TaskCancelled, coroutine
 
 
 STOPPED = 0
@@ -153,9 +153,6 @@ class Task(object):
         self._worker = worker
         self._timeout = timeout
         self._callback = callback
-        self._worker_listener = Thread(target=self._set)
-        self._worker_listener.daemon = True
-        self._worker_listener.start()
 
     def __str__(self):
         return self.__repr__()
@@ -251,7 +248,9 @@ class ProcessPool(object):
         self._workers = workers
         self._limit = task_limit
         self._pool = []
+        self._tasks = {}
         self._state = RUNNING
+        self._task_scheduler = self._dispatch_tasks()
         self.initializer = initializer
         self.initargs = initargs
 
@@ -271,26 +270,30 @@ class ProcessPool(object):
 
     def _maintain_pool(self):
         while self._state != STOPPED:
-            workers = []
             expired = [w for w in self._pool if not w.is_alive()]
             self._pool = [w for w in self._pool if w not in expired]
+            # join expired processes
             for w in expired:
                 w.join()
+            # re-spawn missing processes
             for _ in range(self._workers - len(self._pool)):
-                w = Worker(self._queue, self._limit,
+                w = Worker(self._limit, None,
                            self.initializer, self.initargs)
                 w.start()
-                workers.append(w)
-            self._pool.extend(workers)
-            self._dispatch_tasks.send(workers)
+                w.taskin.close()
+                w.resout.close()
+                self._pool.append(w)
+                self._task_scheduler.send(w)
+
             sleep(0.6)
 
     def _manage_results(self):
         while self._state != STOPPED:
-            ready, _, _ = select([w.resout for w in self._pool], [], [])
+            ready, _, _ = select([w.resin for w in self._pool], [], [])
             workers = [w for w in self._pool if w.resout in ready]
-            self._dispatch_tasks.send(workers)
+            print ready, workers
             for w in workers:
+                self._task_scheduler.send(w)
                 try:
                     results = w.resout.recv()
                     task = self._tasks[w]
@@ -300,13 +303,16 @@ class ProcessPool(object):
                 finally:
                     del self._tasks[w]
 
+    @coroutine
     def _dispatch_tasks(self):
-        workers = (yield)
-        for w in workers:
+        while self._state != STOPPED:
+            worker = (yield)
             t = self._queue.get()
             try:
-                w.taskin.send(tuple(t[1:]))
-                self._tasks[w] = t[0]
+                worker.taskout.send(tuple(t[1:]))
+                task = t[0]
+                task._worker = worker
+                self._tasks[worker] = task
             except (IOError, OSError, EOFError):  # closed pipe
                 self._queue.put(t)
 
@@ -368,7 +374,7 @@ class ProcessPool(object):
             self._pool_maintainer.start()
         if not self._results_handler.is_alive():
             self._results_handler.start()
-        task = Task(next(self._counter), callback)
+        task = Task(next(self._counter), None, callback, timeout)
         self._queue.put((task, function, args, kwargs))
 
         return task

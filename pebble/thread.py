@@ -160,8 +160,11 @@ class Task(object):
 
     def cancel(self):
         """Cancels the Task dropping the results."""
-        self._cancelled = True
-        self._set(TaskCancelled("Task has been cancelled"))
+        if not self._ready:
+            self._cancelled = True
+            self._set(TaskCancelled("Task has been cancelled"))
+        else:
+            raise RuntimeError('A completed task cannot be cancelled')
 
     def _set(self, results):
         self._results = results

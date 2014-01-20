@@ -16,8 +16,10 @@
 
 import os
 
-from signal import SIGKILL
+from time import sleep
 from uuid import uuid4
+from select import select
+from signal import SIGKILL
 from inspect import isclass
 from traceback import format_exc
 from itertools import count
@@ -26,15 +28,20 @@ from collections import Callable
 from functools import update_wrapper
 from multiprocessing import Process, Pipe
 try:  # Python 2
-    from Queue import Queue, Empty, Full
+    from Queue import Queue
 except:  # Python 3
-    from queue import Queue, Empty, Full
+    from queue import Queue
 try:  # Python 2
     from cPickle import PicklingError
 except:  # Python 3
     from pickle import PicklingError
 
-from .pebble import PebbleError, TimeoutError, TaskCancelled
+from .pebble import TimeoutError, TaskCancelled
+
+
+STOPPED = 0
+RUNNING = 1
+CLOSING = 2
 
 
 def process(*args, **kwargs):
@@ -60,33 +67,33 @@ def process(*args, **kwargs):
         raise ValueError("Decorator accepts only keyword arguments.")
 
 
-def process_pool(*args, **kwargs):
-    """Turns a *function* into a Thread and runs its logic within.
+# def process_pool(*args, **kwargs):
+#     """Turns a *function* into a Thread and runs its logic within.
 
-    A decorated *function* will return a *Task* object once is called.
+#     A decorated *function* will return a *Task* object once is called.
 
-    If *callback* is a callable, it will be called once the task has ended
-    with the task identifier and the *function* return values.
+#     If *callback* is a callable, it will be called once the task has ended
+#     with the task identifier and the *function* return values.
 
-    """
-    def wrapper(function):
-        return PoolWrapper(function, workers, task_limit, queue, queue_args,
-                           callback, initializer, initargs)
+#     """
+#     def wrapper(function):
+#         return PoolWrapper(function, workers, task_limit, queue, queue_args,
+#                            callback, initializer, initargs)
 
-    if len(args) == 1 and not len(kwargs) and isinstance(args[0], Callable):
-        return PoolWrapper(args[0], 1, 0, None, None, None, None, None)
-    elif not len(args) and len(kwargs):
-        queue = kwargs.get('queue')
-        queue_args = kwargs.get('queueargs')
-        workers = kwargs.get('workers', 1)
-        callback = kwargs.get('callback')
-        initargs = kwargs.get('initargs')
-        initializer = kwargs.get('initializer')
-        task_limit = kwargs.get('worker_task_limit', 0)
+#     if len(args) == 1 and not len(kwargs) and isinstance(args[0], Callable):
+#         return PoolWrapper(args[0], 1, 0, None, None, None, None, None)
+#     elif not len(args) and len(kwargs):
+#         queue = kwargs.get('queue')
+#         queue_args = kwargs.get('queueargs')
+#         workers = kwargs.get('workers', 1)
+#         callback = kwargs.get('callback')
+#         initargs = kwargs.get('initargs')
+#         initializer = kwargs.get('initializer')
+#         task_limit = kwargs.get('worker_task_limit', 0)
 
-        return wrapper
-    else:
-        raise ValueError("Decorator accepts only keyword arguments.")
+#         return wrapper
+#     else:
+#         raise ValueError("Decorator accepts only keyword arguments.")
 
 
 class Worker(Process):
@@ -229,15 +236,6 @@ class Wrapper(object):
 class ProcessPool(object):
     def __init__(self, workers=1, task_limit=0, queue=None, queueargs=None,
                  initializer=None, initargs=None):
-        self._counter = count()
-        self._workers = workers
-        self._limit = task_limit
-        self._pool = []
-        self._active = True
-        self._task_scheduler = None
-        self._results_handler = None
-        self.initializer = initializer
-        self.initargs = initargs
         if queue is not None:
             if isclass(queue):
                 self._queue = queue(*queueargs)
@@ -245,6 +243,17 @@ class ProcessPool(object):
                 raise ValueError("Queue must be Class")
         else:
             self._queue = Queue()
+        self._pool_maintainer = Thread(target=self._maintain_pool)
+        self._pool_maintainer.daemon = True
+        self._results_handler = Thread(target=self._manage_results)
+        self._results_handler.daemon = True
+        self._counter = count()
+        self._workers = workers
+        self._limit = task_limit
+        self._pool = []
+        self._state = RUNNING
+        self.initializer = initializer
+        self.initargs = initargs
 
     def __enter__(self):
         return self
@@ -253,40 +262,69 @@ class ProcessPool(object):
         self.close()
         self.join()
 
+    def _terminate_workers(self, workers):
+        for w in workers:
+            w.terminate()
+            w.join(2)
+            if w.is_alive():
+                os.kill(w.pid, SIGKILL)
+
+    def _maintain_pool(self):
+        while self._state != STOPPED:
+            workers = []
+            expired = [w for w in self._pool if not w.is_alive()]
+            self._pool = [w for w in self._pool if w not in expired]
+            for w in expired:
+                w.join()
+            for _ in range(self._workers - len(self._pool)):
+                w = Worker(self._queue, self._limit,
+                           self.initializer, self.initargs)
+                w.start()
+                workers.append(w)
+            self._pool.extend(workers)
+            self._dispatch_tasks.send(workers)
+            sleep(0.6)
+
+    def _manage_results(self):
+        while self._state != STOPPED:
+            ready, _, _ = select([w.resout for w in self._pool], [], [])
+            workers = [w for w in self._pool if w.resout in ready]
+            self._dispatch_tasks.send(workers)
+            for w in workers:
+                try:
+                    results = w.resout.recv()
+                    task = self._tasks[w]
+                    task.set(results)
+                except (IOError, OSError, EOFError):  # closed pipe
+                    self._queue.put(self._tasks[w])
+                finally:
+                    del self._tasks[w]
+
+    def _dispatch_tasks(self):
+        workers = (yield)
+        for w in workers:
+            t = self._queue.get()
+            try:
+                w.taskin.send(tuple(t[1:]))
+                self._tasks[w] = t[0]
+            except (IOError, OSError, EOFError):  # closed pipe
+                self._queue.put(t)
+
     @property
     def active(self):
-        return self._active
-
-    def _restart_workers(self):
-        """Spawn one worker if pool is not full."""
-        expired = [w for w in self._pool if not w.is_alive()]
-        self._pool = [w for w in self._pool if w.is_alive()]
-        for w in expired:
-            w.join()
-        if expired:
-            w = Worker(self._queue, self._limit, self.initializer,
-                       self.initargs)
-            w.start()
-            self._pool.append(w)
+        return self._state == RUNNING and True or False
 
     def stop(self):
         """Stops the pool without performing any pending task."""
-        self._active = False
-        for w in self._pool:
-            w.terminate()
-            w.join(2)
-            if w.is_alive():
-                os.kill(w.pid, SIGKILL)
+        self._state = STOPPED
+        self._terminate_workers(self._pool)
 
     def close(self):
         """Close the pool allowing all queued tasks to be performed."""
-        self._active = False
+        self._state = CLOSING
         self._queue.join()
-        for w in self._pool:
-            w.terminate()
-            w.join(2)
-            if w.is_alive():
-                os.kill(w.pid, SIGKILL)
+        self._state = STOPPED
+        self._terminate_workers(self._pool)
 
     def join(self, timeout=0):
         """Joins the pool waiting until all workers exited.
@@ -295,20 +333,22 @@ class ProcessPool(object):
         it block until all workers exited or raise TimeoutError.
 
         """
-        while timeout > 0:
-            for w in self._pool[:]:
-                w.join(0.1)
-                if not w.is_alive():
-                    self._pool.remove(w)
-                timeout -= 0.1
-            if len(self._pool):
-                raise TimeoutError('Some of the workers is still running')
-            else:
-                break
-        # if timeout is not set
-        for w in self._pool[:]:
-            w.join()
-            self._pool.remove(w)
+        counter = 0
+
+        if self._state == RUNNING:
+            raise RuntimeError('The Pool is still running')
+        # if timeout is set join workers until its value
+        while counter < timeout and self._pool:
+            counter += len(self._pool) / 10.0
+            expired = [w for w in self._pool if w.join(0.1) is None
+                       and not w.is_alive()]
+            self._pool = [w for w in self._pool if w not in expired]
+        # verify timeout expired
+        if timeout > 0 and self._pool:
+            raise TimeoutError('Workers are still running')
+        # timeout not set
+        self.pool = [w for w in self._pool if w.join() is None
+                     and w.is_alive()]
 
     def schedule(self, function, args=(), kwargs={}, callback=None, timeout=0):
         """Schedules *function* into the Pool, passing *args* and *kwargs*
@@ -320,18 +360,15 @@ class ProcessPool(object):
         A *Task* object is returned.
 
         """
-        if not self._active:
+        if self._state != RUNNING:
             raise RuntimeError('The Pool is not running')
         if not isinstance(function, Callable):
             raise ValueError('function must be callable')
+        if not self._pool_maintainer.is_alive():
+            self._pool_maintainer.start()
+        if not self._results_handler.is_alive():
+            self._results_handler.start()
         task = Task(next(self._counter), callback)
-        # loop maintaining the workers alive in case of full queue
-        while 1:
-            self._restart_workers()
-            try:
-                self._queue.put((function, task, args, kwargs), timeout=0.1)
-                break
-            except Full:
-                continue
+        self._queue.put((task, function, args, kwargs))
 
         return task

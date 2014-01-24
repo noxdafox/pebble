@@ -14,19 +14,6 @@
 # along with Pebble.  If not, see <http://www.gnu.org/licenses/>.
 
 
-from functools import wraps
-
-
-def coroutine(func):
-    @wraps(func)
-    def start(*args, **kwargs):
-        cr = func(*args, **kwargs)
-        cr.next()
-        return cr
-
-    return start
-
-
 class PebbleError(Exception):
     """Pebble base exception."""
     pass

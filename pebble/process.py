@@ -17,7 +17,6 @@
 import os
 
 from sys import exit
-from time import time, sleep
 from uuid import uuid4
 from select import select
 from inspect import isclass
@@ -27,7 +26,7 @@ from threading import Condition, Event, Lock
 from collections import Callable, deque
 from functools import update_wrapper
 from multiprocessing import Process, Pipe
-from signal import SIG_IGN, SIGKILL, SIGINT, SIGCHLD, signal
+from signal import SIG_IGN, SIGKILL, SIGINT, signal
 try:  # Python 2
     from Queue import Queue, Empty
 except:  # Python 3
@@ -201,7 +200,6 @@ class Worker(Process):
     def __init__(self, limit, function, initializer, initargs):
         Process.__init__(self)
         self.counter = count()
-        self.closed = False
         self.function = function
         self.queue = deque()  # queued tasks
         self.taskin, self.taskout = Pipe(duplex=False)
@@ -222,8 +220,10 @@ class Worker(Process):
 
     def send_task(self, task):
         try:
-            self.taskout.send((task._function, task._args, task._kwargs))
             self.queue.append(task)
+            self.taskout.send((task._function, task._args, task._kwargs))
+        except (IOError, OSError):  # closed pipe
+            self.taskout.close()
         finally:
             if self.limit != 0 and next(self.counter) == self.limit:
                 self.taskout.close()
@@ -234,10 +234,8 @@ class Worker(Process):
             task = self.queue.popleft()
             task._set(results)
             return True
-        except IndexError:  # spurious wakeup
-            return False
         except EOFError:  # closed pipe
-            self.closed = True
+            self.resin.close()
             return False
 
     def send_results(self, value):
@@ -303,6 +301,7 @@ class ProcessPool(object):
         self._limit = task_limit
         self._rejected = deque()  # task enqueued on dead worker
         self._pool = []  # active workers container [worker, worker]
+        self._maintenance = []  # pool maintenance tasks
         self._pool_condition = Condition(Lock())
         self._state = CREATED  # pool state flag
         self.initializer = initializer
@@ -322,14 +321,15 @@ class ProcessPool(object):
             with self._pool_condition:
                 while (self._workers - len(self._pool) == 0
                        and self._state != STOPPED):
-                    self._pool_condition.wait(timeout=0.3)
+                    self._pool_condition.wait(timeout=0.1)
                     # collect expired workers and update pool
                     expired = [w for w in self._pool if not w.is_alive()
-                               and w.join() is None and w.closed]
+                               and w.resin.closed]
                     self._pool = [w for w in self._pool if w not in expired]
-                    # re-enqueue any task pending on expired workers
+                    # clean up the worker, re-enqueue any expired task
                     for worker in expired:
-                        print worker.queue
+                        worker.join()
+                        worker.taskout.close()
                         self._rejected.extend(worker.queue)
                 # re-spawn missing processes
                 for _ in range(self._workers - len(self._pool)):
@@ -344,9 +344,10 @@ class ProcessPool(object):
     def _manage_results(self):
         while self._state != STOPPED:
             # collect possible results
-            descriptors = [w.resin for w in self._pool[:] if not w.closed]
-            ready, _, _ = select(descriptors, [], [], 0.3)
-            workers = [w for w in self._pool[:] if w.resin in ready]
+            descriptors = [w.resin for w in self._pool[:]
+                           if not w.resin.closed]
+            select(descriptors, [], [], 0.8)
+            workers = [w for w in self._pool[:] if w.resin.poll()]
             # process all results
             for worker in workers:
                 if worker.receive_results():
@@ -358,7 +359,7 @@ class ProcessPool(object):
             # wait for free workers
             descriptors = [w.taskout for w in self._pool[:]
                            if not w.taskout.closed]
-            _, ready, _ = select([], descriptors, [], 0.3)
+            _, ready, _ = select([], descriptors, [], 0.8)
             workers = [w for w in self._pool[:] if w.taskout in ready]
             for worker in workers:
                 try:
@@ -367,8 +368,6 @@ class ProcessPool(object):
                     except IndexError:
                         task = self._queue.get(timeout=0.3)
                     worker.send_task(task)
-                except (IOError, OSError):  # closed pipe
-                    self._rejected.append(task)
                 except Empty:  # no tasks available
                     continue
 
@@ -414,6 +413,9 @@ class ProcessPool(object):
             # timeout not set
             self.pool = [w for w in self._pool if w.join() is None
                          and w.is_alive()]
+        # wait until pool maintainer tasks are ended
+        for maintainer in self._maintenance:
+            maintainer.get()
 
     def schedule(self, function, args=(), kwargs={}, callback=None, timeout=0):
         """Schedules *function* into the Pool, passing *args* and *kwargs*
@@ -427,9 +429,9 @@ class ProcessPool(object):
         """
         # start the pool at first call
         if self._state == CREATED:
-            self._maintain_pool(self)
-            self._schedule_tasks(self)
-            self._manage_results(self)
+            self._maintenance.extend((self._maintain_pool(self),
+                                      self._schedule_tasks(self),
+                                      self._manage_results(self)))
             self._state = RUNNING
         elif self._state != RUNNING:
             raise RuntimeError('The Pool is not running')

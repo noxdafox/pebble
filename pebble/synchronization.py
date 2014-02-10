@@ -15,17 +15,17 @@
 
 
 def synchronized(lock):
-    """ Synchronization decorator. Locks the execution on given 'lock'
+    """Synchronization decorator, locks the execution on given *lock*.
 
-    Works with both threading and multiprocessing Lock s
+    Works with both threading and multiprocessing Lock.
+
     """
-
-    def wrap(f):
-        def new_function(*args, **kw):
+    def wrap(function):
+        def wrapper(*args, **kwargs):
             lock.acquire()
             try:
-                return f(*args, **kw)
+                return function(*args, **kwargs)
             finally:
                 lock.release()
-        return new_function
+        return wrapper
     return wrap

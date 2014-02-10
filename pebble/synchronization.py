@@ -22,10 +22,9 @@ def synchronized(lock):
     """
     def wrap(function):
         def wrapper(*args, **kwargs):
-            lock.acquire()
-            try:
+            with lock:
                 return function(*args, **kwargs)
-            finally:
-                lock.release()
+
         return wrapper
+
     return wrap

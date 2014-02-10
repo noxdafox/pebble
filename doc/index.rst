@@ -44,6 +44,12 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
        *callback* must be callable, if passed, it will be called once the task has ended with the *Task* object as parameter.
        A *timeout* value greater than 0 will terminate the running process if it has not yet finished once the *timeout* expires; any *Task.get()* call will raise a TimeoutError, callbacks will still be executed.
 
+    .. decorator:: synchronized(lock)
+
+       A synchronized *function* will be run exclusively accordingly to its *lock* type. If a Thread or Process is executing a synchronized function, all the other Threads or Processes calling the same *function* will be blocked until the first caller has finished its execution.
+
+       The *synchronized* decorator accepts all the synchronizing objects exposed by the Python standard *threading* and *multiprocessing* libraries.
+
 
     :synopsis: Pools
 

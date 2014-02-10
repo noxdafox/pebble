@@ -8,7 +8,6 @@ __all__ = ['thread',
            'TimeoutError',
            'TaskCancelled']
 
-from .pebble import PebbleError, TimeoutError
+from .pebble import PebbleError, TimeoutError, synchronized
 from .process import process, SerializingError, TaskCancelled
-from .synchronization import synchronized
 from .thread import thread, thread_pool, ThreadPool

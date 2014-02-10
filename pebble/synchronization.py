@@ -13,6 +13,8 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with Pebble.  If not, see <http://www.gnu.org/licenses/>.
 
+from functools import wraps
+
 
 def synchronized(lock):
     """Synchronization decorator, locks the execution on given *lock*.
@@ -21,6 +23,7 @@ def synchronized(lock):
 
     """
     def wrap(function):
+        @wraps(function)
         def wrapper(*args, **kwargs):
             with lock:
                 return function(*args, **kwargs)

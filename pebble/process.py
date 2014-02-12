@@ -214,7 +214,7 @@ class Wrapper(object):
                  self.callback, self.timeout)
         w = Worker(1, self._function, None, None)
         w.start()
-        w.new_task(t)
+        w.schedule_task(t)
         w.tasks.reader.close()
         w.results.writer.close()
         self._handle_job(self, w)
@@ -273,7 +273,7 @@ class Worker(Process):
         if self.is_alive():
             os.kill(self.pid, SIGKILL)
 
-    def new_task(self, task):
+    def schedule_task(self, task):
         """Sends a *Task* to the worker."""
         try:
             if self.current is None:
@@ -296,18 +296,20 @@ class Worker(Process):
         """
         if not self.results.poll(timeout):
             raise TimeoutError('Still running')
+        task = self.current
+        results = None
 
         try:
             results = self.results.receive()
-            task = self.current
             try:
                 self.current = self.queue.popleft()
             except IndexError:
                 self.current = None
-            return task, results
         except EOFError:  # closed pipe
             self.results.reader.close()
-            return task, None
+            self.current = None
+        finally:
+            return task, results
 
     def run(self):
         """Worker process logic."""
@@ -376,12 +378,14 @@ class TaskScheduler(Thread):
         """Check if ongoing jobs have been cancelled or timeout expired."""
         now = time()
         for worker in workers:
-            if now - worker.current.timestamp > worker.current.timeout:
-                worker.stop()
-                worker.current._set(TimeoutError("Task timeout"))
-            elif worker.current.cancelled:
-                worker.stop()
-                worker.current._set(TaskCancelled("Task cancelled"))
+            if worker.current is not None:
+                task = worker.current
+                if task._timeout > 0 and now - task._timestamp > task._timeout:
+                    worker.stop()
+                    task._set(TimeoutError("Task timeout"))
+                elif task.cancelled:
+                    worker.stop()
+                    task._set(TaskCancelled("Task cancelled"))
 
     def schedule_tasks(self, workers, timeout):
         """For each worker, delivers a task if available."""
@@ -391,7 +395,7 @@ class TaskScheduler(Thread):
                     task = self.rejected.popleft()
                 except IndexError:
                     task = self.queue.get(timeout=timeout)
-                    worker.send_task(task)
+                    worker.schedule_task(task)
             except Empty:  # no tasks available
                 continue
 
@@ -438,21 +442,27 @@ class PoolMaintainer(Thread):
 
     def respawn_workers(self):
         """Respawn missing workers."""
+        pool = []
+
         for _ in range(self.workers - len(self.pool)):
             worker = Worker(self.limit, None, self.initializer, self.initargs)
             worker.start()
             worker.tasks.reader.close()
             worker.results.writer.close()
-            self.pool.append(worker)  # add worker to pool
+            pool.append(worker)  # add worker to pool
+
+        return pool
 
     def run(self):
         while self.state != STOPPED:
             workers = self.pool[:]
             expired = self.expired_workers(workers, 0.8)
-            self.pool = [w for w in workers if w not in expired]
+            for worker in expired:
+                self.pool.remove(worker)
             rejected_tasks = self.clean_workers(expired)
             self.rejected.extend(rejected_tasks)
-            self.respawn_workers()
+            respawned = self.respawn_workers()
+            self.pool.extend(respawned)
 
 
 class ResultsFetcher(Thread):
@@ -470,20 +480,21 @@ class ResultsFetcher(Thread):
         descriptors = [w.results.reader for w in workers
                        if not w.results.reader.closed]
         select(descriptors, [], [], 0.8)
-        return [w for w in workers if w.results.poll()]
+        return [w for w in workers if w.results.poll(0)]
 
     def set_tasks(self, workers):
         """Sets tasks, runs callbacks and notifies to the Queue."""
         for worker in workers:
             task, results = worker.get_results(0)
-            if not task.ready:  # task might timeout or be cancelled
-                task._set(results)
-            if task._callback is not None:
-                try:
-                    task._callback(task)
-                except:
-                    print_exc()
-            self.queue.task_done()
+            if task is not None:  # EOF on expired worker
+                if not task.ready:  # task might timeout or be cancelled
+                    task._set(results)
+                if task._callback is not None:
+                    try:
+                        task._callback(task)
+                    except:
+                        print_exc()
+                self.queue.task_done()
 
     def run(self):
         while self.state != STOPPED:

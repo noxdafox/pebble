@@ -23,7 +23,7 @@ from itertools import count
 from inspect import isclass
 from time import time, sleep
 from traceback import format_exc, print_exc
-from threading import Thread, Condition, Event, Lock
+from threading import Thread, Event
 from collections import Callable, deque
 from functools import update_wrapper
 from multiprocessing import Process, Pipe
@@ -507,8 +507,7 @@ class ProcessPool(object):
         self._workers = workers
         self._limit = task_limit
         self._rejected = deque()  # task enqueued on dead worker
-        self._pool = []  # active workers container [worker, worker]
-        self._pool_condition = Condition(Lock())
+        self._pool = []  # active workers container
         self._state = CREATED  # pool state flag
         self._task_scheduler = TaskScheduler(self._pool, self._queue,
                                              self._rejected)

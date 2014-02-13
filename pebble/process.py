@@ -247,7 +247,6 @@ class Worker(Process):
     def __init__(self, limit, function, initializer, initargs):
         Process.__init__(self)
         self.counter = count()
-        self.in_progress = None
         self._function = function
         self.queue = deque()  # queued tasks
         self.tasks = Channel()
@@ -259,15 +258,13 @@ class Worker(Process):
 
     @property
     def current(self):
-        return self.in_progress
-
-    @current.setter
-    def current(self, task):
-        if task is not None:
-            task._timestamp = time()
-        self.in_progress = task
+        try:
+            return self.queue[0]
+        except IndexError:
+            return None
 
     def stop(self):
+        self.tasks.writer.close()
         self.terminate()
         self.join(2)
         if self.is_alive():
@@ -276,10 +273,9 @@ class Worker(Process):
     def schedule_task(self, task):
         """Sends a *Task* to the worker."""
         try:
-            if self.current is None:
-                self.current = task
-            else:
-                self.queue.append(task)
+            self.queue.append(task)
+            if task is self.current:
+                self.current._timestamp = time()
             self.tasks.send((task._function, task._args, task._kwargs))
         except (IOError, OSError):  # closed pipe
             self.tasks.writer.close()
@@ -296,18 +292,15 @@ class Worker(Process):
         """
         if not self.results.poll(timeout):
             raise TimeoutError('Still running')
-        task = self.current
-        results = None
+        task = results = None
 
         try:
+            task = self.queue.popleft()
             results = self.results.receive()
-            try:
-                self.current = self.queue.popleft()
-            except IndexError:
-                self.current = None
+            if self.current is not None:
+                self.current._timestamp = time()
         except EOFError:  # closed pipe
             self.results.reader.close()
-            self.current = None
         finally:
             return task, results
 
@@ -356,7 +349,7 @@ class Worker(Process):
 
 
 class TaskScheduler(Thread):
-    """Manages tasks between the Pool."""
+    """Sends tasks to the workers."""
     def __init__(self, pool, queue, rejected):
         Thread.__init__(self)
         self.daemon = True
@@ -373,20 +366,6 @@ class TaskScheduler(Thread):
         _, ready, _ = select([], descriptors, [], timeout)
         return [w for w in workers if w.tasks.writer in ready]
 
-    @staticmethod
-    def check_current(workers):
-        """Check if ongoing jobs have been cancelled or timeout expired."""
-        now = time()
-        for worker in workers:
-            if worker.current is not None:
-                task = worker.current
-                if task._timeout > 0 and now - task._timestamp > task._timeout:
-                    worker.stop()
-                    task._set(TimeoutError("Task timeout"))
-                elif task.cancelled:
-                    worker.stop()
-                    task._set(TaskCancelled("Task cancelled"))
-
     def schedule_tasks(self, workers, timeout):
         """For each worker, delivers a task if available."""
         for worker in workers:
@@ -395,7 +374,7 @@ class TaskScheduler(Thread):
                     task = self.rejected.popleft()
                 except IndexError:
                     task = self.queue.get(timeout=timeout)
-                    worker.schedule_task(task)
+                worker.schedule_task(task)
             except Empty:  # no tasks available
                 continue
 
@@ -404,7 +383,6 @@ class TaskScheduler(Thread):
             workers = self.pool[:]
             available = self.free_workers(workers, 0.6)
             self.schedule_tasks(available, 0.2)
-            self.check_current(workers)
 
 
 class PoolMaintainer(Thread):
@@ -422,7 +400,12 @@ class PoolMaintainer(Thread):
 
     @staticmethod
     def expired_workers(workers, timeout):
-        """Wait for expired workers."""
+        """Wait for expired workers.
+
+        Expired workers are those which are not alive, which
+        results channel has been closed and which current task
+        has not started.
+        """
         ##TODO: wait for SIGCHLD
         sleep(timeout)
         return [w for w in workers if not w.is_alive()
@@ -456,7 +439,7 @@ class PoolMaintainer(Thread):
     def run(self):
         while self.state != STOPPED:
             workers = self.pool[:]
-            expired = self.expired_workers(workers, 0.8)
+            expired = self.expired_workers(workers, 0.1)
             for worker in expired:
                 self.pool.remove(worker)
             rejected_tasks = self.clean_workers(expired)
@@ -479,8 +462,22 @@ class ResultsFetcher(Thread):
         """Wait for expired workers."""
         descriptors = [w.results.reader for w in workers
                        if not w.results.reader.closed]
-        select(descriptors, [], [], 0.8)
+        select(descriptors, [], [], timeout)
         return [w for w in workers if w.results.poll(0)]
+
+    @staticmethod
+    def check_current(workers):
+        """Check if ongoing jobs have been cancelled or timeout expired."""
+        now = time()
+        for worker in workers:
+            if worker.is_alive() and worker.current is not None:
+                task = worker.current
+                if task._timeout > 0 and now - task._timestamp > task._timeout:
+                    task._set(TimeoutError("Task timeout"))
+                    worker.stop()
+                elif task.cancelled:
+                    task._set(TaskCancelled("Task cancelled"))
+                    worker.stop()
 
     def set_tasks(self, workers):
         """Sets tasks, runs callbacks and notifies to the Queue."""
@@ -499,6 +496,7 @@ class ResultsFetcher(Thread):
     def run(self):
         while self.state != STOPPED:
             workers = self.pool[:]
+            self.check_current(workers)
             ready = self.results(workers, 0.6)
             self.set_tasks(ready)
 
@@ -545,7 +543,7 @@ class ProcessPool(object):
         self._state = STOPPED
         self._task_scheduler.state = STOPPED
         self._pool_maintainer.state = STOPPED
-        self._results_fetcher = STOPPED
+        self._results_fetcher.state = STOPPED
         self._task_scheduler.join()
         self._pool_maintainer.join()
         self._results_fetcher.join()
@@ -576,7 +574,7 @@ class ProcessPool(object):
                        and not w.is_alive()]
             self._pool = [w for w in self._pool if w not in expired]
         # verify timeout expired
-        if counter == timeout and self._pool:
+        if timeout > 0 and counter == timeout and self._pool:
             raise TimeoutError('Workers are still running')
         # timeout not set
         self.pool = [w for w in self._pool if w.join() is None

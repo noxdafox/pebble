@@ -191,7 +191,7 @@ class Wrapper(object):
                 counter += 0.1
         # get results if ready, otherwise set TimeoutError or TaskCancelled
         try:
-            task, results = worker.get_results(0)
+            task, results = worker.task_complete(0)
             task._set(results)
         except TimeoutError:
             worker.stop()
@@ -266,26 +266,26 @@ class Worker(Process):
     def stop(self):
         self.tasks.writer.close()
         self.terminate()
-        self.join(2)
+        self.join(1)
         if self.is_alive():
             os.kill(self.pid, SIGKILL)
 
     def schedule_task(self, task):
         """Sends a *Task* to the worker."""
+        self.queue.append(task)
+        if task is self.current:
+            self.current._timestamp = time()
         try:
-            self.queue.append(task)
-            if task is self.current:
-                self.current._timestamp = time()
             self.tasks.send((task._function, task._args, task._kwargs))
-        except (IOError, OSError):  # closed pipe
+        except IOError:  # process was stopped
+            self.queue.pop()
+            raise RuntimeError('Process stopped')
+        if self.limit > 0 and next(self.counter) >= self.limit - 1:
             self.tasks.writer.close()
-        finally:
-            if self.limit != 0 and next(self.counter) == self.limit:
-                self.tasks.writer.close()
 
-    def get_results(self, timeout):
-        """Gets results from Worker, blocks until any result is ready
-        or *timeout* expires.
+    def task_complete(self, timeout):
+        """Waits for the next task to be completed,
+        blocks until any result is ready or *timeout* expires.
 
         Raises TimeoutError if *timeout* expired.
 
@@ -293,16 +293,19 @@ class Worker(Process):
         if not self.results.poll(timeout):
             raise TimeoutError('Still running')
         task = results = None
-
         try:
             task = self.queue.popleft()
+        except IndexError:  # process expired
+            pass
+        try:
             results = self.results.receive()
-            if self.current is not None:
-                self.current._timestamp = time()
-        except EOFError:  # closed pipe
+        except EOFError:  # process expired or stopped
             self.results.reader.close()
-        finally:
-            return task, results
+
+        if self.current is not None:
+            self.current._timestamp = time()
+
+        return task, results
 
     def run(self):
         """Worker process logic."""
@@ -326,7 +329,10 @@ class Worker(Process):
                 function, args, kwargs = self.tasks.receive()
                 function = function is not None and function or self._function
                 results = function(*args, **kwargs)
-            except (IOError, OSError, EOFError):  # pipe was closed
+            except EOFError:  # other side closed
+                pass
+            except (IOError, OSError):  # pipe was closed
+                print "IOERROR while fetching next task"
                 exit(1)
             except Exception as err:  # error occurred in function
                 if error is None:  # do not overwrite initializer errors
@@ -374,7 +380,10 @@ class TaskScheduler(Thread):
                     task = self.rejected.popleft()
                 except IndexError:
                     task = self.queue.get(timeout=timeout)
-                worker.schedule_task(task)
+                try:
+                    worker.schedule_task(task)
+                except RuntimeError:
+                    self.rejected.append(task)
             except Empty:  # no tasks available
                 continue
 
@@ -409,7 +418,7 @@ class PoolMaintainer(Thread):
         ##TODO: wait for SIGCHLD
         sleep(timeout)
         return [w for w in workers if not w.is_alive()
-                and w.results.reader.closed]
+                and w.results.reader.closed and w.tasks.writer.closed]
 
     @staticmethod
     def clean_workers(workers):
@@ -417,8 +426,8 @@ class PoolMaintainer(Thread):
         rejected = []
 
         for worker in workers:
-            worker.join()
             worker.tasks.writer.close()
+            worker.join()
             rejected.extend(worker.queue)
 
         return rejected
@@ -482,7 +491,7 @@ class ResultsFetcher(Thread):
     def set_tasks(self, workers):
         """Sets tasks, runs callbacks and notifies to the Queue."""
         for worker in workers:
-            task, results = worker.get_results(0)
+            task, results = worker.task_complete(0)
             if task is not None:  # EOF on expired worker
                 if not task.ready:  # task might timeout or be cancelled
                     task._set(results)

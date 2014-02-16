@@ -13,6 +13,11 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with Pebble.  If not, see <http://www.gnu.org/licenses/>.
 
+"""Container for generic objects."""
+
+
+from functools import wraps
+
 
 class PebbleError(Exception):
     """Pebble base exception."""
@@ -41,3 +46,20 @@ class TaskCancelled(PebbleError):
 
     def __str__(self):
         return str(self.msg)
+
+
+def synchronized(lock):
+    """Synchronization decorator, locks the execution on given *lock*.
+
+    Works with both threading and multiprocessing Lock.
+
+    """
+    def wrap(function):
+        @wraps(function)
+        def wrapper(*args, **kwargs):
+            with lock:
+                return function(*args, **kwargs)
+
+        return wrapper
+
+    return wrap

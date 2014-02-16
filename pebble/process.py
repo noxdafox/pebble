@@ -277,7 +277,7 @@ class Worker(Process):
             self.current._timestamp = time()
         try:
             self.tasks.send((task._function, task._args, task._kwargs))
-        except IOError:  # process was stopped
+        except (IOError, OSError):  # process was stopped
             self.queue.pop()
             raise RuntimeError('Process stopped')
         if self.limit > 0 and next(self.counter) >= self.limit - 1:
@@ -292,6 +292,7 @@ class Worker(Process):
         """
         if not self.results.poll(timeout):
             raise TimeoutError('Still running')
+        success = False
         task = results = None
         try:
             task = self.queue.popleft()
@@ -299,13 +300,14 @@ class Worker(Process):
             pass
         try:
             results = self.results.receive()
+            success = True
         except EOFError:  # process expired or stopped
             self.results.reader.close()
 
         if self.current is not None:
             self.current._timestamp = time()
 
-        return task, results
+        return task, results, success
 
     def run(self):
         """Worker process logic."""
@@ -369,7 +371,10 @@ class TaskScheduler(Thread):
         """Wait for available workers."""
         descriptors = [w.tasks.writer for w in workers
                        if not w.tasks.writer.closed]
-        _, ready, _ = select([], descriptors, [], timeout)
+        try:
+            _, ready, _ = select([], descriptors, [], timeout)
+        except:  # process stopped after descriptors were listed
+            ready = []
         return [w for w in workers if w.tasks.writer in ready]
 
     def schedule_tasks(self, workers, timeout):
@@ -459,12 +464,13 @@ class PoolMaintainer(Thread):
 
 class ResultsFetcher(Thread):
     """Fetches results from the pool and forwards them to their tasks."""
-    def __init__(self, pool, queue):
+    def __init__(self, pool, queue, rejected):
         Thread.__init__(self)
         self.daemon = True
         self.state = RUNNING
         self.pool = pool
         self.queue = queue
+        self.rejected = rejected
 
     @staticmethod
     def results(workers, timeout):
@@ -491,16 +497,19 @@ class ResultsFetcher(Thread):
     def set_tasks(self, workers):
         """Sets tasks, runs callbacks and notifies to the Queue."""
         for worker in workers:
-            task, results = worker.task_complete(0)
-            if task is not None:  # EOF on expired worker
-                if not task.ready:  # task might timeout or be cancelled
+            task, results, success = worker.task_complete(0)
+            if task is not None:
+                if success:
                     task._set(results)
-                if task._callback is not None:
-                    try:
-                        task._callback(task)
-                    except:
-                        print_exc()
-                self.queue.task_done()
+                if task.ready:
+                    if task._callback is not None:
+                        try:
+                            task._callback(task)
+                        except:
+                            print_exc()
+                    self.queue.task_done()
+                else:  # spurious wakeup of select
+                    self.rejected.append(task)
 
     def run(self):
         while self.state != STOPPED:
@@ -532,7 +541,8 @@ class ProcessPool(object):
         self._pool_maintainer = PoolMaintainer(self._pool, self._rejected,
                                                workers, task_limit,
                                                initializer, initargs)
-        self._results_fetcher = ResultsFetcher(self._pool, self._queue)
+        self._results_fetcher = ResultsFetcher(self._pool, self._queue,
+                                               self._rejected)
         self.initializer = initializer
         self.initargs = initargs
 

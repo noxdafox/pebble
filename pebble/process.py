@@ -265,10 +265,13 @@ class Worker(Process):
 
     def stop(self):
         self.tasks.writer.close()
-        self.terminate()
-        self.join(1)
-        if self.is_alive():
-            os.kill(self.pid, SIGKILL)
+        try:
+            self.terminate()
+            self.join(1)
+            if self.is_alive():
+                os.kill(self.pid, SIGKILL)
+        except:  # Python3 ProcessLookupError
+            pass
 
     def schedule_task(self, task):
         """Sends a *Task* to the worker."""
@@ -334,7 +337,6 @@ class Worker(Process):
             except EOFError:  # other side closed
                 pass
             except (IOError, OSError):  # pipe was closed
-                print "IOERROR while fetching next task"
                 exit(1)
             except Exception as err:  # error occurred in function
                 if error is None:  # do not overwrite initializer errors
@@ -478,7 +480,10 @@ class ResultsFetcher(Thread):
         descriptors = [w.results.reader for w in workers
                        if not w.results.reader.closed]
         select(descriptors, [], [], timeout)
-        return [w for w in workers if w.results.poll(0)]
+        try:
+            return [w for w in workers if w.results.poll(0)]
+        except:
+            return []
 
     @staticmethod
     def check_current(workers):

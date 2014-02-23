@@ -112,6 +112,7 @@ class Task(object):
     """Handler to the ongoing task."""
     def __init__(self, task_nr, function, args, kwargs, callback, timeout):
         self.id = uuid4()
+        self.timeout = timeout
         self._function = function
         self._args = args
         self._kwargs = kwargs
@@ -120,7 +121,6 @@ class Task(object):
         self._cancelled = False
         self._results = None
         self._event = Event()
-        self._timeout = timeout
         self._timestamp = 0
         self._callback = callback
 
@@ -141,6 +141,10 @@ class Task(object):
     @property
     def cancelled(self):
         return self._cancelled
+
+    @property
+    def started(self):
+        return self._timestamp > 0 and True or False
 
     def get(self, timeout=None):
         """Retrieves the produced results.
@@ -236,12 +240,6 @@ class Channel(object):
     def poll(self, timeout):
         return self.reader.poll(timeout)
 
-    def sending(self):
-        return not self.writer.closed
-
-    def receiving(self):
-        return not self.reader.closed
-
 
 class Worker(Process):
     def __init__(self, limit, function, initializer, initargs):
@@ -249,68 +247,100 @@ class Worker(Process):
         self.counter = count()
         self._function = function
         self.queue = deque()  # queued tasks
-        self.tasks = Channel()
-        self.results = Channel()
+        self.task_channel = Channel()
+        self.result_channel = Channel()
         self.limit = limit
         self.initializer = initializer
         self.initargs = initargs
         self.daemon = True
 
     @property
-    def current(self):
-        try:
-            return self.queue[0]
-        except IndexError:
-            return None
+    def tasks(self):
+        return self.task_channel.writer
+
+    @property
+    def results(self):
+        return self.result_channel.reader
+
+    @property
+    def closed(self):
+        return self.task_channel.writer.closed
+
+    @property
+    def expired(self):
+        return self.result_channel.reader.closed
+
+    def finalize(self):
+        """Finalizes the worker, to be called after it has been started."""
+        if not self.task_channel.reader.closed:
+            self.task_channel.reader.close()
+        if not self.result_channel.writer.closed:
+            self.result_channel.writer.close()
 
     def stop(self):
-        self.tasks.writer.close()
-        try:
-            self.terminate()
-            self.join(1)
-            if self.is_alive():
-                os.kill(self.pid, SIGKILL)
-        except:  # Python3 ProcessLookupError
-            pass
+        self.result_channel.reader.close()
+        self.task_channel.writer.close()
+        self.terminate()
+        self.join(2)
+        if self.is_alive():
+            os.kill(self.pid, SIGKILL)
 
     def schedule_task(self, task):
         """Sends a *Task* to the worker."""
-        self.queue.append(task)
-        if task is self.current:
-            self.current._timestamp = time()
         try:
-            self.tasks.send((task._function, task._args, task._kwargs))
-        except (IOError, OSError):  # process was stopped
-            self.queue.pop()
-            raise RuntimeError('Process stopped')
-        if self.limit > 0 and next(self.counter) >= self.limit - 1:
-            self.tasks.writer.close()
+            if len(self.queue) == 0:  # scheduled task is current one
+                task._timestamp = time()
+            self.queue.append(task)
+            self.task_channel.send((task._function, task._args, task._kwargs))
+            if self.limit > 0 and next(self.counter) >= self.limit - 1:
+                self.task_channel.writer.close()
+        except (IOError, OSError):  # worker closed
+            self.queue.popleft()
+            task._timestamp = 0
+            raise RuntimeError('Worker closed')
+
+    def task_valid(self, timestamp):
+        """Check if current task is not in timeout or cancelled."""
+        task = None
+
+        try:
+            curr = self.queue[0]
+            if curr.timeout > 0 and timestamp - curr._timestamp > curr.timeout:
+                task = self.queue.popleft()
+                task._set(TimeoutError("Task timeout"))
+                self.stop()
+            elif curr.cancelled:
+                task = self.queue.popleft()
+                task._set(TaskCancelled("Task cancelled"))
+                self.stop()
+        except IndexError:
+            pass
+
+        return task
 
     def task_complete(self, timeout):
-        """Waits for the next task to be completed,
-        blocks until any result is ready or *timeout* expires.
+        """Waits for the next task to be completed and sets the task.
+        Blocks until any result is ready or *timeout* expires.
 
         Raises TimeoutError if *timeout* expired.
 
         """
-        if not self.results.poll(timeout):
+        if not self.result_channel.poll(timeout):
             raise TimeoutError('Still running')
-        success = False
-        task = results = None
+        task = None
         try:
             task = self.queue.popleft()
         except IndexError:  # process expired
             pass
         try:
-            results = self.results.receive()
-            success = True
-        except EOFError:  # process expired or stopped
-            self.results.reader.close()
+            if task:
+                task._set(self.result_channel.receive())
+            if len(self.queue) > 0:
+                self.queue[0]._timestamp = time()
+        except EOFError:  # process expired
+            self.result_channel.reader.close()
 
-        if self.current is not None:
-            self.current._timestamp = time()
-
-        return task, results, success
+        return task
 
     def run(self):
         """Worker process logic."""
@@ -318,8 +348,8 @@ class Worker(Process):
         results = None
         # ignore SIGINT signal and close unused desciptors
         signal(SIGINT, SIG_IGN)
-        self.tasks.writer.close()
-        self.results.reader.close()
+        self.task_channel.writer.close()
+        self.result_channel.reader.close()
         # run initializer function
         if self.initializer is not None:
             try:
@@ -331,7 +361,7 @@ class Worker(Process):
         while self.limit == 0 or next(self.counter) < self.limit:
             # get next task and execute it
             try:
-                function, args, kwargs = self.tasks.receive()
+                function, args, kwargs = self.task_channel.receive()
                 function = function is not None and function or self._function
                 results = function(*args, **kwargs)
             except EOFError:  # other side closed
@@ -345,16 +375,17 @@ class Worker(Process):
             # send produced results or raised exception
             finally:
                 try:
-                    self.results.send(error is not None and error or results)
+                    self.result_channel.send(error is not None
+                                             and error or results)
                 except (IOError, OSError, EOFError):  # pipe was closed
                     exit(1)
                 except PicklingError as err:
-                    self.results.send(err)
+                    self.result_channel.send(err)
 
                 error = results = None
         # close all descriptors and exit
-        self.tasks.reader.close()
-        self.results.writer.close()
+        self.task_channel.reader.close()
+        self.result_channel.writer.close()
         exit(0)
 
 
@@ -371,34 +402,33 @@ class TaskScheduler(Thread):
     @staticmethod
     def free_workers(workers, timeout):
         """Wait for available workers."""
-        descriptors = [w.tasks.writer for w in workers
-                       if not w.tasks.writer.closed]
+        descriptors = [w.tasks for w in workers]
         try:
             _, ready, _ = select([], descriptors, [], timeout)
-        except:  # process stopped after descriptors were listed
-            ready = []
-        return [w for w in workers if w.tasks.writer in ready]
+            return [w for w in workers if w.tasks in ready]
+        except:  # worker expired or stopped
+            return []
 
     def schedule_tasks(self, workers, timeout):
         """For each worker, delivers a task if available."""
         for worker in workers:
             try:
-                try:
+                try:  # first get any rejected task
                     task = self.rejected.popleft()
-                except IndexError:
+                except IndexError:  # then get enqueued ones
                     task = self.queue.get(timeout=timeout)
                 try:
                     worker.schedule_task(task)
-                except RuntimeError:
+                except RuntimeError:  # worker closed
                     self.rejected.append(task)
             except Empty:  # no tasks available
                 continue
 
     def run(self):
         while self.state != STOPPED:
-            workers = self.pool[:]
-            available = self.free_workers(workers, 0.6)
-            self.schedule_tasks(available, 0.2)
+            workers = [w for w in self.pool[:] if not w.closed]
+            available = self.free_workers(workers, 0.8)
+            self.schedule_tasks(available, 0)
 
 
 class PoolMaintainer(Thread):
@@ -424,8 +454,7 @@ class PoolMaintainer(Thread):
         """
         ##TODO: wait for SIGCHLD
         sleep(timeout)
-        return [w for w in workers if not w.is_alive()
-                and w.results.reader.closed and w.tasks.writer.closed]
+        return [w for w in workers if not w.is_alive() and w.expired]
 
     @staticmethod
     def clean_workers(workers):
@@ -433,7 +462,6 @@ class PoolMaintainer(Thread):
         rejected = []
 
         for worker in workers:
-            worker.tasks.writer.close()
             worker.join()
             rejected.extend(worker.queue)
 
@@ -446,8 +474,7 @@ class PoolMaintainer(Thread):
         for _ in range(self.workers - len(self.pool)):
             worker = Worker(self.limit, None, self.initializer, self.initargs)
             worker.start()
-            worker.tasks.reader.close()
-            worker.results.writer.close()
+            worker.finalize()
             pool.append(worker)  # add worker to pool
 
         return pool
@@ -477,51 +504,30 @@ class ResultsFetcher(Thread):
     @staticmethod
     def results(workers, timeout):
         """Wait for expired workers."""
-        descriptors = [w.results.reader for w in workers
-                       if not w.results.reader.closed]
-        select(descriptors, [], [], timeout)
+        descriptors = [w.results for w in workers]
         try:
+            select(descriptors, [], [], timeout)
             return [w for w in workers if w.results.poll(0)]
-        except:
+        except:  # worker expired or stopped
             return []
 
-    @staticmethod
-    def check_current(workers):
-        """Check if ongoing jobs have been cancelled or timeout expired."""
-        now = time()
-        for worker in workers:
-            if worker.is_alive() and worker.current is not None:
-                task = worker.current
-                if task._timeout > 0 and now - task._timestamp > task._timeout:
-                    task._set(TimeoutError("Task timeout"))
-                    worker.stop()
-                elif task.cancelled:
-                    task._set(TaskCancelled("Task cancelled"))
-                    worker.stop()
-
-    def set_tasks(self, workers):
-        """Sets tasks, runs callbacks and notifies to the Queue."""
-        for worker in workers:
-            task, results, success = worker.task_complete(0)
-            if task is not None:
-                if success:
-                    task._set(results)
-                if task.ready:
-                    if task._callback is not None:
-                        try:
-                            task._callback(task)
-                        except:
-                            print_exc()
-                    self.queue.task_done()
-                else:  # spurious wakeup of select
-                    self.rejected.append(task)
+    def finalize_tasks(self, tasks):
+        for task in tasks:
+            if task._callback is not None:
+                try:
+                    task._callback(task)
+                except:
+                    print_exc()
+            self.queue.task_done()
 
     def run(self):
         while self.state != STOPPED:
-            workers = self.pool[:]
-            self.check_current(workers)
+            timestamp = time()
+            workers = [w for w in self.pool[:] if not w.expired]
+            tasks = [w.task_valid(timestamp) for w in workers]
             ready = self.results(workers, 0.6)
-            self.set_tasks(ready)
+            tasks.extend([w.task_complete(0) for w in ready])
+            self.finalize_tasks([t for t in tasks if t is not None])
 
 
 class ProcessPool(object):
@@ -568,9 +574,7 @@ class ProcessPool(object):
         self._task_scheduler.state = STOPPED
         self._pool_maintainer.state = STOPPED
         self._results_fetcher.state = STOPPED
-        self._task_scheduler.join()
         self._pool_maintainer.join()
-        self._results_fetcher.join()
         for w in self._pool:
             w.stop()
 
@@ -593,7 +597,9 @@ class ProcessPool(object):
             raise RuntimeError('The Pool is still running')
         # if timeout is set join workers until its value
         while counter < timeout and self._pool:
-            counter += len(self._pool) / 10.0
+            counter += (len(self._pool) + 2) / 10.0
+            self._task_scheduler.join(0.1)
+            self._results_fetcher.join(0.1)
             expired = [w for w in self._pool if w.join(0.1) is None
                        and not w.is_alive()]
             self._pool = [w for w in self._pool if w not in expired]
@@ -610,6 +616,8 @@ class ProcessPool(object):
 
         If *callback* is a callable it will be executed once the function
         execution has completed with the returned *Task* as a parameter.
+
+        If *timeout*
 
         A *Task* object is returned.
 

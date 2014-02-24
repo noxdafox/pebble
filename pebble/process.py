@@ -184,25 +184,18 @@ class Wrapper(object):
         update_wrapper(self, function)
 
     @thread(callback=_managers_callback)
-    def _handle_job(self, worker):
+    def _handle_job(self, worker, task):
         counter = 0
-        task = None
+
         # wait for task to complete, timeout or to be cancelled
         while (self.timeout == 0 or counter < self.timeout):
-            if worker.results.poll(0.1) or worker.current.cancelled:
+            if worker.results.poll(0.1) or task.cancelled:
                 break
             else:
                 counter += 0.1
         # get results if ready, otherwise set TimeoutError or TaskCancelled
-        try:
-            task, results = worker.task_complete(0)
-            task._set(results)
-        except TimeoutError:
-            worker.stop()
-            task = worker.current
-            task._set(worker.current.cancelled
-                      and TaskCancelled('Task has been cancelled')
-                      or TimeoutError('Task timeout'))
+        if worker.task_valid(time()) is None:
+            worker.task_complete()
         # run tasks callback
         if task._callback is not None:
             try:
@@ -219,9 +212,8 @@ class Wrapper(object):
         w = Worker(1, self._function, None, None)
         w.start()
         w.schedule_task(t)
-        w.tasks.reader.close()
-        w.results.writer.close()
-        self._handle_job(self, w)
+        w.finalize()
+        self._handle_job(self, w, t)
 
         return t
 
@@ -318,15 +310,13 @@ class Worker(Process):
 
         return task
 
-    def task_complete(self, timeout):
+    def task_complete(self):
         """Waits for the next task to be completed and sets the task.
         Blocks until any result is ready or *timeout* expires.
 
         Raises TimeoutError if *timeout* expired.
 
         """
-        if not self.result_channel.poll(timeout):
-            raise TimeoutError('Still running')
         task = None
         try:
             task = self.queue.popleft()
@@ -526,7 +516,7 @@ class ResultsFetcher(Thread):
             workers = [w for w in self.pool[:] if not w.expired]
             tasks = [w.task_valid(timestamp) for w in workers]
             ready = self.results(workers, 0.6)
-            tasks.extend([w.task_complete(0) for w in ready])
+            tasks.extend([w.task_complete() for w in ready])
             self.finalize_tasks([t for t in tasks if t is not None])
 
 

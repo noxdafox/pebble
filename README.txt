@@ -117,5 +117,4 @@ A roadmap::
 
  * pools of workers::
 
-   - ProcessPool
    - @process_pool

@@ -33,6 +33,7 @@ from .pebble import TimeoutError, TaskCancelled
 STOPPED = 0
 RUNNING = 1
 CLOSING = 2
+CREATED = 3
 
 
 def thread(*args, **kwargs):
@@ -196,7 +197,7 @@ class ThreadPool(object):
         self._workers = workers
         self._limit = task_limit
         self._pool = []
-        self._state = RUNNING
+        self._state = CREATED
         self.initializer = initializer
         self.initargs = initargs
 
@@ -253,7 +254,9 @@ class ThreadPool(object):
             raise RuntimeError('The Pool is still running')
         # if timeout is set join workers until its value
         while counter < timeout and self._pool:
-            counter += len(self._pool) / 10.0
+            counter += (len(self._pool) + 1) / 10.0
+            if self._pool_maintainer.is_alive():
+                self._pool_maintainer.join(0.1)
             expired = [w for w in self._pool if w.join(0.1) is None
                        and not w.is_alive()]
             self._pool = [w for w in self._pool if w not in expired]
@@ -274,12 +277,13 @@ class ThreadPool(object):
         A *Task* object is returned.
 
         """
-        if self._state != RUNNING:
+        if self._state == CREATED:
+            self._pool_maintainer.start()
+            self._state = RUNNING
+        elif self._state != RUNNING:
             raise RuntimeError('The Pool is not running')
         if not isinstance(function, Callable):
             raise ValueError('function must be callable')
-        if not self._pool_maintainer.is_alive():
-            self._pool_maintainer.start()
         task = Task(next(self._counter), callback)
         self._queue.put((function, task, args, kwargs))
 

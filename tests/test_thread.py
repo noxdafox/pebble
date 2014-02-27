@@ -321,6 +321,7 @@ class TestThreadPool(unittest.TestCase):
     def test_thread_pool_join_running(self):
         """RuntimeError is raised if join() is called on a running pool"""
         tp = ThreadPool()
+        tp.schedule(jp, args=(1, ))
         self.assertRaises(RuntimeError, tp.join, jp)
         tp.stop()
         tp.join()
@@ -351,6 +352,7 @@ class TestThreadPool(unittest.TestCase):
     def test_thread_pool_active(self):
         """Active is True if pool is running."""
         with ThreadPool(initializer=initializer, initargs=(1, )) as tp:
+            tp.schedule(jp, args=(1, ))
             self.assertTrue(tp.active)
 
     def test_thread_pool_not_active(self):

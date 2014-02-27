@@ -108,38 +108,6 @@ def job_unserializeable_error():
     raise UnserializeableError()
 
 
-# @process_pool
-# def job_pool_single(argument, keyword_argument=0):
-#     return argument + keyword_argument
-
-
-# @process_pool(workers=2, callback=callback)
-# def job_pool(argument, keyword_argument=0):
-#     time.sleep(0.01)
-#     return argument + keyword_argument, getpid()
-
-
-# @process_pool(workers=2, queue=Queue, queueargs=(5, ))
-# def job_pool_queue(argument, keyword_argument=0):
-#     return argument + keyword_argument, getpid()
-
-
-# @process_pool(workers=2)
-# def job_pool_dyn_queue(argument, keyword_argument=0):
-#     time.sleep(1)
-#     return argument + keyword_argument, getpid()
-
-
-# @process_pool(workers=2, initializer=initializer, initargs=(1, ))
-# def job_pool_init(argument, keyword_argument=0):
-#     return argument + keyword_argument + _initiarg
-
-
-# @process_pool(workers=2, initializer=initializer_error, initargs=(1, ))
-# def job_pool_init_error(argument, keyword_argument=0):
-#     return argument + keyword_argument + _initiarg
-
-
 class TestProcessDecorator(unittest.TestCase):
     def setUp(self):
         global _results
@@ -476,91 +444,6 @@ class TestProcessPool(unittest.TestCase):
         tp.stop()
         tp.join()
         self.assertFalse(tp.active)
-
-
-# class TestProcessPoolDecorator(unittest.TestCase):
-#     def setUp(self):
-#         global _results
-#         _results = 0
-#         self.exception = None
-#         self.callback_results = 0
-
-#     def callback(self, task):
-#         self.callback_results = task.get()
-
-#     def error_callback(self, task):
-#         try:
-#             task.get()
-#         except Exception as error:
-#             self.exception = error
-
-#     def test_process_pool_single_task(self):
-#         """Single task with no parameters."""
-#         task = job_pool_single(1, 1)
-#         self.assertEqual(task.get(), 2)
-
-#     def test_process_pool(self):
-#         """Multiple tasks are correctly handled."""
-#         tasks = []
-#         for i in range(0, 5):
-#             tasks.append(job_pool(1, 1))
-#         self.assertEqual(sum([t.get()[0] for t in tasks]), 10)
-
-#     def test_process_pool_different_processs(self):
-#         """Multiple tasks are handled by different processs."""
-#         tasks = []
-#         for i in range(0, 20):
-#             tasks.append(job_pool(1, 1))
-#         self.assertEqual(len(set([t.get()[1] for t in tasks])), 2)
-
-#     def test_process_pool_wrong_decoration(self):
-#         """Decorator raises ValueError if given wrong params."""
-#         try:
-#             @process_pool(callback, 5)
-#             def wrong(argument, keyword_argument=0):
-#                 return argument + keyword_argument
-#         except Exception as error:
-#             self.assertTrue(isinstance(error, ValueError))
-
-#     def test_process_callback_static(self):
-#         """Test static callback is executed with process pool."""
-#         job_pool(1, 1)
-#         time.sleep(0.1)
-#         self.assertEqual(2, _results[0])
-
-#     def test_process_pool_callback_dynamic(self):
-#         """Test dynamic callback is executed with process pool."""
-#         job_pool.callback = self.callback
-#         job_pool(1, 1)
-#         time.sleep(0.1)
-#         self.assertEqual(2, self.callback_results[0])
-
-#     def test_process_pool_default_queue(self):
-#         """Default queue has same pool size."""
-#         self.assertEqual(job_pool._pool._queue.maxsize, 0)
-
-#     def test_process_pool_queue(self):
-#         """Queue is correctly initialized."""
-#         self.assertEqual(job_pool_queue._pool._queue.maxsize, 5)
-
-#     def test_process_pool_queue_error(self):
-#         """Decorator raises ValueError if given wrong queue params."""
-#         try:
-#             @process_pool(queue=5)
-#             def wrong(argument, keyword_argument=0):
-#                 return argument + keyword_argument
-#         except Exception as error:
-#             self.assertTrue(isinstance(error, ValueError))
-
-#     def test_process_pool_initializer(self):
-#         """Initializer is correctly run."""
-#         task = job_pool_init(1, 1)
-#         self.assertEqual(task.get(), 3)
-
-#     def test_process_pool_initializer_error(self):
-#         """An exception in a initializer is raised by get."""
-#         task = job_pool_init_error(1, 1)
-#         self.assertRaises(Exception, task.get)
 
 
 if __name__ == "__main__":

@@ -14,90 +14,142 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
 :mod:`decorators`
 -----------------
 
-    :synopsis: Function decorators
+.. decorator:: thread(callback=None)
 
-    .. decorator:: thread(callback=None)
+   When called, the *function* will be run in a new thread, a *Task* object will be returned to the caller.
 
-       When called, the *function* will be run in a new thread, a *Task* object will be returned to the caller.
+   *callback* must be callable, if passed, it will be called once the task has ended with the *Task* object as parameter.
 
-       *callback* must be callable, if passed, it will be called once the task has ended with the *Task* object as parameter.
+.. decorator:: thread_pool(callback=None, workers=1, worker_task_limit=0, initializer=None, initargs=(), queue=None, queueargs=())
 
-    .. decorator:: thread_pool(callback=None, workers=1, worker_task_limit=0, initializer=None, initargs=(), queue=None, queueargs=())
+   When called, the *function* will be run in a worker thread, a *Task* object will be returned to the caller; if all workers are busy the subsequent calls will be queued into an internal Queue.
 
-       When called, the *function* will be run in a worker thread, a *Task* object will be returned to the caller; if all workers are busy the subsequent calls will be queued into an internal Queue.
+   *callback* must be callable, if passed, it will be called once the task has ended with the *Task* object as parameter.
+   *workers* is an integer representing the amount of desired thread workers managed by the pool. If *worker_task_limit* is a number greater than zero each worker will be restarted after performing an equal amount of tasks.
+   *initializer* must be callable, if passed, it will be called every time a worker is started, receiving *initargs* as arguments.
+   *queue* represents a Class which, if passed, will be constructed with *queueargs* as parameters and used internally as a task queue. The *queue* object resulting from its construction must expose same functionalities of Python standard *Queue* object, especially for what concerns the *put()*, *get()* and *join()* methods.
 
-       *callback* must be callable, if passed, it will be called once the task has ended with the *Task* object as parameter.
-       *workers* is an integer representing the amount of desired thread workers managed by the pool. If *worker_task_limit* is a number greater than zero each worker will be restarted after performing an equal amount of tasks.
-       *initializer* must be callable, if passed, it will be called every time a worker is started, receiving *initargs* as arguments.
-       *queue* represents a Class which, if passed, will be constructed with *queueargs* as parameters and used internally as a task queue. The *queue* object resulting from its construction must expose same functionalities of Python standard *Queue* object, especially for what concerns the *put()*, *get()* and *join()* methods.
+   .. note::
 
-       .. note::
+      The *thread_pool* decorator is working as a simple decorator (turns a function into a ThreadPool): no thread is started at decoration time but when the decorated function is actually called.
 
-          The *thread_pool* decorator is working as a simple decorator (turns a function into a ThreadPool): no thread is started at decoration time but when the decorated function is actually called.
+.. decorator:: process(callback=None, timeout=None)
 
-    .. decorator:: process(callback=None, timeout=None)
+   When called, the *function* will be run in a new process, a *Task* object will be returned to the caller.
 
-       When called, the *function* will be run in a new process, a *Task* object will be returned to the caller.
+   Values returned by the decorated *function* will be sent back to the caller through a *Pipe*, therefore they must be serializable into a *Pickle* object.
 
-       Values returned by the decorated *function* will be sent back to the caller through a *Pipe*, therefore they must be serializable into a *Pickle* object.
+   *callback* must be callable, if passed, it will be called once the task has ended with the *Task* object as parameter.
+   A *timeout* value greater than 0 will terminate the running process if it has not yet finished once the *timeout* expires; any *Task.get()* call will raise a TimeoutError, callbacks will still be executed.
 
-       *callback* must be callable, if passed, it will be called once the task has ended with the *Task* object as parameter.
-       A *timeout* value greater than 0 will terminate the running process if it has not yet finished once the *timeout* expires; any *Task.get()* call will raise a TimeoutError, callbacks will still be executed.
+.. decorator:: synchronized(lock)
 
-    .. decorator:: synchronized(lock)
+   A synchronized *function* will be run exclusively accordingly to its *lock* type. If a Thread or Process is executing a synchronized function, all the other Threads or Processes calling the same *function* will be blocked until the first caller has finished its execution.
 
-       A synchronized *function* will be run exclusively accordingly to its *lock* type. If a Thread or Process is executing a synchronized function, all the other Threads or Processes calling the same *function* will be blocked until the first caller has finished its execution.
+   The *synchronized* decorator accepts all the synchronizing objects exposed by the Python standard *threading* and *multiprocessing* libraries.
 
-       The *synchronized* decorator accepts all the synchronizing objects exposed by the Python standard *threading* and *multiprocessing* libraries.
+:mod:`Pools`
+-----------------
+
+.. class:: pebble.thread.ThreadPool(workers=1, task_limit=0, queue=None, queueargs=None, initializer=None, initargs=None)
+
+   A ThreadPool allows to schedule jobs into a Pool of Threads which will perform them asynchronously.
+   Thread pools work as well as *context managers*.
+
+   *workers* is an integer representing the amount of desired thread workers managed by the pool. If *worker_task_limit* is a number greater than zero each worker will be restarted after performing an equal amount of tasks.
+   *initializer* must be callable, if passed, it will be called every time a worker is started, receiving *initargs* as arguments.
+   *queue* represents a Class which, if passed, will be constructed with *queueargs* as parameters and used internally as a task queue. The *queue* object resulting from its construction must expose same functionalities of Python standard *Queue* object, especially for what concerns the *put()*, *get()* and *join()* methods.
+
+   .. data:: active
+
+      True if the Pool is running, false otherwise.
+
+   .. data:: initializer
+
+      If re-assigned, the new initializer will be run only for re-spawned workers; already running workers will still be affected by the old initializer.
+
+   .. data:: initargs
+
+      If re-assigned, the new initargs will be taken into use only for re-spawned workers; old workers will still be affected by the old ones.
+
+   .. function:: schedule(function, args=(), kwargs={}, callback=None)
+
+      Schedule a job within the Pool.
+
+      *function* is the function which is about to be scheduled.
+      *args* and *kwargs* will be passed to the function respectively as its arguments and keyword arguments.
+      *callback* must be callable, if passed, it will be called once the task has ended with the *Task* object as parameter.
+
+   .. function:: close()
+
+      No more job will be allowed into the Pool, queued jobs will be consumed.
+      To ensure all the jobs are performed call *ThreadPool.join()* just after closing the Pool.
+
+   .. function:: stop()
+
+      The ongoing jobs will be performed, all the enqueued ones dropped; this is a fast way to terminate the Pool.
+      To ensure the Pool to be released call *ThreadPool.join()* after stopping the Pool.
+
+   .. function:: join(timeout=0)
+
+      Waits for all workers to exit, must not be called before calling either *stop()* or *close()*.
+      If *timeout* is greater than 0 and some worker is still running after it expired a TimeoutError will be raised.
 
 
-    :synopsis: Pools
+.. class:: pebble.thread.ProcessPool(workers=1, task_limit=0, queue=None, queueargs=None, initializer=None, initargs=None)
 
-    .. class:: pebble.thread.ThreadPool(workers=1, task_limit=0, queue=None, queueargs=None, initializer=None, initargs=None)
+   A ProcessPool allows to schedule jobs into a Pool of Processes which will perform them concurrently.
+   Process pools work as well as *context managers*.
 
-       A ThreadPool allows to schedule jobs into a Pool of Threads which will perform them asynchronously.
-       Thread pools work as well as *context managers*.
+   *workers* is an integer representing the amount of desired process workers managed by the pool. If *worker_task_limit* is a number greater than zero each worker will be restarted after performing an equal amount of tasks.
+   *initializer* must be callable, if passed, it will be called every time a worker is started, receiving *initargs* as arguments.
+   *queue* represents a Class which, if passed, will be constructed with *queueargs* as parameters and used internally as a task queue. The *queue* object resulting from its construction must expose same functionalities of Python standard *Queue* object, especially for what concerns the *put()*, *get()* and *join()* methods.
 
-       *workers* is an integer representing the amount of desired thread workers managed by the pool. If *worker_task_limit* is a number greater than zero each worker will be restarted after performing an equal amount of tasks.
-       *initializer* must be callable, if passed, it will be called every time a worker is started, receiving *initargs* as arguments.
-       *queue* represents a Class which, if passed, will be constructed with *queueargs* as parameters and used internally as a task queue. The *queue* object resulting from its construction must expose same functionalities of Python standard *Queue* object, especially for what concerns the *put()*, *get()* and *join()* methods.
+   .. data:: active
 
-       .. data:: initializer
+      True if the Pool is running, false otherwise.
 
-          If re-assigned, the new initializer will be run only for re-spawned workers; already running workers will still be affected by the old initializer.
+   .. data:: initializer
 
-       .. data:: initargs
+      If re-assigned, the new initializer will be run only for re-spawned workers; already running workers will still be affected by the old initializer.
 
-          If re-assigned, the new initargs will be taken into use only for re-spawned workers; old workers will still be affected by the old ones.
+   .. data:: initargs
 
-       .. function:: schedule(function, args=(), kwargs={}, callback=None)
+      If re-assigned, the new initargs will be taken into use only for re-spawned workers; old workers will still be affected by the old ones.
 
-          Schedule a job within the Pool.
+   .. function:: schedule(function, args=(), kwargs={}, callback=None, timeout=0)
 
-          *function* is the function which is about to be scheduled.
-          *args* and *kwargs* will be passed to the function respectively as its arguments and keyword arguments.
-          *callback* must be callable, if passed, it will be called once the task has ended with the *Task* object as parameter.
+      Schedule a job within the Pool.
 
-       .. function:: close()
+      *function* is the function which is about to be scheduled.
+      *args* and *kwargs* will be passed to the function respectively as its arguments and keyword arguments.
+      *callback* must be callable, if passed, it will be called once the task has ended with the *Task* object as parameter.
+      *timeout* is an integer, if greater than zero, once expired will force the timed out task to be interrupted and the worker will be restarted; *Task.get()* will raise *TimeoutError*, callbacks will be executed.
 
-          No more job will be allowed into the Pool, queued jobs will be consumed.
-          To ensure all the jobs are performed call *ThreadPool.join()* just after closing the Pool.
+   .. function:: close()
 
-       .. function:: stop()
+      No more job will be allowed into the Pool, queued jobs will be consumed.
+      To ensure all the jobs are performed call *ThreadPool.join()* just after closing the Pool.
 
-          The ongoing jobs will be performed, all the enqueued ones dropped; this is a fast way to terminate the Pool.
-          To ensure the Pool to be released call *ThreadPool.join()* after stopping the Pool.
+   .. function:: stop()
 
-       .. function:: join(timeout=0)
+      The ongoing jobs will be performed, all the enqueued ones dropped; this is a fast way to terminate the Pool.
+      To ensure the Pool to be released call *ThreadPool.join()* after stopping the Pool.
 
-          Waits for all workers to exit, must not be called before calling either *stop()* or *close()*.
-          If *timeout* is greater than 0 and some worker is still running after it expired a TimeoutError will be raised.
+   .. function:: kill()
+
+      All workers will be killed forcing the pool to terminate.
+      To ensure the Pool to be released call *ThreadPool.join()* after killing the Pool.
+
+   .. function:: join(timeout=0)
+
+      Waits for all workers to exit, must not be called before calling either *stop()* or *close()*.
+      If *timeout* is greater than 0 and some worker is still running after it expired a TimeoutError will be raised.
 
 
 :mod:`pebble`
 -------------
 
-    :synopsis: Task and Exceptions
 
     .. exception:: TimeoutError
 

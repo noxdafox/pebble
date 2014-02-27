@@ -47,15 +47,6 @@ CLOSING = 2
 CREATED = 3
 
 
-def _managers_callback(task):
-    """Callback for Pool thread managers."""
-    try:
-        task.get()
-    except Exception as error:
-        print(error)
-        print(error.traceback)
-
-
 def process(*args, **kwargs):
     """Turns a *function* into a Process and runs its logic within.
 
@@ -90,10 +81,10 @@ def process(*args, **kwargs):
 #     """
 #     def wrapper(function):
 #         return PoolWrapper(function, workers, task_limit, queue, queue_args,
-#                            callback, initializer, initargs)
+#                            callback, initializer, initargs, timeout)
 
 #     if len(args) == 1 and not len(kwargs) and isinstance(args[0], Callable):
-#         return PoolWrapper(args[0], 1, 0, None, None, None, None, None)
+#         return PoolWrapper(args[0], 1, 0, None, None, None, None, None, 0)
 #     elif not len(args) and len(kwargs):
 #         queue = kwargs.get('queue')
 #         queue_args = kwargs.get('queueargs')
@@ -102,6 +93,7 @@ def process(*args, **kwargs):
 #         initargs = kwargs.get('initargs')
 #         initializer = kwargs.get('initializer')
 #         task_limit = kwargs.get('worker_task_limit', 0)
+#         timeout = kwargs.get('timeout', 0)
 
 #         return wrapper
 #     else:
@@ -183,7 +175,7 @@ class Wrapper(object):
         self.callback = callback
         update_wrapper(self, function)
 
-    @thread(callback=_managers_callback)
+    @thread
     def _handle_job(self, worker, task):
         counter = 0
 
@@ -269,13 +261,22 @@ class Worker(Process):
         if not self.result_channel.writer.closed:
             self.result_channel.writer.close()
 
-    def stop(self):
+    def close(self):
         self.result_channel.reader.close()
         self.task_channel.writer.close()
+
+    def stop(self):
+        self.close()
         self.terminate()
-        self.join(2)
+        self.join(1)
         if self.is_alive():
+            self.kill()
+
+    def kill(self):
+        try:
             os.kill(self.pid, SIGKILL)
+        except:  # process already dead
+            pass
 
     def schedule_task(self, task):
         """Sends a *Task* to the worker."""
@@ -323,8 +324,9 @@ class Worker(Process):
         except IndexError:  # process expired
             pass
         try:
+            results = self.result_channel.receive()
             if task:
-                task._set(self.result_channel.receive())
+                task._set(results)
             if len(self.queue) > 0:
                 self.queue[0]._timestamp = time()
         except EOFError:  # process expired
@@ -558,21 +560,35 @@ class ProcessPool(object):
     def active(self):
         return self._state == RUNNING and True or False
 
+    def close(self):
+        """Closes the pool waiting for all tasks to be completed."""
+        self._state = CLOSING
+        self._queue.join()
+        self.stop()
+
     def stop(self):
         """Stops the pool without performing any pending task."""
         self._state = STOPPED
         self._task_scheduler.state = STOPPED
         self._pool_maintainer.state = STOPPED
         self._results_fetcher.state = STOPPED
-        self._pool_maintainer.join()
+        if self._pool_maintainer.is_alive():
+            self._pool_maintainer.join()
         for w in self._pool:
-            w.stop()
+            w.close()
+            w.terminate()
 
-    def close(self):
-        """Close the pool allowing all queued tasks to be performed."""
-        self._state = CLOSING
-        self._queue.join()
-        self.stop()
+    def kill(self):
+        """Kills the pool forcing all workers to terminate immediately."""
+        self._state = STOPPED
+        self._task_scheduler.state = STOPPED
+        self._pool_maintainer.state = STOPPED
+        self._results_fetcher.state = STOPPED
+        if self._pool_maintainer.is_alive():
+            self._pool_maintainer.join()
+        for w in self._pool:
+            w.close()
+            w.kill()
 
     def join(self, timeout=0):
         """Joins the pool waiting until all workers exited.
@@ -586,19 +602,20 @@ class ProcessPool(object):
         if self._state == RUNNING:
             raise RuntimeError('The Pool is still running')
         # if timeout is set join workers until its value
-        while counter < timeout and self._pool:
+        while counter < timeout and len(self._pool) > 0:
             counter += (len(self._pool) + 2) / 10.0
-            self._task_scheduler.join(0.1)
-            self._results_fetcher.join(0.1)
-            expired = [w for w in self._pool if w.join(0.1) is None
-                       and not w.is_alive()]
-            self._pool = [w for w in self._pool if w not in expired]
+            if self._task_scheduler.is_alive():
+                self._task_scheduler.join(0.1)
+            if self._results_fetcher.is_alive():
+                self._results_fetcher.join(0.1)
+            self._pool = [w for w in self._pool
+                          if w.join(0.1) is None and w.is_alive()]
         # verify timeout expired
-        if timeout > 0 and counter == timeout and self._pool:
+        if timeout > 0 and counter >= timeout and self._pool:
             raise TimeoutError('Workers are still running')
         # timeout not set
-        self.pool = [w for w in self._pool if w.join() is None
-                     and w.is_alive()]
+        self._pool = [w for w in self._pool if w.join() is None
+                      and w.is_alive()]
 
     def schedule(self, function, args=(), kwargs={}, callback=None, timeout=0):
         """Schedules *function* into the Pool, passing *args* and *kwargs*
@@ -607,7 +624,8 @@ class ProcessPool(object):
         If *callback* is a callable it will be executed once the function
         execution has completed with the returned *Task* as a parameter.
 
-        If *timeout*
+        *timeout* is an integer, if expires the task will be terminated
+        and *Task.get()* will raise *TimeoutError*.
 
         A *Task* object is returned.
 
@@ -622,8 +640,27 @@ class ProcessPool(object):
             raise RuntimeError('The Pool is not running')
         if not isinstance(function, Callable):
             raise ValueError('function must be callable')
+        if not isinstance(timeout, int):
+            raise ValueError('timeout must be integer')
         task = Task(next(self._counter), function, args, kwargs,
                     callback, timeout)
         self._queue.put(task)
 
         return task
+
+
+# class PoolWrapper(object):
+#     """Used by *process_pool* decorator."""
+#     def __init__(self, function, workers, task_limit, queue, queueargs,
+#                  callback, initializer, initargs, timeout):
+#         self._function = function
+#         self._pool = ProcessPool(workers, task_limit, queue, queueargs,
+#                                  initializer, initargs)
+#         self.callback = callback
+#         self.timeout = timeout
+#         update_wrapper(self, function)
+
+#     def __call__(self, *args, **kwargs):
+#         return self._pool.schedule(self._function, args=args, kwargs=kwargs,
+#                                    callback=self.callback,
+#                                    timeout=self.timeout)

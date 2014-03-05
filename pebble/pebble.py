@@ -16,7 +16,26 @@
 """Container for generic objects."""
 
 
+from uuid import uuid4
 from functools import wraps
+from threading import Condition, Lock
+
+
+def synchronized(lock):
+    """Synchronization decorator, locks the execution on given *lock*.
+
+    Works with both threading and multiprocessing Lock.
+
+    """
+    def wrap(function):
+        @wraps(function)
+        def wrapper(*args, **kwargs):
+            with lock:
+                return function(*args, **kwargs)
+
+        return wrapper
+
+    return wrap
 
 
 class PebbleError(Exception):
@@ -48,18 +67,101 @@ class TaskCancelled(PebbleError):
         return str(self.msg)
 
 
-def synchronized(lock):
-    """Synchronization decorator, locks the execution on given *lock*.
+class Task(object):
+    """Handler to the ongoing task."""
+    def __init__(self, task_nr, function, args, kwargs, callback, timeout):
+        self.id = uuid4()
+        self.timeout = timeout
+        self._function = function
+        self._args = args
+        self._kwargs = kwargs
+        self._number = task_nr
+        self._ready = False
+        self._cancelled = False
+        self._results = None
+        self._task_ready = Condition(Lock())
+        self._timestamp = 0
+        self._callback = callback
 
-    Works with both threading and multiprocessing Lock.
+    def __str__(self):
+        return self.__repr__()
 
-    """
-    def wrap(function):
-        @wraps(function)
-        def wrapper(*args, **kwargs):
-            with lock:
-                return function(*args, **kwargs)
+    def __repr__(self):
+        return "%s (Task-%d, %s)" % (self.__class__, self.number, self.id)
 
-        return wrapper
+    @property
+    def number(self):
+        return self._number
 
-    return wrap
+    @property
+    def ready(self):
+        return self._ready
+
+    @property
+    def cancelled(self):
+        return self._cancelled
+
+    @property
+    def started(self):
+        return self._timestamp > 0 and True or False
+
+    @property
+    def success(self):
+        return (self._ready and not
+                isinstance(self._results, BaseException) or False)
+
+    def wait(self, timeout=None):
+        """Waits until results are ready.
+
+        If *timeout* is set the call will block until the timeout expires.
+
+        Returns *True* if results are ready, *False* if timeout expired.
+
+        """
+        with self._task_ready:
+            if not self._ready:
+                self._task_ready.wait(timeout)
+            return self._ready
+
+    def get(self, timeout=None, cancel=False):
+        """Retrieves the produced results, blocks until results are ready.
+
+        If the executed code raised an error it will be re-raised.
+
+        If *timeout* is set the call will block until the timeout expires
+        raising *TimeoutError" if results are not yet available.
+        If *cancel* is True while *timeout* is set *Task* will be cancelled
+        once the timeout expires.
+
+        """
+        with self._task_ready:
+            if not self._ready:  # block if not ready
+                self._task_ready.wait(timeout)
+            if self._ready:  # return results
+                if (isinstance(self._results, BaseException)):
+                    raise self._results
+                else:
+                    return self._results
+            else:  # get timeout
+                if cancel:
+                    self._cancel()
+                raise TimeoutError("Task is still running")
+
+    def cancel(self):
+        """Cancels the Task."""
+        with self._task_ready:
+            self._cancel()
+
+    def _cancel(self):
+        """Cancels the Task."""
+        self._results = TaskCancelled("Task cancelled")
+        self._ready = self._cancelled = True
+        self._task_ready.notify_all()
+
+    def _set(self, results):
+        """Sets the results within the task."""
+        with self._task_ready:
+            if not self._ready:
+                self._ready = True
+                self._results = results
+                self._task_ready.notify_all()

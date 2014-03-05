@@ -155,66 +155,6 @@ class TestThreadDecorators(unittest.TestCase):
         self.assertEqual('BOOM!', str(self.exception))
 
 
-class TestThreadTask(unittest.TestCase):
-    def setUp(self):
-        pass
-
-    def test_task_get(self):
-        """Values are correctly returned from get."""
-        task = job(1, 1)
-        self.assertEqual(task.get(), 2)
-
-    def test_task_get_error(self):
-        """An exception in a task is raised by get."""
-        task = job_error(1, 1)
-        self.assertRaises(Exception, task.get)
-
-    def test_task_timeout(self):
-        """TimeoutError is raised if task has not yet finished."""
-        task = job_long()
-        self.assertRaises(TimeoutError, task.get, 0)
-
-    def test_task_no_timeout(self):
-        """Test timeout get parameter works."""
-        task = job_long()
-        self.assertEqual(task.get(2), 1)
-
-    def test_task_number(self):
-        """Task number are correctly assigned."""
-        for i in range(0, 5):
-            task = job_count(1, 1)
-        self.assertEqual(task.number, 4)
-
-    def test_task_ready(self):
-        """Ready parameter is true if task is done."""
-        task = job(1, 1)
-        task.get()
-        self.assertTrue(task.ready)
-
-    def test_task_not_ready(self):
-        """Ready parameter is false if task is not done."""
-        task = job_long()
-        self.assertFalse(task.ready)
-
-    def test_task_cancel(self):
-        """Task is cancelled."""
-        task = job_long()
-        task.cancel()
-        self.assertRaises(TaskCancelled, task.get)
-
-    def test_task_cancel_error(self):
-        """Cannot cancel a completed task."""
-        task = job(1, 1)
-        task.get()
-        self.assertRaises(RuntimeError, task.cancel)
-
-    def test_task_cancelled(self):
-        """Cancelled is true if task is cancelled."""
-        task = job_long()
-        task.cancel()
-        self.assertTrue(task.cancelled)
-
-
 class TestThreadPool(unittest.TestCase):
     def setUp(self):
         global _results

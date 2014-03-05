@@ -15,11 +15,10 @@
 
 
 from time import sleep
-from uuid import uuid4
 from inspect import isclass
 from traceback import format_exc
 from itertools import count
-from threading import Thread, Event
+from threading import Thread
 from collections import Callable
 from functools import update_wrapper
 try:  # Python 2
@@ -27,7 +26,7 @@ try:  # Python 2
 except:  # Python 3
     from queue import Queue
 
-from .pebble import TimeoutError, TaskCancelled
+from .pebble import Task, TimeoutError
 
 
 STOPPED = 0
@@ -123,62 +122,6 @@ class Worker(Thread):
                 task._set(error is not None and error or results)
                 error = None
                 results = None
-
-
-class Task(object):
-    """Handler to the ongoing task."""
-    def __init__(self, task_nr, callback):
-        self.id = uuid4()
-        self.number = task_nr
-        self._ready = False
-        self._cancelled = False
-        self._results = None
-        self._event = Event()
-        self._callback = callback
-
-    def __str__(self):
-        return self.__repr__()
-
-    def __repr__(self):
-        return "%s (Task-%d, %s)" % (self.__class__, self.number, self.id)
-
-    @property
-    def ready(self):
-        return self._ready
-
-    @property
-    def cancelled(self):
-        return self._cancelled
-
-    def get(self, timeout=None):
-        """Retrieves the produced results.
-
-        If the executed code raised an error it will be re-raised.
-
-        """
-        self._event.wait(timeout)
-        if self._ready:
-            if (isinstance(self._results, BaseException)):
-                raise self._results
-            else:
-                return self._results
-        else:
-            raise TimeoutError("Task is still running")
-
-    def cancel(self):
-        """Cancels the Task dropping the results."""
-        if not self._ready:
-            self._cancelled = True
-            self._set(TaskCancelled("Task has been cancelled"))
-        else:
-            raise RuntimeError('A completed task cannot be cancelled')
-
-    def _set(self, results):
-        self._results = results
-        self._ready = True
-        self._event.set()
-        if self._callback is not None and not self._cancelled:
-            self._callback(self)
 
 
 class ThreadPool(object):

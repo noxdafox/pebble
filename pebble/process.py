@@ -17,13 +17,12 @@
 import os
 
 from sys import exit
-from uuid import uuid4
 from select import select
 from itertools import count
 from inspect import isclass
 from time import time, sleep
 from traceback import format_exc, print_exc
-from threading import Thread, Event
+from threading import Thread
 from collections import Callable, deque
 from functools import update_wrapper
 from multiprocessing import Process, Pipe
@@ -38,7 +37,7 @@ except:  # Python 3
     from pickle import PicklingError
 
 from .thread import thread
-from .pebble import TimeoutError, TaskCancelled
+from .pebble import TimeoutError, Task
 
 
 STOPPED = 0
@@ -68,73 +67,6 @@ def process(*args, **kwargs):
         return wrapper
     else:
         raise ValueError("Decorator accepts only keyword arguments.")
-
-
-class Task(object):
-    """Handler to the ongoing task."""
-    def __init__(self, task_nr, function, args, kwargs, callback, timeout):
-        self.id = uuid4()
-        self.timeout = timeout
-        self._function = function
-        self._args = args
-        self._kwargs = kwargs
-        self._number = task_nr
-        self._ready = False
-        self._cancelled = False
-        self._results = None
-        self._event = Event()
-        self._timestamp = 0
-        self._callback = callback
-
-    def __str__(self):
-        return self.__repr__()
-
-    def __repr__(self):
-        return "%s (Task-%d, %s)" % (self.__class__, self.number, self.id)
-
-    @property
-    def number(self):
-        return self._number
-
-    @property
-    def ready(self):
-        return self._ready
-
-    @property
-    def cancelled(self):
-        return self._cancelled
-
-    @property
-    def started(self):
-        return self._timestamp > 0 and True or False
-
-    def get(self, timeout=None):
-        """Retrieves the produced results.
-
-        If the executed code raised an error it will be re-raised.
-
-        """
-        self._event.wait(timeout)
-        if self._ready:
-            if (isinstance(self._results, BaseException)):
-                raise self._results
-            else:
-                return self._results
-        else:
-            raise TimeoutError("Task is still running")
-
-    def cancel(self):
-        """Cancels the Task terminating the running process
-        and dropping the results."""
-        if not self._ready:
-            self._cancelled = True
-        else:
-            raise RuntimeError('A completed task cannot be cancelled')
-
-    def _set(self, results):
-        self._results = results
-        self._ready = True
-        self._event.set()
 
 
 class Wrapper(object):
@@ -274,7 +206,6 @@ class Worker(Process):
                 self.stop()
             elif curr.cancelled:
                 task = self.queue.popleft()
-                task._set(TaskCancelled("Task cancelled"))
                 self.stop()
         except IndexError:
             pass

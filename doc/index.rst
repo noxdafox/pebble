@@ -180,17 +180,31 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
 
           A boolean, False if *Task* is still ongoing, True if results are ready.
 
-       .. function:: get([timeout])
+       .. data:: successful
+
+          A boolean, False if *Task* is still ongoing or an exception occurred whithin, True if results were successfully delivered.
+
+       .. data:: started
+
+          A boolean, True if *Task* has been started, False if it is still in the queue.
+
+       .. function:: wait(timeout=None)
+
+          Waits until the results are not ready or until *timeout* expired, if passed.
+          Returns True if *Task* completed within the timeout period, False otherwise.
+
+       .. function:: get(timeout=None, cancel=False)
 
 	  Returns the values given back by the decorated *function*.
           If an exception has been raised within it, it will be re-raised by the *get()* method with the traceback appended as attribute.
 	  The *get()* method blocks until the thread or process has not finished.
 
-	  If *timeout* is a number greater than 0 it will block for the specified amount of seconds, raising a TimeoutError if the results are not ready yet; a value equal or smaller than 0 will force the method to return immediately.
+	  If *timeout* is a number greater than 0 it will block for the specified amount of seconds, raising a *TimeoutError* if the results are not ready yet; a value equal or smaller than 0 will force the method to return immediately.
+          If *cancel* is True the *task* will be cancelled in case of timeout; the function will raise *TimeoutError*, subsequent calls to *Task.get()* will raise *TaskCancelled*, the parameter has no effect if *timeout* has not been set.
 
        .. function:: cancel()
 
-          Cancel the ongoing *Task*, results will be dropped, *callbacks* won't be executed and any *Task.get()* blocking will raise *TaskCancelled* exception.
+          Cancels the *Task*, results will be dropped, *callbacks* will be executed and any *Task.get()* blocking will raise *TaskCancelled* exception.
           If the task is running into a process it will be terminated, as thread cannot be stopped, its results will simply be ignored but the function itself will keep running.
 
           *cancel()* should not be called on *Tasks* which logic is using shared resources as *Pipes*, *Locks* or *Files*.

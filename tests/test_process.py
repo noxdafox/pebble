@@ -385,6 +385,20 @@ class TestProcessPool(unittest.TestCase):
         tp.join()
         self.assertFalse(tp.active)
 
+    def test_process_pool_cancel(self):
+        """ProcessPool callback gets notification if Task is cancelled."""
+        with ProcessPool() as tp:
+            task = tp.schedule(jp_very_long, args=(1, ),
+                               callback=self.error_callback)
+            task.cancel()
+        self.assertTrue(isinstance(self.exception, TaskCancelled))
+
+    def test_process_pool_callback_error(self):
+        """ProcessPool error within callback is safely handled."""
+        with ProcessPool() as tp:
+            tp.schedule(jp_error, args=(1, ), callback=self.callback)
+            self.assertTrue(tp.active)
+
 
 if __name__ == "__main__":
     unittest.main()

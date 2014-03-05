@@ -14,9 +14,9 @@
 # along with Pebble.  If not, see <http://www.gnu.org/licenses/>.
 
 
-from time import sleep
+from time import time, sleep
 from inspect import isclass
-from traceback import format_exc
+from traceback import format_exc, print_exc
 from itertools import count
 from threading import Thread
 from collections import Callable
@@ -108,18 +108,28 @@ class Worker(Thread):
                 error.traceback = format_exc()
 
         while self.limit == 0 or next(counter) < self.limit:
-            function, task, args, kwargs = self.queue.get()
-            if function is None:
+            task = self.queue.get()
+            if task is None:  # worker terminated
                 self.queue.task_done()
                 return
+            function = task._function
+            args = task._args
+            kwargs = task._kwargs
             try:
-                results = function(*args, **kwargs)
+                if not task._cancelled:
+                    task._timestamp = time()
+                    results = function(*args, **kwargs)
             except Exception as err:
                 error = err
                 error.traceback = format_exc()
             finally:
-                self.queue.task_done()
                 task._set(error is not None and error or results)
+                if task._callback is not None:
+                    try:
+                        task._callback(task)
+                    except:
+                        print_exc()
+                self.queue.task_done()
                 error = None
                 results = None
 
@@ -172,7 +182,7 @@ class ThreadPool(object):
         for w in self._pool:
             w.limit = - 1
         for w in self._pool:
-            self._queue.put((None, None, None, None))
+            self._queue.put(None)
 
     def close(self):
         """Close the pool allowing all queued tasks to be performed."""
@@ -182,7 +192,7 @@ class ThreadPool(object):
         for w in self._pool:
             w.limit = - 1
         for w in self._pool:
-            self._queue.put((None, None, None, None))
+            self._queue.put(None)
 
     def join(self, timeout=0):
         """Joins the pool waiting until all workers exited.
@@ -227,8 +237,8 @@ class ThreadPool(object):
             raise RuntimeError('The Pool is not running')
         if not isinstance(function, Callable):
             raise ValueError('function must be callable')
-        task = Task(next(self._counter), callback)
-        self._queue.put((function, task, args, kwargs))
+        task = Task(next(self._counter), function, args, kwargs, callback, 0)
+        self._queue.put(task)
 
         return task
 
@@ -242,8 +252,9 @@ class ThreadWrapper(object):
         update_wrapper(self, function)
 
     def __call__(self, *args, **kwargs):
-        t = Task(next(self._counter), self.callback)
-        q = DummyQueue((self._function, t, args, kwargs))
+        t = Task(next(self._counter),
+                 self._function, args, kwargs, self.callback, 0)
+        q = DummyQueue(t)
         w = Worker(q, 1, None, None)
         w.start()
         return t

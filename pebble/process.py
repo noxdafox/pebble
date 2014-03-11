@@ -15,8 +15,8 @@
 
 
 import os
+import sys
 
-from sys import exit
 from select import select
 from itertools import count
 from inspect import isclass
@@ -26,7 +26,10 @@ from threading import Thread
 from collections import Callable, deque
 from functools import update_wrapper
 from multiprocessing import Process, Pipe
-from signal import SIG_IGN, SIGKILL, SIGINT, signal
+if sys.platform == "win32":
+    from signal import SIG_IGN, SIGINT, signal
+else:
+    from signal import SIG_IGN, SIGKILL, SIGINT, signal
 try:  # Python 2
     from Queue import Queue, Empty
 except:  # Python 3
@@ -69,6 +72,34 @@ def process(*args, **kwargs):
         raise ValueError("Decorator accepts only keyword arguments.")
 
 
+def trampoline(function, *args, **kwargs):
+    func = deserialize_function(function)
+    return func(*args, **kwargs)
+
+
+def serialize_function(function):
+    try:
+        name = function.__name__
+        module = function.__module__
+        __import__(module)
+        mod = sys.modules[module]
+        getattr(mod, name)
+        return {'name': name, 'module': module}
+    except (ImportError, KeyError, AttributeError):
+        raise PicklingError(
+            "Can't pickle %r: it's not found as %s.%s" %
+            (function, module, name))
+
+
+def deserialize_function(state):
+    name = state.get('name')
+    module = state.get('module')
+    __import__(module)
+    mod = sys.modules[module]
+    decorated = getattr(mod, name)
+    return decorated._function
+
+
 class Wrapper(object):
     def __init__(self, function, timeout, callback):
         self._function = function
@@ -101,9 +132,14 @@ class Wrapper(object):
         worker.join()
 
     def __call__(self, *args, **kwargs):
-        t = Task(next(self._counter), None, args, kwargs,
+        # serialize decorated function
+        function = serialize_function(self._function)
+        # attach decorated function to the arguments
+        args = list(args)
+        args.insert(0, function)
+        t = Task(next(self._counter), trampoline, args, kwargs,
                  self.callback, self.timeout)
-        w = Worker(1, self._function, None, None)
+        w = Worker(1, None, None)
         w.start()
         w.schedule_task(t)
         w.finalize()
@@ -128,10 +164,9 @@ class Channel(object):
 
 
 class Worker(Process):
-    def __init__(self, limit, function, initializer, initargs):
+    def __init__(self, limit, initializer, initargs):
         Process.__init__(self)
         self.counter = count()
-        self._function = function
         self.queue = deque()  # queued tasks
         self.task_channel = Channel()
         self.result_channel = Channel()
@@ -177,7 +212,7 @@ class Worker(Process):
     def kill(self):
         try:
             os.kill(self.pid, SIGKILL)
-        except:  # process already dead
+        except:  # process already dead or Windows platform
             pass
 
     def schedule_task(self, task):
@@ -255,12 +290,11 @@ class Worker(Process):
             # get next task and execute it
             try:
                 function, args, kwargs = self.task_channel.receive()
-                function = function is not None and function or self._function
                 results = function(*args, **kwargs)
             except EOFError:  # other side closed
                 pass
             except (IOError, OSError):  # pipe was closed
-                exit(1)
+                sys.exit(1)
             except Exception as err:  # error occurred in function
                 if error is None:  # do not overwrite initializer errors
                     error = err
@@ -271,7 +305,7 @@ class Worker(Process):
                     self.result_channel.send(error is not None
                                              and error or results)
                 except (IOError, OSError, EOFError):  # pipe was closed
-                    exit(1)
+                    sys.exit(1)
                 except PicklingError as err:
                     self.result_channel.send(err)
 
@@ -279,7 +313,7 @@ class Worker(Process):
         # close all descriptors and exit
         self.task_channel.reader.close()
         self.result_channel.writer.close()
-        exit(0)
+        sys.exit(0)
 
 
 class TaskScheduler(Thread):
@@ -365,7 +399,7 @@ class PoolMaintainer(Thread):
         pool = []
 
         for _ in range(self.workers - len(self.pool)):
-            worker = Worker(self.limit, None, self.initializer, self.initargs)
+            worker = Worker(self.limit, self.initializer, self.initargs)
             worker.start()
             worker.finalize()
             pool.append(worker)  # add worker to pool

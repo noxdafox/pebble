@@ -73,11 +73,13 @@ def process(*args, **kwargs):
 
 
 def trampoline(function, *args, **kwargs):
-    func = deserialize_function(function)
+    """Trampoline function for decorators."""
+    func = load_function(function)
     return func(*args, **kwargs)
 
 
-def serialize_function(function):
+def dump_function(function):
+    """Dumps the decorated function for pickling."""
     try:
         name = function.__name__
         module = function.__module__
@@ -91,7 +93,8 @@ def serialize_function(function):
             (function, module, name))
 
 
-def deserialize_function(state):
+def load_function(state):
+    """Loads the function and extracts it from its decorator."""
     name = state.get('name')
     module = state.get('module')
     __import__(module)
@@ -109,18 +112,15 @@ class Wrapper(object):
         update_wrapper(self, function)
 
     @thread
-    def _handle_job(self, worker, task):
-        counter = 0
+    def _handle_job(self, worker):
+        task = None
 
         # wait for task to complete, timeout or to be cancelled
-        while (self.timeout == 0 or counter < self.timeout):
-            if worker.results.poll(0.1) or task.cancelled:
-                break
+        while task is None:
+            if worker.results.poll(0.2):
+                task = worker.task_complete()
             else:
-                counter += 0.1
-        # get results if ready, otherwise set TimeoutError or TaskCancelled
-        if worker.task_valid(time()) is None:
-            worker.task_complete()
+                task = worker.task_valid(time())
         # run tasks callback
         if task._callback is not None:
             try:
@@ -133,17 +133,17 @@ class Wrapper(object):
 
     def __call__(self, *args, **kwargs):
         # serialize decorated function
-        function = serialize_function(self._function)
+        function = dump_function(self._function)
         # attach decorated function to the arguments
         args = list(args)
         args.insert(0, function)
         t = Task(next(self._counter), trampoline, args, kwargs,
                  self.callback, self.timeout)
-        w = Worker(1, None, None)
+        w = Worker()
         w.start()
-        w.schedule_task(t)
         w.finalize()
-        self._handle_job(self, w, t)
+        w.schedule_task(t)
+        self._handle_job(self, w)
 
         return t
 
@@ -164,7 +164,7 @@ class Channel(object):
 
 
 class Worker(Process):
-    def __init__(self, limit, initializer, initargs):
+    def __init__(self, limit=1, initializer=None, initargs=None):
         Process.__init__(self)
         self.counter = count()
         self.queue = deque()  # queued tasks
@@ -199,10 +199,12 @@ class Worker(Process):
             self.result_channel.writer.close()
 
     def close(self):
+        """Closes the worker disabling its channels."""
         self.result_channel.reader.close()
         self.task_channel.writer.close()
 
     def stop(self):
+        """Stops the worker terminating the process."""
         self.close()
         self.terminate()
         self.join(1)
@@ -210,6 +212,7 @@ class Worker(Process):
             self.kill()
 
     def kill(self):
+        """Kills the process."""
         try:
             os.kill(self.pid, SIGKILL)
         except:  # process already dead or Windows platform
@@ -230,7 +233,8 @@ class Worker(Process):
             raise RuntimeError('Worker closed')
 
     def task_valid(self, timestamp):
-        """Check if current task is not in timeout or cancelled."""
+        """Check if current task is not in timeout or cancelled;
+        if so, stop the worker and return the task."""
         task = None
 
         try:
@@ -242,7 +246,7 @@ class Worker(Process):
             elif curr.cancelled:
                 task = self.queue.popleft()
                 self.stop()
-        except IndexError:
+        except IndexError:  # no tasks in worker queue
             pass
 
         return task
@@ -255,6 +259,7 @@ class Worker(Process):
 
         """
         task = None
+
         try:
             task = self.queue.popleft()
         except IndexError:  # process expired

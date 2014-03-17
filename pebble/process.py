@@ -149,9 +149,9 @@ class Wrapper(object):
         args.insert(0, function)
         t = Task(next(self._counter), trampoline, args, kwargs,
                  self.callback, self.timeout)
-        w = Worker(self._connection)
+        w = Worker(self._connection.address)
         w.start()
-        w.finalize()
+        w.finalize(self._connection)
         w.schedule_task(t)
         self._handle_job(self, w)
 
@@ -159,9 +159,9 @@ class Wrapper(object):
 
 
 class Worker(Process):
-    def __init__(self, connection, limit=1, initializer=None, initargs=None):
+    def __init__(self, address, limit=1, initializer=None, initargs=None):
         Process.__init__(self)
-        self.connection = connection
+        self.address = address
         self.limit = limit
         self.initializer = initializer
         self.initargs = initargs
@@ -175,9 +175,9 @@ class Worker(Process):
     def expired(self):
         return self.channel.closed
 
-    def finalize(self):
+    def finalize(self, connection):
         """Finalizes the worker, to be called after it has been started."""
-        self.channel = self.connection.accept()
+        self.channel = connection.accept()
 
     def stop(self):
         """Stops the worker terminating the process."""
@@ -257,7 +257,7 @@ class Worker(Process):
         error = None
         results = None
         signal(SIGINT, SIG_IGN)
-        self.channel = Client(self.connection.address)
+        self.channel = Client(self.address)
 
         if self.initializer is not None:  # run initializer function
             try:
@@ -378,10 +378,10 @@ class PoolMaintainer(Thread):
         pool = []
 
         for _ in range(self.workers - len(self.pool)):
-            worker = Worker(self.connection, self.limit, self.initializer,
-                            self.initargs)
+            worker = Worker(self.connection.address, self.limit,
+                            self.initializer, self.initargs)
             worker.start()
-            worker.finalize()
+            worker.finalize(self.connection)
             pool.append(worker)  # add worker to pool
 
         return pool

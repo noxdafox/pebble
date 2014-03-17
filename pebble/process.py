@@ -25,22 +25,25 @@ from traceback import format_exc, print_exc
 from threading import Thread
 from collections import Callable, deque
 from functools import update_wrapper
-from multiprocessing import Process, Pipe
-if sys.platform == "win32":
-    from signal import SIG_IGN, SIGINT, signal
-else:
-    from signal import SIG_IGN, SIGKILL, SIGINT, signal
+from multiprocessing import Process
+from multiprocessing.connection import Listener, Client
 try:  # Python 2
     from Queue import Queue, Empty
-except:  # Python 3
-    from queue import Queue, Empty
-try:  # Python 2
     from cPickle import PicklingError
 except:  # Python 3
+    from queue import Queue, Empty
     from pickle import PicklingError
 
 from .thread import thread
 from .pebble import TimeoutError, Task
+
+### platform dependent code ###
+if os.name in ('posix', 'os2'):
+    FAMILY = 'AF_UNIX'
+    from signal import SIG_IGN, SIGKILL, SIGINT, signal
+else:
+    FAMILY = 'AF_INET'
+    from signal import SIG_IGN, SIGINT, signal
 
 
 STOPPED = 0
@@ -107,9 +110,14 @@ class Wrapper(object):
     def __init__(self, function, timeout, callback):
         self._function = function
         self._counter = count()
+        self._connection = None
         self.timeout = timeout
         self.callback = callback
         update_wrapper(self, function)
+
+    def __del__(self):
+        if self._connection is not None:
+            self._connection.close()
 
     @thread
     def _handle_job(self, worker):
@@ -117,7 +125,7 @@ class Wrapper(object):
 
         # wait for task to complete, timeout or to be cancelled
         while task is None:
-            if worker.results.poll(0.2):
+            if worker.channel.poll(0.2):
                 task = worker.task_complete()
             else:
                 task = worker.task_valid(time())
@@ -132,6 +140,8 @@ class Wrapper(object):
         worker.join()
 
     def __call__(self, *args, **kwargs):
+        if self._connection is None:
+            self._connection = Listener(family=FAMILY)
         # serialize decorated function
         function = dump_function(self._function)
         # attach decorated function to the arguments
@@ -139,7 +149,7 @@ class Wrapper(object):
         args.insert(0, function)
         t = Task(next(self._counter), trampoline, args, kwargs,
                  self.callback, self.timeout)
-        w = Worker()
+        w = Worker(self._connection)
         w.start()
         w.finalize()
         w.schedule_task(t)
@@ -148,64 +158,31 @@ class Wrapper(object):
         return t
 
 
-class Channel(object):
-    """Wraps the Workers Pipes."""
-    def __init__(self):
-        self.reader, self.writer = Pipe(duplex=False)
-
-    def send(self, obj):
-        self.writer.send(obj)
-
-    def receive(self):
-        return self.reader.recv()
-
-    def poll(self, timeout):
-        return self.reader.poll(timeout)
-
-
 class Worker(Process):
-    def __init__(self, limit=1, initializer=None, initargs=None):
+    def __init__(self, connection, limit=1, initializer=None, initargs=None):
         Process.__init__(self)
-        self.counter = count()
-        self.queue = deque()  # queued tasks
-        self.task_channel = Channel()
-        self.result_channel = Channel()
+        self.connection = connection
         self.limit = limit
         self.initializer = initializer
         self.initargs = initargs
         self.daemon = True
-
-    @property
-    def tasks(self):
-        return self.task_channel.writer
-
-    @property
-    def results(self):
-        return self.result_channel.reader
-
-    @property
-    def closed(self):
-        return self.task_channel.writer.closed
+        self.counter = count()  # task counter
+        self.queue = deque()  # queued tasks
+        self.channel = None  # task/result channel
+        self.closed = False  # no more task allowed
 
     @property
     def expired(self):
-        return self.result_channel.reader.closed
+        return self.channel.closed
 
     def finalize(self):
         """Finalizes the worker, to be called after it has been started."""
-        if not self.task_channel.reader.closed:
-            self.task_channel.reader.close()
-        if not self.result_channel.writer.closed:
-            self.result_channel.writer.close()
-
-    def close(self):
-        """Closes the worker disabling its channels."""
-        self.result_channel.reader.close()
-        self.task_channel.writer.close()
+        self.channel = self.connection.accept()
 
     def stop(self):
         """Stops the worker terminating the process."""
-        self.close()
+        self.closed = True
+        self.channel.close()
         self.terminate()
         self.join(1)
         if self.is_alive():
@@ -217,20 +194,6 @@ class Worker(Process):
             os.kill(self.pid, SIGKILL)
         except:  # process already dead or Windows platform
             pass
-
-    def schedule_task(self, task):
-        """Sends a *Task* to the worker."""
-        try:
-            if len(self.queue) == 0:  # scheduled task is current one
-                task._timestamp = time()
-            self.queue.append(task)
-            self.task_channel.send((task._function, task._args, task._kwargs))
-            if self.limit > 0 and next(self.counter) >= self.limit - 1:
-                self.task_channel.writer.close()
-        except (IOError, OSError):  # worker closed
-            self.queue.popleft()
-            task._timestamp = 0
-            raise RuntimeError('Worker closed')
 
     def task_valid(self, timestamp):
         """Check if current task is not in timeout or cancelled;
@@ -251,6 +214,20 @@ class Worker(Process):
 
         return task
 
+    def schedule_task(self, task):
+        """Sends a *Task* to the worker."""
+        if len(self.queue) == 0:  # scheduled task is current one
+            task._timestamp = time()
+        self.queue.append(task)
+        try:
+            self.channel.send((task._function, task._args, task._kwargs))
+            if self.limit > 0 and next(self.counter) >= self.limit - 1:
+                self.closed = True
+        except Exception:  # worker closed
+            self.queue.popleft()
+            task._timestamp = 0
+            raise RuntimeError('Worker closed')
+
     def task_complete(self):
         """Waits for the next task to be completed and sets the task.
         Blocks until any result is ready or *timeout* expires.
@@ -265,13 +242,13 @@ class Worker(Process):
         except IndexError:  # process expired
             pass
         try:
-            results = self.result_channel.receive()
+            results = self.channel.recv()
             if task:
                 task._set(results)
             if len(self.queue) > 0:
                 self.queue[0]._timestamp = time()
-        except EOFError:  # process expired
-            self.result_channel.reader.close()
+        except (EOFError, IOError):  # process expired
+            self.channel.close()
 
         return task
 
@@ -279,12 +256,10 @@ class Worker(Process):
         """Worker process logic."""
         error = None
         results = None
-        # ignore SIGINT signal and close unused desciptors
         signal(SIGINT, SIG_IGN)
-        self.task_channel.writer.close()
-        self.result_channel.reader.close()
-        # run initializer function
-        if self.initializer is not None:
+        self.channel = Client(self.connection.address)
+
+        if self.initializer is not None:  # run initializer function
             try:
                 self.initializer(*self.initargs)
             except Exception as err:
@@ -292,9 +267,8 @@ class Worker(Process):
                 error.traceback = format_exc()
 
         while self.limit == 0 or next(self.counter) < self.limit:
-            # get next task and execute it
-            try:
-                function, args, kwargs = self.task_channel.receive()
+            try:  # get next task and execute it
+                function, args, kwargs = self.channel.recv()
                 results = function(*args, **kwargs)
             except EOFError:  # other side closed
                 pass
@@ -304,20 +278,18 @@ class Worker(Process):
                 if error is None:  # do not overwrite initializer errors
                     error = err
                     error.traceback = format_exc()
-            # send produced results or raised exception
             finally:
-                try:
-                    self.result_channel.send(error is not None
-                                             and error or results)
+                try:  # send produced results or raised exception
+                    self.channel.send(error is not None and error or results)
                 except (IOError, OSError, EOFError):  # pipe was closed
                     sys.exit(1)
                 except PicklingError as err:
-                    self.result_channel.send(err)
+                    self.channel.send(err)
 
                 error = results = None
+
         # close all descriptors and exit
-        self.task_channel.reader.close()
-        self.result_channel.writer.close()
+        self.channel.close()
         sys.exit(0)
 
 
@@ -334,10 +306,10 @@ class TaskScheduler(Thread):
     @staticmethod
     def free_workers(workers, timeout):
         """Wait for available workers."""
-        descriptors = [w.tasks for w in workers]
+        descriptors = [w.channel for w in workers]
         try:
             _, ready, _ = select([], descriptors, [], timeout)
-            return [w for w in workers if w.tasks in ready]
+            return [w for w in workers if w.channel in ready]
         except:  # worker expired or stopped
             return []
 
@@ -365,7 +337,8 @@ class TaskScheduler(Thread):
 
 class PoolMaintainer(Thread):
     """Maintains the workers within the Pool."""
-    def __init__(self, pool, rejected, workers, limit, initializer, initargs):
+    def __init__(self, pool, rejected, workers, connection,
+                 limit, initializer, initargs):
         Thread.__init__(self)
         self.daemon = True
         self.state = RUNNING
@@ -375,6 +348,7 @@ class PoolMaintainer(Thread):
         self.limit = limit
         self.initializer = initializer
         self.initargs = initargs
+        self.connection = connection
 
     @staticmethod
     def expired_workers(workers, timeout):
@@ -404,7 +378,8 @@ class PoolMaintainer(Thread):
         pool = []
 
         for _ in range(self.workers - len(self.pool)):
-            worker = Worker(self.limit, self.initializer, self.initargs)
+            worker = Worker(self.connection, self.limit, self.initializer,
+                            self.initargs)
             worker.start()
             worker.finalize()
             pool.append(worker)  # add worker to pool
@@ -436,10 +411,10 @@ class ResultsFetcher(Thread):
     @staticmethod
     def results(workers, timeout):
         """Wait for expired workers."""
-        descriptors = [w.results for w in workers]
+        descriptors = [w.channel for w in workers if not w.expired]
         try:
-            select(descriptors, [], [], timeout)
-            return [w for w in workers if w.results.poll(0)]
+            ready, _, _ = select(descriptors, [], [], timeout)
+            return [w for w in workers if w.channel in ready]
         except:  # worker expired or stopped
             return []
 
@@ -476,13 +451,15 @@ class ProcessPool(object):
         self._counter = count()
         self._workers = workers
         self._limit = task_limit
+        self._connection = Listener(family=FAMILY)
         self._rejected = deque()  # task enqueued on dead worker
         self._pool = []  # active workers container
         self._state = CREATED  # pool state flag
         self._task_scheduler = TaskScheduler(self._pool, self._queue,
                                              self._rejected)
         self._pool_maintainer = PoolMaintainer(self._pool, self._rejected,
-                                               workers, task_limit,
+                                               workers, self._connection,
+                                               task_limit,
                                                initializer, initargs)
         self._results_fetcher = ResultsFetcher(self._pool, self._queue,
                                                self._rejected)
@@ -515,8 +492,9 @@ class ProcessPool(object):
         if self._pool_maintainer.is_alive():
             self._pool_maintainer.join()
         for w in self._pool:
-            w.close()
+            w.channel.close()
             w.terminate()
+        self._connection.close()
 
     def kill(self):
         """Kills the pool forcing all workers to terminate immediately."""
@@ -527,7 +505,7 @@ class ProcessPool(object):
         if self._pool_maintainer.is_alive():
             self._pool_maintainer.join()
         for w in self._pool:
-            w.close()
+            w.channel.close()
             w.kill()
 
     def join(self, timeout=0):

@@ -1,6 +1,7 @@
 __all__ = ['thread',
            'thread_pool',
            'process',
+           'process_pool',
            'synchronized',
            'Task',
            'ThreadPool',
@@ -11,5 +12,5 @@ __all__ = ['thread',
 
 from .pebble import PebbleError, TaskCancelled, TimeoutError
 from .pebble import Task, synchronized
-from .process import ProcessPool, process
+from .process import process, process_pool, ProcessPool
 from .thread import thread, thread_pool, ThreadPool

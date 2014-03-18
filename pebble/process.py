@@ -75,6 +75,36 @@ def process(*args, **kwargs):
         raise ValueError("Decorator accepts only keyword arguments.")
 
 
+def process_pool(*args, **kwargs):
+    """Turns a *function* into a ProcessPool and runs its logic within.
+
+    A decorated *function* will return a *Task* object once is called.
+
+    If *callback* is a callable, it will be called once the task has ended
+    with the task identifier and the *function* return values.
+
+    """
+    def wrapper(function):
+        return PoolWrapper(function, workers, task_limit, queue, queueargs,
+                           initializer, initargs, callback, timeout)
+
+    if len(args) == 1 and not len(kwargs) and isinstance(args[0], Callable):
+        return PoolWrapper(args[0])
+    elif not len(args) and len(kwargs):
+        queue = kwargs.get('queue')
+        queueargs = kwargs.get('queueargs')
+        workers = kwargs.get('workers', 1)
+        callback = kwargs.get('callback')
+        timeout = kwargs.get('timeout', 0)
+        initargs = kwargs.get('initargs')
+        initializer = kwargs.get('initializer')
+        task_limit = kwargs.get('worker_task_limit', 0)
+
+        return wrapper
+    else:
+        raise ValueError("Decorator accepts only keyword arguments.")
+
+
 def trampoline(function, *args, **kwargs):
     """Trampoline function for decorators."""
     func = load_function(function)
@@ -156,6 +186,28 @@ class Wrapper(object):
         self._handle_job(self, w)
 
         return t
+
+
+class PoolWrapper(object):
+    def __init__(self, function, workers=1, task_limit=0,
+                 queue=None, queueargs=None,
+                 initializer=None, initargs=None, callback=None, timeout=0):
+        self._function = function
+        self._pool = ProcessPool(workers, task_limit, queue, queueargs,
+                                 initializer, initargs)
+        self.timeout = timeout
+        self.callback = callback
+        update_wrapper(self, function)
+
+    def __call__(self, *args, **kwargs):
+        # serialize decorated function
+        function = dump_function(self._function)
+        # attach decorated function to the arguments
+        args = list(args)
+        args.insert(0, function)
+        return self._pool.schedule(trampoline, args=args, kwargs=kwargs,
+                                   callback=self.callback,
+                                   timeout=self.timeout)
 
 
 class Worker(Process):

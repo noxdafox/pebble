@@ -309,7 +309,10 @@ class Worker(Process):
         error = None
         results = None
         signal(SIGINT, SIG_IGN)
-        self.channel = Client(self.address)
+        try:
+            self.channel = Client(self.address)
+        except:  # main process shutdown
+            sys.exit(1)
 
         if self.initializer is not None:  # run initializer function
             try:

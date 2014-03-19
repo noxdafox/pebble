@@ -29,10 +29,6 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
    *initializer* must be callable, if passed, it will be called every time a worker is started, receiving *initargs* as arguments.
    *queue* represents a Class which, if passed, will be constructed with *queueargs* as parameters and used internally as a task queue. The *queue* object resulting from its construction must expose same functionalities of Python standard *Queue* object, especially for what concerns the *put()*, *get()* and *join()* methods.
 
-   .. note::
-
-      The *thread_pool* decorator is working as a simple decorator (turns a function into a ThreadPool): no thread is started at decoration time but when the decorated function is actually called.
-
 .. decorator:: process(callback=None, timeout=None)
 
    When called, the *function* will be run in a new process, a *Task* object will be returned to the caller.
@@ -42,16 +38,30 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
    *callback* must be callable, if passed, it will be called once the task has ended with the *Task* object as parameter.
    A *timeout* value greater than 0 will terminate the running process if it has not yet finished once the *timeout* expires; any *Task.get()* call will raise a TimeoutError, callbacks will still be executed.
 
+.. decorator:: process_pool(callback=None, workers=1, worker_task_limit=0, initializer=None, initargs=(), queue=None, queueargs=(), timeout=0)
+
+   When called, the *function* will be run in a worker process, a *Task* object will be returned to the caller; if all workers are busy the subsequent calls will be queued into an internal Queue.
+
+   *callback* must be callable, if passed, it will be called once the task has ended with the *Task* object as parameter.
+   *workers* is an integer representing the amount of desired process workers managed by the pool. If *worker_task_limit* is a number greater than zero each worker will be restarted after performing an equal amount of tasks.
+   *initializer* must be callable, if passed, it will be called every time a worker is started, receiving *initargs* as arguments.
+   *queue* represents a Class which, if passed, will be constructed with *queueargs* as parameters and used internally as a task queue. The *queue* object resulting from its construction must expose same functionalities of Python standard *Queue* object, especially for what concerns the *put()*, *get()* and *join()* methods.
+   *timeout* is an integer, if greater than zero, once expired will force the timed out task to be interrupted and the worker will be restarted; *Task.get()* will raise *TimeoutError*, callbacks will be executed.
+
 .. decorator:: synchronized(lock)
 
    A synchronized *function* will be run exclusively accordingly to its *lock* type. If a Thread or Process is executing a synchronized function, all the other Threads or Processes calling the same *function* will be blocked until the first caller has finished its execution.
 
    The *synchronized* decorator accepts all the synchronizing objects exposed by the Python standard *threading* and *multiprocessing* libraries.
 
+.. note::
+
+   The *thread_pool* and *process_pool* decorators are convenience methods to turn the decorated functions into pool of workers, the underlying implementation is the same as the *ThreadPool* and *ProcessPool*.
+
 :mod:`Pools`
 -----------------
 
-.. class:: pebble.thread.ThreadPool(workers=1, task_limit=0, queue=None, queueargs=None, initializer=None, initargs=None)
+.. class:: ThreadPool(workers=1, task_limit=0, queue=None, queueargs=None, initializer=None, initargs=None)
 
    A ThreadPool allows to schedule jobs into a Pool of Threads which will perform them asynchronously.
    Thread pools work as well as *context managers*.
@@ -96,7 +106,7 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
       If *timeout* is greater than 0 and some worker is still running after it expired a TimeoutError will be raised.
 
 
-.. class:: pebble.thread.ProcessPool(workers=1, task_limit=0, queue=None, queueargs=None, initializer=None, initargs=None)
+.. class:: ProcessPool(workers=1, task_limit=0, queue=None, queueargs=None, initializer=None, initargs=None)
 
    A ProcessPool allows to schedule jobs into a Pool of Processes which will perform them concurrently.
    Process pools work as well as *context managers*.

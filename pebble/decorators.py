@@ -27,9 +27,104 @@ try:  # Python 2
 except:  # Python 3
     from pickle import PicklingError
 
-from .thread import thread
-from .process import Worker, ProcessPool, FAMILY
+from .thread import ThreadWorker, ThreadPool
+from .process import ProcessWorker, ProcessPool, FAMILY
 from .pebble import Task
+
+
+def thread(*args, **kwargs):
+    """Turns a *function* into a Thread and runs its logic within.
+
+    A decorated *function* will return a *Task* object once is called.
+
+    If *callback* is a callable, it will be called once the task has ended
+    with the task identifier and the *function* return values.
+
+    """
+    def wrapper(function):
+        return ThreadWrapper(function, callback)
+
+    if len(args) == 1 and not len(kwargs) and isinstance(args[0], Callable):
+        return ThreadWrapper(args[0], None)
+    elif not len(args) and len(kwargs):
+        callback = kwargs.get('callback')
+
+        return wrapper
+    else:
+        raise ValueError("Decorator accepts only keyword arguments.")
+
+
+def thread_pool(*args, **kwargs):
+    """Turns a *function* into a Thread and runs its logic within.
+
+    A decorated *function* will return a *Task* object once is called.
+
+    If *callback* is a callable, it will be called once the task has ended
+    with the task identifier and the *function* return values.
+
+    """
+    def wrapper(function):
+        return ThreadPoolWrapper(function, workers, task_limit,
+                                 queue, queue_args,
+                                 callback, initializer, initargs)
+
+    if len(args) == 1 and not len(kwargs) and isinstance(args[0], Callable):
+        return ThreadPoolWrapper(args[0], 1, 0, None, None, None, None, None)
+    elif not len(args) and len(kwargs):
+        queue = kwargs.get('queue')
+        queue_args = kwargs.get('queueargs')
+        workers = kwargs.get('workers', 1)
+        callback = kwargs.get('callback')
+        initargs = kwargs.get('initargs')
+        initializer = kwargs.get('initializer')
+        task_limit = kwargs.get('worker_task_limit', 0)
+
+        return wrapper
+    else:
+        raise ValueError("Decorator accepts only keyword arguments.")
+
+
+class ThreadWrapper(object):
+    """Used by *thread* decorator."""
+    def __init__(self, function, callback):
+        self._function = function
+        self._counter = count()
+        self.callback = callback
+        update_wrapper(self, function)
+
+    def __call__(self, *args, **kwargs):
+        t = Task(next(self._counter),
+                 self._function, args, kwargs, self.callback, 0)
+        q = DummyQueue(t)
+        w = ThreadWorker(q, 1, None, None)
+        w.start()
+        return t
+
+
+class ThreadPoolWrapper(object):
+    """Used by *thread_pool* decorator."""
+    def __init__(self, function, workers, task_limit, queue, queueargs,
+                 callback, initializer, initargs):
+        self._function = function
+        self._pool = ThreadPool(workers, task_limit, queue, queueargs,
+                                initializer, initargs)
+        self.callback = callback
+        update_wrapper(self, function)
+
+    def __call__(self, *args, **kwargs):
+        return self._pool.schedule(self._function, args=args, kwargs=kwargs,
+                                   callback=self.callback)
+
+
+class DummyQueue(list):
+    def __init__(self, elements):
+        super(DummyQueue, self).__init__(((elements), ))
+
+    def get(self):
+        return self.pop()
+
+    def task_done(self):
+        pass
 
 
 def process(*args, **kwargs):
@@ -42,10 +137,10 @@ def process(*args, **kwargs):
 
     """
     def wrapper(function):
-        return Wrapper(function, timeout, callback)
+        return ProcessWrapper(function, timeout, callback)
 
     if len(args) == 1 and not len(kwargs) and isinstance(args[0], Callable):
-        return Wrapper(args[0], 0, None)
+        return ProcessWrapper(args[0], 0, None)
     elif not len(args) and len(kwargs):
         timeout = kwargs.get('timeout', 0)
         callback = kwargs.get('callback')
@@ -65,11 +160,12 @@ def process_pool(*args, **kwargs):
 
     """
     def wrapper(function):
-        return PoolWrapper(function, workers, task_limit, queue, queueargs,
-                           initializer, initargs, callback, timeout)
+        return ProcessPoolWrapper(function, workers, task_limit,
+                                  queue, queueargs,
+                                  initializer, initargs, callback, timeout)
 
     if len(args) == 1 and not len(kwargs) and isinstance(args[0], Callable):
-        return PoolWrapper(args[0])
+        return ProcessPoolWrapper(args[0])
     elif not len(args) and len(kwargs):
         queue = kwargs.get('queue')
         queueargs = kwargs.get('queueargs')
@@ -116,7 +212,7 @@ def load_function(state):
     return decorated._function
 
 
-class Wrapper(object):
+class ProcessWrapper(object):
     def __init__(self, function, timeout, callback):
         self._function = function
         self._counter = count()
@@ -159,7 +255,7 @@ class Wrapper(object):
         args.insert(0, function)
         t = Task(next(self._counter), trampoline, args, kwargs,
                  self.callback, self.timeout)
-        w = Worker(self._connection.address)
+        w = ProcessWorker(self._connection.address)
         w.start()
         w.finalize(self._connection)
         w.schedule_task(t)
@@ -168,7 +264,7 @@ class Wrapper(object):
         return t
 
 
-class PoolWrapper(object):
+class ProcessPoolWrapper(object):
     def __init__(self, function, workers=1, task_limit=0,
                  queue=None, queueargs=None,
                  initializer=None, initargs=None, callback=None, timeout=0):

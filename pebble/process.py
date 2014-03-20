@@ -50,7 +50,7 @@ CLOSING = 2
 CREATED = 3
 
 
-class Worker(Process):
+class ProcessWorker(Process):
     def __init__(self, address, limit=1, initializer=None, initargs=None):
         Process.__init__(self)
         self.address = address
@@ -273,8 +273,8 @@ class PoolMaintainer(Thread):
         pool = []
 
         for _ in range(self.workers - len(self.pool)):
-            worker = Worker(self.connection.address, self.limit,
-                            self.initializer, self.initargs)
+            worker = ProcessWorker(self.connection.address, self.limit,
+                                   self.initializer, self.initargs)
             worker.start()
             worker.finalize(self.connection)
             pool.append(worker)  # add worker to pool

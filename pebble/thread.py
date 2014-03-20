@@ -20,7 +20,6 @@ from traceback import format_exc, print_exc
 from itertools import count
 from threading import Thread
 from collections import Callable
-from functools import update_wrapper
 try:  # Python 2
     from Queue import Queue
 except:  # Python 3
@@ -35,58 +34,7 @@ CLOSING = 2
 CREATED = 3
 
 
-def thread(*args, **kwargs):
-    """Turns a *function* into a Thread and runs its logic within.
-
-    A decorated *function* will return a *Task* object once is called.
-
-    If *callback* is a callable, it will be called once the task has ended
-    with the task identifier and the *function* return values.
-
-    """
-    def wrapper(function):
-        return ThreadWrapper(function, callback)
-
-    if len(args) == 1 and not len(kwargs) and isinstance(args[0], Callable):
-        return ThreadWrapper(args[0], None)
-    elif not len(args) and len(kwargs):
-        callback = kwargs.get('callback')
-
-        return wrapper
-    else:
-        raise ValueError("Decorator accepts only keyword arguments.")
-
-
-def thread_pool(*args, **kwargs):
-    """Turns a *function* into a Thread and runs its logic within.
-
-    A decorated *function* will return a *Task* object once is called.
-
-    If *callback* is a callable, it will be called once the task has ended
-    with the task identifier and the *function* return values.
-
-    """
-    def wrapper(function):
-        return PoolWrapper(function, workers, task_limit, queue, queue_args,
-                           callback, initializer, initargs)
-
-    if len(args) == 1 and not len(kwargs) and isinstance(args[0], Callable):
-        return PoolWrapper(args[0], 1, 0, None, None, None, None, None)
-    elif not len(args) and len(kwargs):
-        queue = kwargs.get('queue')
-        queue_args = kwargs.get('queueargs')
-        workers = kwargs.get('workers', 1)
-        callback = kwargs.get('callback')
-        initargs = kwargs.get('initargs')
-        initializer = kwargs.get('initializer')
-        task_limit = kwargs.get('worker_task_limit', 0)
-
-        return wrapper
-    else:
-        raise ValueError("Decorator accepts only keyword arguments.")
-
-
-class Worker(Thread):
+class ThreadWorker(Thread):
     def __init__(self, queue, limit, initializer, initargs):
         Thread.__init__(self)
         self.queue = queue
@@ -166,8 +114,8 @@ class ThreadPool(object):
             expired = [w for w in self._pool if not w.is_alive()]
             self._pool = [w for w in self._pool if w not in expired]
             for _ in range(self._workers - len(self._pool)):
-                w = Worker(self._queue, self._limit,
-                           self.initializer, self.initargs)
+                w = ThreadWorker(self._queue, self._limit,
+                                 self.initializer, self.initargs)
                 w.start()
                 self._pool.append(w)
             sleep(0.6)
@@ -241,46 +189,3 @@ class ThreadPool(object):
         self._queue.put(task)
 
         return task
-
-
-class ThreadWrapper(object):
-    """Used by *thread* decorator."""
-    def __init__(self, function, callback):
-        self._function = function
-        self._counter = count()
-        self.callback = callback
-        update_wrapper(self, function)
-
-    def __call__(self, *args, **kwargs):
-        t = Task(next(self._counter),
-                 self._function, args, kwargs, self.callback, 0)
-        q = DummyQueue(t)
-        w = Worker(q, 1, None, None)
-        w.start()
-        return t
-
-
-class PoolWrapper(object):
-    """Used by *thread_pool* decorator."""
-    def __init__(self, function, workers, task_limit, queue, queueargs,
-                 callback, initializer, initargs):
-        self._function = function
-        self._pool = ThreadPool(workers, task_limit, queue, queueargs,
-                                initializer, initargs)
-        self.callback = callback
-        update_wrapper(self, function)
-
-    def __call__(self, *args, **kwargs):
-        return self._pool.schedule(self._function, args=args, kwargs=kwargs,
-                                   callback=self.callback)
-
-
-class DummyQueue(list):
-    def __init__(self, elements):
-        super(DummyQueue, self).__init__(((elements), ))
-
-    def get(self):
-        return self.pop()
-
-    def task_done(self):
-        pass

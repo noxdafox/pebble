@@ -13,5 +13,5 @@ __all__ = ['thread',
 from .pebble import PebbleError, TaskCancelled, TimeoutError
 from .pebble import Task, synchronized
 from .process import ProcessPool
-from .thread import thread, thread_pool, ThreadPool
-from .decorators import process, process_pool
+from .thread import ThreadPool
+from .decorators import thread, thread_pool, process, process_pool

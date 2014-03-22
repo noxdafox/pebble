@@ -17,25 +17,7 @@
 
 
 from uuid import uuid4
-from functools import wraps
 from threading import Condition, Lock
-
-
-def synchronized(lock):
-    """Synchronization decorator, locks the execution on given *lock*.
-
-    Works with both threading and multiprocessing Lock.
-
-    """
-    def wrap(function):
-        @wraps(function)
-        def wrapper(*args, **kwargs):
-            with lock:
-                return function(*args, **kwargs)
-
-        return wrapper
-
-    return wrap
 
 
 class PebbleError(Exception):

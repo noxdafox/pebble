@@ -19,7 +19,7 @@ import sys
 from time import time
 from itertools import count
 from collections import Callable
-from functools import update_wrapper
+from functools import update_wrapper, wraps
 from traceback import print_exc
 from multiprocessing.connection import Listener
 try:  # Python 2
@@ -30,6 +30,23 @@ except:  # Python 3
 from .thread import ThreadWorker, ThreadPool
 from .process import ProcessWorker, ProcessPool, FAMILY
 from .pebble import Task
+
+
+def synchronized(lock):
+    """Synchronization decorator, locks the execution on given *lock*.
+
+    Works with both threading and multiprocessing Lock.
+
+    """
+    def wrap(function):
+        @wraps(function)
+        def wrapper(*args, **kwargs):
+            with lock:
+                return function(*args, **kwargs)
+
+        return wrapper
+
+    return wrap
 
 
 def thread(*args, **kwargs):
@@ -220,10 +237,6 @@ class ProcessWrapper(object):
         self.timeout = timeout
         self.callback = callback
         update_wrapper(self, function)
-
-    def __del__(self):
-        if self._connection is not None:
-            self._connection.close()
 
     @thread
     def _handle_job(self, worker):

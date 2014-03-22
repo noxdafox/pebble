@@ -23,7 +23,7 @@ Launch a task in a thread and wait for its results::
 
     if __name__ == "__main__":
         task = do_job(1, bar=2)
-	print task.get()  # it will block until do_job has completed
+	print task.get()
 
 Launch five tasks in separate processes and handle their results in a callback::
 
@@ -31,7 +31,8 @@ Launch five tasks in separate processes and handle their results in a callback::
 
 
     def task_done(task):
-    	print "Task %s has returned %d" % (task.id, task.get())
+    	print "Task %s returned %d" % (task.id,
+                                       task.get())
 
 
     @process(callback=task_done)
@@ -60,7 +61,7 @@ Callbacks can be dynamically (re)assigned, useful to set instance methods as cal
 	def task_done(self, task):
             try:
                 self.counter += task.get()
-            except:  # exception are re-raised by the get() method
+            except:  # exception are raised by get()
                 self.errors += 1
 
 	@process
@@ -87,7 +88,7 @@ Callbacks can be dynamically (re)assigned, useful to set instance methods as cal
 	print foo.counter
 	print foo.errors
 
-Thread pools allow to execute several tasks asynchronously without the need of spawning a new thread for each task::
+Thread/Process pools allow to execute several tasks asynchronously without the need of spawning a new thread for each task::
 
     from threading import current_thread
     from pebble import ThreadPool
@@ -95,7 +96,9 @@ Thread pools allow to execute several tasks asynchronously without the need of s
 
     def task_done(task):
         results, thread = task.get()
-    	print "Task %s has returned %d from thread %s" % (task.id, results, thread.ident)
+    	print "Task %s has returned %d from thread %s" % (task.id,
+                                                          results,
+                                                          thread.ident)
 
 
     def do_job(foo, bar=0):
@@ -108,13 +111,3 @@ Thread pools allow to execute several tasks asynchronously without the need of s
                 tp.schedule(do_job, args=(i, ), callback=task_done)
 
 	raw_input("Press return to exit.")
-
-
-TODO
-----
-
-A roadmap::
-
- * pools of workers::
-
-   - @process_pool

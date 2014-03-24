@@ -111,7 +111,7 @@ class ThreadWrapper(object):
 
     def __call__(self, *args, **kwargs):
         t = Task(next(self._counter),
-                 self._function, args, kwargs, self.callback, 0)
+                 self._function, args, kwargs, self.callback, 0, None)
         q = DummyQueue(t)
         w = ThreadWorker(q, 1, None, None)
         w.start()
@@ -267,7 +267,7 @@ class ProcessWrapper(object):
         args = list(args)
         args.insert(0, function)
         t = Task(next(self._counter), trampoline, args, kwargs,
-                 self.callback, self.timeout)
+                 self.callback, self.timeout, None)
         w = ProcessWorker(self._connection.address)
         w.start()
         w.finalize(self._connection)

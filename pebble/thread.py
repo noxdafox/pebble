@@ -168,7 +168,8 @@ class ThreadPool(object):
         self.pool = [w for w in self._pool if w.join() is None
                      and w.is_alive()]
 
-    def schedule(self, function, args=(), kwargs={}, callback=None):
+    def schedule(self, function, args=(), identifier=None,
+                 kwargs={}, callback=None):
         """Schedules *function* into the Pool, passing *args* and *kwargs*
         respectively as arguments and keyword arguments.
 
@@ -185,7 +186,8 @@ class ThreadPool(object):
             raise RuntimeError('The Pool is not running')
         if not isinstance(function, Callable):
             raise ValueError('function must be callable')
-        task = Task(next(self._counter), function, args, kwargs, callback, 0)
+        task = Task(next(self._counter), function, args, kwargs,
+                    callback, 0, identifier)
         self._queue.put(task)
 
         return task

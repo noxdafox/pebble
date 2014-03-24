@@ -430,7 +430,8 @@ class ProcessPool(object):
         self._pool = [w for w in self._pool if w.join() is None
                       and w.is_alive()]
 
-    def schedule(self, function, args=(), kwargs={}, callback=None, timeout=0):
+    def schedule(self, function, args=(), kwargs={}, identifier=None,
+                 callback=None, timeout=0):
         """Schedules *function* into the Pool, passing *args* and *kwargs*
         respectively as arguments and keyword arguments.
 
@@ -439,6 +440,9 @@ class ProcessPool(object):
 
         *timeout* is an integer, if expires the task will be terminated
         and *Task.get()* will raise *TimeoutError*.
+
+        The *identifier* will be forwarded to the *Task*, if None a random
+        UUID will be provided.
 
         A *Task* object is returned.
 
@@ -456,7 +460,7 @@ class ProcessPool(object):
         if not isinstance(timeout, int):
             raise ValueError('timeout must be integer')
         task = Task(next(self._counter), function, args, kwargs,
-                    callback, timeout)
+                    callback, timeout, identifier)
         self._queue.put(task)
 
         return task

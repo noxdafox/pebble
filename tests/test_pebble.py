@@ -5,12 +5,22 @@ from pebble import Task, TimeoutError, TaskCancelled
 
 class TestTask(unittest.TestCase):
     def setUp(self):
-        self.task = Task(0, None, None, None, None, None)
+        self.task = Task(0, None, None, None, None, None, None)
 
     def test_number(self):
         """Task number is reported correctly."""
-        t = Task(42, None, None, None, None, None)
+        t = Task(42, None, None, None, None, None, None)
         self.assertEqual(t.number, 42)
+
+    def test_task_id(self):
+        """Task ID is forwarded to it."""
+        t = Task(0, None, None, None, None, None, 'foo')
+        self.assertEqual(t.id, 'foo')
+
+    def test_task_uuid(self):
+        """Task a UUID is assigned if None."""
+        t = Task(0, None, None, None, None, None, None)
+        self.assertEqual(t.id.version, 4)
 
     def test_ready(self):
         """Task is ready if results are seself.task."""

@@ -76,6 +76,18 @@ class TestThreadPool(unittest.TestCase):
                                kwargs={'keyword_argument': 1})
         self.assertEqual(task.get()[0], 2)
 
+    def test_thread_pool_schedule_id(self):
+        """ThreadPool task ID is forwarded to it."""
+        with ThreadPool() as tp:
+            task = tp.schedule(jp, args=(1, ), identifier='foo')
+        self.assertEqual(task.id, 'foo')
+
+    def test_thread_pool_schedule_uuid(self):
+        """ThreadPool task UUID is assigned if None."""
+        with ThreadPool() as tp:
+            task = tp.schedule(jp, args=(1, ))
+        self.assertEqual(task.id.version, 4)
+
     def test_thread_pool(self):
         """ThreadPool multiple tasks are correctly handled."""
         tasks = []

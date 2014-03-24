@@ -51,8 +51,9 @@ class TaskCancelled(PebbleError):
 
 class Task(object):
     """Handler to the ongoing task."""
-    def __init__(self, task_nr, function, args, kwargs, callback, timeout):
-        self.id = uuid4()
+    def __init__(self, task_nr, function, args, kwargs,
+                 callback, timeout, identifier):
+        self.id = identifier is not None and identifier or uuid4()
         self.timeout = timeout
         self._function = function
         self._args = args

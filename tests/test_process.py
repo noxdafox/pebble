@@ -80,14 +80,26 @@ class TestProcessPool(unittest.TestCase):
             self.exception = error
 
     def test_process_pool_single_task(self):
-        """Single task with no parameters."""
+        """ProcessPool single task with no parameters."""
         with ProcessPool() as tp:
             task = tp.schedule(jp, args=(1, ),
                                kwargs={'keyword_argument': 1})
         self.assertEqual(task.get()[0], 2)
 
+    def test_process_pool_schedule_id(self):
+        """ProcessPool task ID is forwarded to it."""
+        with ProcessPool() as pp:
+            task = pp.schedule(jp, args=(1, ), identifier='foo')
+        self.assertEqual(task.id, 'foo')
+
+    def test_process_pool_schedule_uuid(self):
+        """ProcessPool task UUID is assigned if None."""
+        with ProcessPool() as pp:
+            task = pp.schedule(jp, args=(1, ))
+        self.assertEqual(task.id.version, 4)
+
     def test_process_pool(self):
-        """Multiple tasks are correctly handled."""
+        """ProcessPool multiple tasks are correctly handled."""
         tasks = []
         with ProcessPool() as tp:
             for i in range(0, 5):
@@ -96,7 +108,7 @@ class TestProcessPool(unittest.TestCase):
         self.assertEqual(sum([t.get()[0] for t in tasks]), 10)
 
     def test_process_pool_different_processs(self):
-        """Multiple tasks are handled by different processs."""
+        """ProcessPool multiple tasks are handled by different process."""
         tasks = []
         with ProcessPool(workers=2) as tp:
             for i in range(0, 5):
@@ -105,7 +117,7 @@ class TestProcessPool(unittest.TestCase):
         self.assertEqual(len(set([t.get()[1] for t in tasks])), 2)
 
     def test_process_pool_restart(self):
-        """Expired processs are restarted."""
+        """ProcessPool expired processs are restarted."""
         tasks = []
         with ProcessPool(task_limit=2) as tp:
             for i in range(0, 5):
@@ -114,7 +126,7 @@ class TestProcessPool(unittest.TestCase):
         self.assertEqual(len(set([t.get()[1] for t in tasks])), 3)
 
     def test_process_pool_callback(self):
-        """Test callback is executed with process pool."""
+        """ProcessPool test callback is executed with process pool."""
         with ProcessPool() as tp:
             tp.schedule(jp, args=(1, ),
                         kwargs={'keyword_argument': 1},
@@ -123,7 +135,7 @@ class TestProcessPool(unittest.TestCase):
         self.assertEqual(2, self.callback_results[0])
 
     def test_process_pool_timeout_error(self):
-        """TimeoutError is raised if timeout occurrs."""
+        """ProcessPool TimeoutError is raised if timeout occurrs."""
         with ProcessPool() as tp:
             t = tp.schedule(jp_very_long, args=(1, ),
                             kwargs={'keyword_argument': 1},
@@ -131,7 +143,7 @@ class TestProcessPool(unittest.TestCase):
         self.assertRaises(TimeoutError, t.get)
 
     def test_process_pool_timeout_process(self):
-        """Process is terminated if timeout occurrs."""
+        """ProcessPool process is terminated if timeout occurrs."""
         with ProcessPool() as tp:
             t = tp.schedule(jp_very_long, args=(1, ),
                             kwargs={'keyword_argument': 1},
@@ -146,37 +158,37 @@ class TestProcessPool(unittest.TestCase):
             self.assertFalse(p.is_alive())
 
     def test_process_pool_timeout_int(self):
-        """ValueError is raised if timeout is not integer."""
+        """ProcessPool ValueError is raised if timeout is not integer."""
         with ProcessPool() as tp:
             self.assertRaises(ValueError, tp.schedule,
                               jp, args=(1, ), timeout=0.1)
 
     def test_process_pool_default_queue(self):
-        """Default queue has same pool size."""
+        """ProcessPool default queue has same pool size."""
         with ProcessPool() as tp:
             self.assertEqual(tp._queue.maxsize, 0)
 
     def test_process_pool_queue(self):
-        """Static queue is correctly initialized."""
+        """ProcessPool static queue is correctly initialized."""
         with ProcessPool(queue=Queue, queueargs=(5, )) as tp:
             self.assertEqual(tp._queue.maxsize, 5)
 
     def test_process_pool_initializer(self):
-        """Initializer is correctly run."""
+        """ProcessPool initializer is correctly run."""
         with ProcessPool(initializer=initializer, initargs=(1, )) as tp:
             task = tp.schedule(jp, args=(1, ),
                                kwargs={'keyword_argument': 1})
             self.assertEqual(task.get()[0], 3)
 
     def test_process_pool_initializer_error(self):
-        """An exception in a initializer is raised by get."""
+        """ProcessPool an exception in a initializer is raised by get."""
         with ProcessPool(initializer=initializer, initargs=(1, )) as tp:
             task = tp.schedule(jp, args=(1, ),
                                kwargs={'keyword_argument': 1})
             self.assertEqual(task.get()[0], 3)
 
     def test_process_pool_stop(self):
-        """Pool is stopped without consuming more tasks."""
+        """ProcessPool is stopped without consuming more tasks."""
         tp = ProcessPool()
         for i in range(0, 10):
             tp.schedule(jp, args=(1, ))
@@ -185,7 +197,7 @@ class TestProcessPool(unittest.TestCase):
         self.assertFalse(tp._queue.empty())
 
     def test_process_pool_close(self):
-        """Pool is closed consuming all tasks."""
+        """ProcessPool is closed consuming all tasks."""
         tp = ProcessPool()
         for i in range(0, 10):
             tp.schedule(jp, args=(1, ))
@@ -194,7 +206,8 @@ class TestProcessPool(unittest.TestCase):
         self.assertTrue(tp._queue.qsize() <= 1)
 
     def test_process_pool_join_running(self):
-        """RuntimeError is raised if join() is called on a running pool"""
+        """ProcessPool RuntimeError is raised
+        if join() is called on a running pool"""
         tp = ProcessPool()
         tp.schedule(jp, args=(1, ))
         self.assertRaises(RuntimeError, tp.join)
@@ -202,7 +215,8 @@ class TestProcessPool(unittest.TestCase):
         tp.join()
 
     def test_process_pool_join_timeout(self):
-        """Timeout is raised if workers are still active once joined."""
+        """ProcessPool TimeoutError is raised
+        if workers are still active once joined."""
         tp = ProcessPool()
         tp.schedule(jp_very_long, args=(1, ))
         time.sleep(0.3)
@@ -211,32 +225,32 @@ class TestProcessPool(unittest.TestCase):
         tp.kill()
 
     def test_process_pool_no_new_tasks(self):
-        """No more tasks are allowed if Pool is closed."""
+        """ProcessPool no more tasks are allowed if Pool is closed."""
         tp = ProcessPool()
         tp.stop()
         tp.join()
         self.assertRaises(RuntimeError, tp.schedule, jp)
 
     def test_process_pool_wrong_function(self):
-        """Function must be callable."""
+        """ProcessPool function must be callable."""
         tp = ProcessPool()
         self.assertRaises(ValueError, tp.schedule, None)
         tp.stop()
         tp.join()
 
     def test_process_pool_active(self):
-        """Active is False if pool has been created."""
+        """ProcessPool active is False if pool has been created."""
         with ProcessPool(initializer=initializer, initargs=(1, )) as tp:
             tp.schedule(jp, args=(1, ), kwargs={'keyword_argument': 1})
             self.assertTrue(tp.active)
 
     def test_process_pool_not_active_started(self):
-        """Active is False if pool has been created."""
+        """ProcessPool active is False if pool has been created."""
         with ProcessPool(initializer=initializer, initargs=(1, )) as tp:
             self.assertFalse(tp.active)
 
     def test_process_pool_not_active(self):
-        """Active is False if pool is not running."""
+        """ProcessPool active is False if pool is not running."""
         tp = ProcessPool()
         tp.stop()
         tp.join()

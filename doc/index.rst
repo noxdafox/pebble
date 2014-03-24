@@ -82,13 +82,14 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
 
       If re-assigned, the new initargs will be taken into use only for re-spawned workers; old workers will still be affected by the old ones.
 
-   .. function:: schedule(function, args=(), kwargs={}, callback=None)
+   .. function:: schedule(function, args=(), kwargs={}, callback=None, identifier=None)
 
       Schedule a job within the Pool.
 
       *function* is the function which is about to be scheduled.
       *args* and *kwargs* will be passed to the function respectively as its arguments and keyword arguments.
       *callback* must be callable, if passed, it will be called once the task has ended with the *Task* object as parameter.
+      If *identifier* is not None, it will be assigned as the *Task.id* value.
 
    .. function:: close()
 
@@ -127,7 +128,7 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
 
       If re-assigned, the new initargs will be taken into use only for re-spawned workers; old workers will still be affected by the old ones.
 
-   .. function:: schedule(function, args=(), kwargs={}, callback=None, timeout=0)
+   .. function:: schedule(function, args=(), kwargs={}, callback=None, timeout=0, identifier=None)
 
       Schedule a job within the Pool.
 
@@ -135,6 +136,7 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
       *args* and *kwargs* will be passed to the function respectively as its arguments and keyword arguments.
       *callback* must be callable, if passed, it will be called once the task has ended with the *Task* object as parameter.
       *timeout* is an integer, if greater than zero, once expired will force the timed out task to be interrupted and the worker will be restarted; *Task.get()* will raise *TimeoutError*, callbacks will be executed.
+      If *identifier* is not None, it will be assigned as the *Task.id* value.
 
    .. function:: close()
 
@@ -180,7 +182,7 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
 
        .. data:: id
 
-	  A string containing the unique identifier (UUID) of the task.
+	  A string containing the unique identifier (UUID) of the task. If a value different from None is specified in the Pools schedule methods it will be used instead of the UUID.
 
        .. data:: number
 

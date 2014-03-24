@@ -88,26 +88,24 @@ Callbacks can be dynamically (re)assigned, useful to set instance methods as cal
 	print foo.counter
 	print foo.errors
 
-Thread/Process pools allow to execute several tasks asynchronously without the need of spawning a new thread for each task::
+Pools allow to execute several tasks without the need of spawning a new worker for each task::
 
     from threading import current_thread
     from pebble import ThreadPool
 
 
     def task_done(task):
-        results, thread = task.get()
-    	print "Task %s has returned %d from thread %s" % (task.id,
-                                                          results,
-                                                          thread.ident)
+        results, thread_id = task.get()
+    	print "Task %s returned %d from thread %s" % (task.id,
+                                                      results,
+                                                      thread_id)
 
 
     def do_job(foo, bar=0):
-    	return foo + bar, current_thread()
+    	return foo + bar, current_thread().ident
 
 
     if __name__ == "__main__":
         with ThreadPool(workers=5) as tp:
             for i in range(0, 10):
                 tp.schedule(do_job, args=(i, ), callback=task_done)
-
-	raw_input("Press return to exit.")

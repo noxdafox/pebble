@@ -227,7 +227,7 @@ class TaskScheduler(Thread):
         while self.state != STOPPED:
             workers = [w for w in self.pool[:] if not w.closed]
             available = self.free_workers(workers, 0.8)
-            self.schedule_tasks(available, 0)
+            self.schedule_tasks(available, 0.6)
 
 
 class PoolMaintainer(Thread):

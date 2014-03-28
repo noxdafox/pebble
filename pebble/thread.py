@@ -15,17 +15,12 @@
 
 
 from time import time, sleep
-from inspect import isclass
 from traceback import format_exc, print_exc
 from itertools import count
 from threading import Thread
 from collections import Callable
-try:  # Python 2
-    from Queue import Queue
-except:  # Python 3
-    from queue import Queue
 
-from .pebble import Task, TimeoutError
+from .pebble import Task, TimeoutError, PoolContext
 
 
 STOPPED = 0
@@ -85,20 +80,10 @@ class ThreadWorker(Thread):
 class ThreadPool(object):
     def __init__(self, workers=1, task_limit=0, queue=None, queueargs=None,
                  initializer=None, initargs=None):
-        if queue is not None:
-            if isclass(queue):
-                self._queue = queue(*queueargs)
-            else:
-                raise ValueError("Queue must be Class")
-        else:
-            self._queue = Queue()
+        self._context = PoolContext(CREATED, workers, task_limit,
+                                    queue, queueargs)
         self._pool_maintainer = Thread(target=self._maintain_pool)
         self._pool_maintainer.daemon = True
-        self._counter = count()
-        self._workers = workers
-        self._limit = task_limit
-        self._pool = []
-        self._state = CREATED
         self.initializer = initializer
         self.initargs = initargs
 
@@ -110,37 +95,38 @@ class ThreadPool(object):
         self.join()
 
     def _maintain_pool(self):
-        while self._state != STOPPED:
-            expired = [w for w in self._pool if not w.is_alive()]
-            self._pool = [w for w in self._pool if w not in expired]
-            for _ in range(self._workers - len(self._pool)):
-                w = ThreadWorker(self._queue, self._limit,
+        while self._context.state != STOPPED:
+            expired = [w for w in self._context.pool if not w.is_alive()]
+            self._context.pool = [w for w in self._context.pool
+                                  if w not in expired]
+            for _ in range(self._context.workers - len(self._context.pool)):
+                w = ThreadWorker(self._context.queue, self._context.limit,
                                  self.initializer, self.initargs)
                 w.start()
-                self._pool.append(w)
+                self._context.pool.append(w)
             sleep(0.6)
 
     @property
     def active(self):
-        return self._state == RUNNING and True or False
+        return self._context.state == RUNNING and True or False
 
     def stop(self):
         """Stops the pool without performing any pending task."""
-        self._state = STOPPED
-        for w in self._pool:
+        self._context.state = STOPPED
+        for w in self._context.pool:
             w.limit = - 1
-        for w in self._pool:
-            self._queue.put(None)
+        for w in self._context.pool:
+            self._context.queue.put(None)
 
     def close(self):
         """Close the pool allowing all queued tasks to be performed."""
-        self._state = CLOSING
-        self._queue.join()
-        self._state = STOPPED
-        for w in self._pool:
+        self._context.state = CLOSING
+        self._context.queue.join()
+        self._context.state = STOPPED
+        for w in self._context.pool:
             w.limit = - 1
-        for w in self._pool:
-            self._queue.put(None)
+        for w in self._context.pool:
+            self._context.queue.put(None)
 
     def join(self, timeout=0):
         """Joins the pool waiting until all workers exited.
@@ -151,22 +137,23 @@ class ThreadPool(object):
         """
         counter = 0
 
-        if self._state == RUNNING:
+        if self._context.state == RUNNING:
             raise RuntimeError('The Pool is still running')
         # if timeout is set join workers until its value
-        while counter < timeout and self._pool:
-            counter += (len(self._pool) + 1) / 10.0
+        while counter < timeout and self._context.pool:
+            counter += (len(self._context.pool) + 1) / 10.0
             if self._pool_maintainer.is_alive():
                 self._pool_maintainer.join(0.1)
-            expired = [w for w in self._pool if w.join(0.1) is None
+            expired = [w for w in self._context.pool if w.join(0.1) is None
                        and not w.is_alive()]
-            self._pool = [w for w in self._pool if w not in expired]
+            self._context.pool = [w for w in self._context.pool
+                                  if w not in expired]
         # verify timeout expired
-        if timeout > 0 and self._pool:
+        if timeout > 0 and self._context.pool:
             raise TimeoutError('Workers are still running')
         # timeout not set
-        self.pool = [w for w in self._pool if w.join() is None
-                     and w.is_alive()]
+        self._context.pool = [w for w in self._context.pool if w.join() is None
+                              and w.is_alive()]
 
     def schedule(self, function, args=(), identifier=None,
                  kwargs={}, callback=None):
@@ -179,15 +166,15 @@ class ThreadPool(object):
         A *Task* object is returned.
 
         """
-        if self._state == CREATED:
+        if self._context.state == CREATED:
             self._pool_maintainer.start()
-            self._state = RUNNING
-        elif self._state != RUNNING:
+            self._context.state = RUNNING
+        elif self._context.state != RUNNING:
             raise RuntimeError('The Pool is not running')
         if not isinstance(function, Callable):
             raise ValueError('function must be callable')
-        task = Task(next(self._counter), function, args, kwargs,
+        task = Task(next(self._context.counter), function, args, kwargs,
                     callback, 0, identifier)
-        self._queue.put(task)
+        self._context.queue.put(task)
 
         return task

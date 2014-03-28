@@ -17,7 +17,13 @@
 
 
 from uuid import uuid4
+from inspect import isclass
+from itertools import count
 from threading import Condition, Lock
+try:  # Python 2
+    from Queue import Queue
+except:  # Python 3
+    from queue import Queue
 
 
 class PebbleError(Exception):
@@ -148,3 +154,19 @@ class Task(object):
                 self._ready = True
                 self._results = results
                 self._task_ready.notify_all()
+
+
+class PoolContext(object):
+    def __init__(self, state, workers, task_limit, queue, queueargs):
+        self.state = state
+        self.workers = workers
+        self.pool = []
+        self.limit = task_limit
+        self.counter = count()
+        if queue is not None:
+            if isclass(queue):
+                self.queue = queue(*queueargs)
+            else:
+                raise ValueError("Queue must be Class")
+        else:
+            self.queue = Queue()

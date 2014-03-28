@@ -19,7 +19,6 @@ import sys
 
 from select import select
 from itertools import count
-from inspect import isclass
 from time import time, sleep
 from traceback import format_exc, print_exc
 from threading import Thread
@@ -27,13 +26,13 @@ from collections import Callable, deque
 from multiprocessing import Process
 from multiprocessing.connection import Listener, Client
 try:  # Python 2
-    from Queue import Queue, Empty
+    from Queue import Empty
     from cPickle import PicklingError
 except:  # Python 3
-    from queue import Queue, Empty
+    from queue import Empty
     from pickle import PicklingError
 
-from .pebble import TimeoutError, Task
+from .pebble import TimeoutError, Task, PoolContext
 
 ### platform dependent code ###
 if os.name in ('posix', 'os2'):
@@ -190,12 +189,10 @@ class ProcessWorker(Process):
 
 class TaskScheduler(Thread):
     """Sends tasks to the workers."""
-    def __init__(self, pool, queue, rejected):
+    def __init__(self, context, rejected):
         Thread.__init__(self)
         self.daemon = True
-        self.state = RUNNING
-        self.pool = pool
-        self.queue = queue
+        self.context = context
         self.rejected = rejected
 
     @staticmethod
@@ -215,7 +212,7 @@ class TaskScheduler(Thread):
                 try:  # first get any rejected task
                     task = self.rejected.popleft()
                 except IndexError:  # then get enqueued ones
-                    task = self.queue.get(timeout=timeout)
+                    task = self.context.queue.get(timeout=timeout)
                 try:
                     worker.schedule_task(task)
                 except RuntimeError:  # worker closed
@@ -224,25 +221,19 @@ class TaskScheduler(Thread):
                 continue
 
     def run(self):
-        while self.state != STOPPED:
-            workers = [w for w in self.pool[:] if not w.closed]
+        while self.context.state != STOPPED:
+            workers = [w for w in self.context.pool[:] if not w.closed]
             available = self.free_workers(workers, 0.8)
             self.schedule_tasks(available, 0.6)
 
 
 class PoolMaintainer(Thread):
     """Maintains the workers within the Pool."""
-    def __init__(self, pool, rejected, workers, connection,
-                 limit, initializer, initargs):
+    def __init__(self, context, rejected, connection):
         Thread.__init__(self)
         self.daemon = True
-        self.state = RUNNING
-        self.pool = pool
+        self.context = context
         self.rejected = rejected
-        self.workers = workers
-        self.limit = limit
-        self.initializer = initializer
-        self.initargs = initargs
         self.connection = connection
 
     @staticmethod
@@ -272,9 +263,10 @@ class PoolMaintainer(Thread):
         """Respawn missing workers."""
         pool = []
 
-        for _ in range(self.workers - len(self.pool)):
-            worker = ProcessWorker(self.connection.address, self.limit,
-                                   self.initializer, self.initargs)
+        for _ in range(self.workers - len(self.context.pool)):
+            worker = ProcessWorker(self.connection.address, self.context.limit,
+                                   self.context.initializer,
+                                   self.context.initargs)
             worker.start()
             worker.finalize(self.connection)
             pool.append(worker)  # add worker to pool
@@ -282,25 +274,23 @@ class PoolMaintainer(Thread):
         return pool
 
     def run(self):
-        while self.state != STOPPED:
-            workers = self.pool[:]
+        while self.context.state != STOPPED:
+            workers = self.context.pool[:]
             expired = self.expired_workers(workers, 0.1)
             for worker in expired:
-                self.pool.remove(worker)
+                self.context.pool.remove(worker)
             rejected_tasks = self.clean_workers(expired)
             self.rejected.extend(rejected_tasks)
             respawned = self.respawn_workers()
-            self.pool.extend(respawned)
+            self.context.pool.extend(respawned)
 
 
 class ResultsFetcher(Thread):
     """Fetches results from the pool and forwards them to their tasks."""
-    def __init__(self, pool, queue, rejected):
+    def __init__(self, context, rejected):
         Thread.__init__(self)
         self.daemon = True
-        self.state = RUNNING
-        self.pool = pool
-        self.queue = queue
+        self.context = context
         self.rejected = rejected
 
     @staticmethod
@@ -320,12 +310,12 @@ class ResultsFetcher(Thread):
                     task._callback(task)
                 except:
                     print_exc()
-            self.queue.task_done()
+            self.context.queue.task_done()
 
     def run(self):
-        while self.state != STOPPED:
+        while self.context.state != STOPPED:
             timestamp = time()
-            workers = [w for w in self.pool[:] if not w.expired]
+            workers = [w for w in self.context.pool[:] if not w.expired]
             tasks = [w.task_valid(timestamp) for w in workers]
             ready = self.results(workers, 0.6)
             tasks.extend([w.task_complete() for w in ready])
@@ -335,29 +325,14 @@ class ResultsFetcher(Thread):
 class ProcessPool(object):
     def __init__(self, workers=1, task_limit=0, queue=None, queueargs=None,
                  initializer=None, initargs=None):
-        if queue is not None:
-            if isclass(queue):
-                self._queue = queue(*queueargs)
-            else:
-                raise ValueError("Queue must be Class")
-        else:
-            self._queue = Queue()
-        self._error = None
-        self._counter = count()
-        self._workers = workers
-        self._limit = task_limit
+        self._context = PoolContext(CREATED, workers, task_limit,
+                                    queue, queueargs)
         self._connection = Listener(family=FAMILY)
         self._rejected = deque()  # task enqueued on dead worker
-        self._pool = []  # active workers container
-        self._state = CREATED  # pool state flag
-        self._task_scheduler = TaskScheduler(self._pool, self._queue,
-                                             self._rejected)
-        self._pool_maintainer = PoolMaintainer(self._pool, self._rejected,
-                                               workers, self._connection,
-                                               task_limit,
-                                               initializer, initargs)
-        self._results_fetcher = ResultsFetcher(self._pool, self._queue,
-                                               self._rejected)
+        self._task_scheduler = TaskScheduler(self._context, self._rejected)
+        self._pool_maintainer = PoolMaintainer(self._context, self._rejected,
+                                               self._connection)
+        self._results_fetcher = ResultsFetcher(self._context, self._rejected)
         self.initializer = initializer
         self.initargs = initargs
 
@@ -370,36 +345,30 @@ class ProcessPool(object):
 
     @property
     def active(self):
-        return self._state == RUNNING and True or False
+        return self._context.state == RUNNING and True or False
 
     def close(self):
         """Closes the pool waiting for all tasks to be completed."""
-        self._state = CLOSING
-        self._queue.join()
+        self._context.state = CLOSING
+        self._context.queue.join()
         self.stop()
 
     def stop(self):
         """Stops the pool without performing any pending task."""
-        self._state = STOPPED
-        self._task_scheduler.state = STOPPED
-        self._pool_maintainer.state = STOPPED
-        self._results_fetcher.state = STOPPED
+        self._context.state = STOPPED
         if self._pool_maintainer.is_alive():
             self._pool_maintainer.join()
-        for w in self._pool:
+        for w in self._context.pool:
             w.channel.close()
             w.terminate()
         self._connection.close()
 
     def kill(self):
         """Kills the pool forcing all workers to terminate immediately."""
-        self._state = STOPPED
-        self._task_scheduler.state = STOPPED
-        self._pool_maintainer.state = STOPPED
-        self._results_fetcher.state = STOPPED
+        self._context.state = STOPPED
         if self._pool_maintainer.is_alive():
             self._pool_maintainer.join()
-        for w in self._pool:
+        for w in self._context.pool:
             w.channel.close()
             w.kill()
 
@@ -412,23 +381,23 @@ class ProcessPool(object):
         """
         counter = 0
 
-        if self._state == RUNNING:
+        if self._context.state == RUNNING:
             raise RuntimeError('The Pool is still running')
         # if timeout is set join workers until its value
-        while counter < timeout and len(self._pool) > 0:
-            counter += (len(self._pool) + 2) / 10.0
+        while counter < timeout and len(self._context.pool) > 0:
+            counter += (len(self._context.pool) + 2) / 10.0
             if self._task_scheduler.is_alive():
                 self._task_scheduler.join(0.1)
             if self._results_fetcher.is_alive():
                 self._results_fetcher.join(0.1)
-            self._pool = [w for w in self._pool
-                          if w.join(0.1) is None and w.is_alive()]
+            self._context.pool = [w for w in self._context.pool
+                                  if w.join(0.1) is None and w.is_alive()]
         # verify timeout expired
-        if timeout > 0 and counter >= timeout and self._pool:
+        if timeout > 0 and counter >= timeout and self._context.pool:
             raise TimeoutError('Workers are still running')
         # timeout not set
-        self._pool = [w for w in self._pool if w.join() is None
-                      and w.is_alive()]
+        self._context.pool = [w for w in self._context.pool if w.join() is None
+                              and w.is_alive()]
 
     def schedule(self, function, args=(), kwargs={}, identifier=None,
                  callback=None, timeout=0):
@@ -448,19 +417,19 @@ class ProcessPool(object):
 
         """
         # start the pool at first call
-        if self._state == CREATED:
+        if self._context.state == CREATED:
             self._task_scheduler.start()
             self._pool_maintainer.start()
             self._results_fetcher.start()
-            self._state = RUNNING
-        elif self._state != RUNNING:
+            self._context.state = RUNNING
+        elif self._context.state != RUNNING:
             raise RuntimeError('The Pool is not running')
         if not isinstance(function, Callable):
             raise ValueError('function must be callable')
         if not isinstance(timeout, int):
             raise ValueError('timeout must be integer')
-        task = Task(next(self._counter), function, args, kwargs,
+        task = Task(next(self._context.counter), function, args, kwargs,
                     callback, timeout, identifier)
-        self._queue.put(task)
+        self._context.queue.put(task)
 
         return task

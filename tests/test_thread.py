@@ -127,12 +127,12 @@ class TestThreadPool(unittest.TestCase):
     def test_thread_pool_default_queue(self):
         """ThreadPool default queue has same pool size."""
         with ThreadPool() as tp:
-            self.assertEqual(tp._queue.maxsize, 0)
+            self.assertEqual(tp._context.queue.maxsize, 0)
 
     def test_thread_pool_queue(self):
         """ThreadPool static queue is correctly initialized."""
         with ThreadPool(queue=Queue, queueargs=(5, )) as tp:
-            self.assertEqual(tp._queue.maxsize, 5)
+            self.assertEqual(tp._context.queue.maxsize, 5)
 
     def test_thread_pool_initializer(self):
         """ThreadPool initializer is correctly run."""
@@ -155,7 +155,7 @@ class TestThreadPool(unittest.TestCase):
             tp.schedule(jp, args=(1, ))
         tp.stop()
         tp.join()
-        self.assertFalse(tp._queue.empty())
+        self.assertFalse(tp._context.queue.empty())
 
     def test_thread_pool_close(self):
         """ThreadPool is closed consuming all tasks."""
@@ -164,7 +164,7 @@ class TestThreadPool(unittest.TestCase):
             tp.schedule(jp, args=(1, ))
         tp.close()
         tp.join()
-        self.assertTrue(tp._queue.qsize() <= 1)
+        self.assertTrue(tp._context.queue.qsize() <= 1)
 
     def test_thread_pool_join_running(self):
         """ThreadPool RuntimeError is raised

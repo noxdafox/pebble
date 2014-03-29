@@ -229,11 +229,14 @@ class TaskScheduler(Thread):
 
 class PoolMaintainer(Thread):
     """Maintains the workers within the Pool."""
-    def __init__(self, context, rejected, connection):
+    def __init__(self, context, rejected, connection,
+                 initializer, initargs):
         Thread.__init__(self)
         self.daemon = True
         self.context = context
         self.rejected = rejected
+        self.initargs = initargs
+        self.initializer = initializer
         self.connection = connection
 
     @staticmethod
@@ -263,10 +266,9 @@ class PoolMaintainer(Thread):
         """Respawn missing workers."""
         pool = []
 
-        for _ in range(self.workers - len(self.context.pool)):
+        for _ in range(self.context.workers - len(self.context.pool)):
             worker = ProcessWorker(self.connection.address, self.context.limit,
-                                   self.context.initializer,
-                                   self.context.initargs)
+                                   self.initializer, self.initargs)
             worker.start()
             worker.finalize(self.connection)
             pool.append(worker)  # add worker to pool
@@ -331,7 +333,8 @@ class ProcessPool(object):
         self._rejected = deque()  # task enqueued on dead worker
         self._task_scheduler = TaskScheduler(self._context, self._rejected)
         self._pool_maintainer = PoolMaintainer(self._context, self._rejected,
-                                               self._connection)
+                                               self._connection, initializer,
+                                               initargs)
         self._results_fetcher = ResultsFetcher(self._context, self._rejected)
         self.initializer = initializer
         self.initargs = initargs

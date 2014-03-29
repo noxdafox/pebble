@@ -202,7 +202,7 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
 
        .. function:: wait(timeout=None)
 
-          Waits until the results are not ready or until *timeout* expired, if passed.
+          Wait until the results are ready or a *timeout* occurrs.
           Returns True if *Task* completed within the timeout period, False otherwise.
 
        .. function:: get(timeout=None, cancel=False)

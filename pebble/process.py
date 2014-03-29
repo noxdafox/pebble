@@ -203,6 +203,7 @@ class TaskScheduler(Thread):
         """Wait for available workers."""
         descriptors = [w.channel for w in workers]
         try:
+            timeout = len(descriptors) > 0 and timeout or 0.01
             _, ready, _ = select([], descriptors, [], timeout)
             return [w for w in workers if w.channel in ready]
         except:  # worker expired or stopped
@@ -284,7 +285,7 @@ class PoolMaintainer(Thread):
     def run(self):
         while self.state != STOPPED:
             workers = self.pool[:]
-            expired = self.expired_workers(workers, 0.1)
+            expired = self.expired_workers(workers, 0.8)
             for worker in expired:
                 self.pool.remove(worker)
             rejected_tasks = self.clean_workers(expired)
@@ -308,6 +309,7 @@ class ResultsFetcher(Thread):
         """Wait for expired workers."""
         descriptors = [w.channel for w in workers if not w.expired]
         try:
+            timeout = len(descriptors) > 0 and timeout or 0.01
             ready, _, _ = select(descriptors, [], [], timeout)
             return [w for w in workers if w.channel in ready]
         except:  # worker expired or stopped

@@ -19,7 +19,7 @@
 from uuid import uuid4
 from inspect import isclass
 from itertools import count
-from threading import Condition, Lock
+from threading import Condition, Lock, Event
 try:  # Python 2
     from Queue import Queue
 except:  # Python 3
@@ -163,6 +163,7 @@ class PoolContext(object):
         self.pool = []
         self.limit = task_limit
         self.counter = count()
+        self.expired_workers = Event()
         if queue is not None:
             if isclass(queue):
                 self.queue = queue(*queueargs)

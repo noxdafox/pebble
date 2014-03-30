@@ -57,6 +57,7 @@ class ProcessWorker(Process):
         self.initializer = initializer
         self.initargs = initargs
         self.daemon = True
+        self.expire = None
         self.counter = count()  # task counter
         self.queue = deque()  # queued tasks
         self.channel = None  # task/result channel
@@ -66,8 +67,9 @@ class ProcessWorker(Process):
     def expired(self):
         return self.channel.closed
 
-    def finalize(self, connection):
+    def finalize(self, expire, connection):
         """Finalizes the worker, to be called after it has been started."""
+        self.expire = expire
         self.channel = connection.accept()
 
     def stop(self):
@@ -116,6 +118,7 @@ class ProcessWorker(Process):
                 self.closed = True
         except Exception:  # worker closed
             self.queue.popleft()
+            self.expire.set()
             task._timestamp = 0
             raise RuntimeError('Worker closed')
 
@@ -140,6 +143,7 @@ class ProcessWorker(Process):
                 self.queue[0]._timestamp = time()
         except (EOFError, IOError):  # process expired
             self.channel.close()
+            self.expire.set()
 
         return task
 
@@ -200,6 +204,7 @@ class TaskScheduler(Thread):
         """Wait for available workers."""
         descriptors = [w.channel for w in workers]
         try:
+            timeout = len(descriptors) > 0 and timeout or 0.01
             _, ready, _ = select([], descriptors, [], timeout)
             return [w for w in workers if w.channel in ready]
         except:  # worker expired or stopped
@@ -239,8 +244,8 @@ class PoolMaintainer(Thread):
         self.initializer = initializer
         self.connection = connection
 
-    @staticmethod
-    def expired_workers(workers, timeout):
+    #@staticmethod
+    def expired_workers(self, workers, timeout):
         """Wait for expired workers.
 
         Expired workers are those which are not alive, which
@@ -248,7 +253,9 @@ class PoolMaintainer(Thread):
         has not started.
         """
         ##TODO: wait for SIGCHLD
-        sleep(timeout)
+        #sleep(timeout)
+        self.context.expired_workers.clear()
+        self.context.expired_workers.wait(timeout)
         return [w for w in workers if not w.is_alive() and w.expired]
 
     @staticmethod
@@ -267,10 +274,11 @@ class PoolMaintainer(Thread):
         pool = []
 
         for _ in range(self.context.workers - len(self.context.pool)):
-            worker = ProcessWorker(self.connection.address, self.context.limit,
+            worker = ProcessWorker(self.connection.address,
+                                   self.context.limit,
                                    self.initializer, self.initargs)
             worker.start()
-            worker.finalize(self.connection)
+            worker.finalize(self.context.expired_workers, self.connection)
             pool.append(worker)  # add worker to pool
 
         return pool
@@ -278,7 +286,7 @@ class PoolMaintainer(Thread):
     def run(self):
         while self.context.state != STOPPED:
             workers = self.context.pool[:]
-            expired = self.expired_workers(workers, 0.1)
+            expired = self.expired_workers(workers, 0.8)
             for worker in expired:
                 self.context.pool.remove(worker)
             rejected_tasks = self.clean_workers(expired)
@@ -300,6 +308,7 @@ class ResultsFetcher(Thread):
         """Wait for expired workers."""
         descriptors = [w.channel for w in workers if not w.expired]
         try:
+            timeout = len(descriptors) > 0 and timeout or 0.01
             ready, _, _ = select(descriptors, [], [], timeout)
             return [w for w in workers if w.channel in ready]
         except:  # worker expired or stopped

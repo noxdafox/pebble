@@ -194,8 +194,6 @@ class ProcessWorker(Process):
 
                 error = results = None
 
-        # close all descriptors and exit
-        self.channel.close()
         sys.exit(0)
 
 

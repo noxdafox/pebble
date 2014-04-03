@@ -239,6 +239,44 @@ class TaskScheduler(Thread):
             self.schedule_tasks(available, 0.6)
 
 
+class ResultsFetcher(Thread):
+    """Fetches results from the pool and forwards them to their tasks."""
+    def __init__(self, context, rejected):
+        Thread.__init__(self)
+        self.daemon = True
+        self.context = context
+        self.rejected = rejected
+
+    @staticmethod
+    def results(workers, timeout):
+        """Wait for expired workers."""
+        descriptors = [w.channel for w in workers if not w.expired]
+        try:
+            timeout = len(descriptors) > 0 and timeout or 0.01
+            ready, _, _ = select(descriptors, [], [], timeout)
+            return [w for w in workers if w.channel in ready]
+        except:  # worker expired or stopped
+            return []
+
+    def finalize_tasks(self, tasks):
+        for task in tasks:
+            if task._callback is not None:
+                try:
+                    task._callback(task)
+                except:
+                    print_exc()
+            self.context.queue.task_done()
+
+    def run(self):
+        while self.context.state != STOPPED:
+            timestamp = time()
+            workers = [w for w in self.context.pool[:] if not w.expired]
+            tasks = [w.task_valid(timestamp) for w in workers]
+            ready = self.results(workers, 0.6)
+            tasks.extend([w.task_complete() for w in ready])
+            self.finalize_tasks([t for t in tasks if t is not None])
+
+
 class PoolMaintainer(Thread):
     """Maintains the workers within the Pool."""
     def __init__(self, context, rejected, connection,
@@ -251,7 +289,6 @@ class PoolMaintainer(Thread):
         self.initializer = initializer
         self.connection = connection
 
-    #@staticmethod
     def expired_workers(self, workers, timeout):
         """Wait for expired workers.
 
@@ -290,52 +327,13 @@ class PoolMaintainer(Thread):
 
     def run(self):
         while self.context.state != STOPPED:
-            workers = self.context.pool[:]
-            expired = self.expired_workers(workers, 0.8)
+            respawned = self.respawn_workers()
+            self.context.pool.extend(respawned)
+            expired = self.expired_workers(self.context.pool[:], 0.8)
             for worker in expired:
                 self.context.pool.remove(worker)
             rejected_tasks = self.clean_workers(expired)
             self.rejected.extend(rejected_tasks)
-            respawned = self.respawn_workers()
-            self.context.pool.extend(respawned)
-
-
-class ResultsFetcher(Thread):
-    """Fetches results from the pool and forwards them to their tasks."""
-    def __init__(self, context, rejected):
-        Thread.__init__(self)
-        self.daemon = True
-        self.context = context
-        self.rejected = rejected
-
-    @staticmethod
-    def results(workers, timeout):
-        """Wait for expired workers."""
-        descriptors = [w.channel for w in workers if not w.expired]
-        try:
-            timeout = len(descriptors) > 0 and timeout or 0.01
-            ready, _, _ = select(descriptors, [], [], timeout)
-            return [w for w in workers if w.channel in ready]
-        except:  # worker expired or stopped
-            return []
-
-    def finalize_tasks(self, tasks):
-        for task in tasks:
-            if task._callback is not None:
-                try:
-                    task._callback(task)
-                except:
-                    print_exc()
-            self.context.queue.task_done()
-
-    def run(self):
-        while self.context.state != STOPPED:
-            timestamp = time()
-            workers = [w for w in self.context.pool[:] if not w.expired]
-            tasks = [w.task_valid(timestamp) for w in workers]
-            ready = self.results(workers, 0.6)
-            tasks.extend([w.task_complete() for w in ready])
-            self.finalize_tasks([t for t in tasks if t is not None])
 
 
 class ProcessPool(object):

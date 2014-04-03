@@ -68,10 +68,10 @@ class ProcessWorker(Process):
     def expired(self):
         return self.channel.closed
 
-    def finalize(self, expire, connection):
+    def finalize(self, expire, channel):
         """Finalizes the worker, to be called after it has been started."""
         self.expire = expire
-        self.channel = connection.accept()
+        self.channel = channel
 
     def stop(self):
         """Stops the worker terminating the process."""
@@ -289,17 +289,6 @@ class PoolMaintainer(Thread):
         self.initializer = initializer
         self.connection = connection
 
-    def expired_workers(self, workers, timeout):
-        """Wait for expired workers.
-
-        Expired workers are those which are not alive, which
-        results channel has been closed and which current task
-        has not started.
-        """
-        self.context.expired_workers.clear()
-        self.context.expired_workers.wait(timeout)
-        return [w for w in workers if not w.is_alive() and w.expired]
-
     @staticmethod
     def clean_workers(workers):
         """Join expired workers and collect pending tasks."""
@@ -311,6 +300,17 @@ class PoolMaintainer(Thread):
 
         return rejected
 
+    def expired_workers(self, workers, timeout):
+        """Wait for expired workers.
+
+        Expired workers are those which are not alive, which
+        results channel has been closed and which current task
+        has not started.
+        """
+        self.context.expired_workers.clear()
+        self.context.expired_workers.wait(timeout)
+        return [w for w in workers if not w.is_alive() and w.expired]
+
     def respawn_workers(self):
         """Respawn missing workers."""
         pool = []
@@ -320,7 +320,8 @@ class PoolMaintainer(Thread):
                                    self.context.limit,
                                    self.initializer, self.initargs)
             worker.start()
-            worker.finalize(self.context.expired_workers, self.connection)
+            worker_channel = self.connection.accept()
+            worker.finalize(self.context.expired_workers, worker_channel)
             pool.append(worker)  # add worker to pool
 
         return pool
@@ -357,6 +358,13 @@ class ProcessPool(object):
     def __exit__(self, *args):
         self.close()
         self.join()
+
+    def _start(self):
+        """Starts the pool."""
+        self._task_scheduler.start()
+        self._pool_maintainer.start()
+        self._results_fetcher.start()
+        self._context.state = RUNNING
 
     @property
     def active(self):
@@ -433,10 +441,7 @@ class ProcessPool(object):
         """
         # start the pool at first call
         if self._context.state == CREATED:
-            self._task_scheduler.start()
-            self._pool_maintainer.start()
-            self._results_fetcher.start()
-            self._context.state = RUNNING
+            self._start()
         elif self._context.state != RUNNING:
             raise RuntimeError('The Pool is not running')
         if not isinstance(function, Callable):

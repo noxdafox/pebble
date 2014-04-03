@@ -16,10 +16,11 @@
 
 import os
 import sys
+import atexit
 
+from time import time
 from select import select
 from itertools import count
-from time import time, sleep
 from traceback import format_exc, print_exc
 from threading import Thread
 from collections import Callable, deque
@@ -152,6 +153,13 @@ class ProcessWorker(Process):
         error = None
         results = None
         signal(SIGINT, SIG_IGN)
+
+        def exit_function(channel):
+            ## TODO: deinitializer
+            if channel is not None:
+                channel.close()
+        atexit.register(exit_function, self.channel)
+
         try:
             self.channel = Client(self.address)
         except:  # main process shutdown
@@ -202,7 +210,7 @@ class TaskScheduler(Thread):
     @staticmethod
     def free_workers(workers, timeout):
         """Wait for available workers."""
-        descriptors = [w.channel for w in workers]
+        descriptors = [w.channel for w in workers if not w.closed]
         try:
             timeout = len(descriptors) > 0 and timeout or 0.01
             _, ready, _ = select([], descriptors, [], timeout)
@@ -227,8 +235,7 @@ class TaskScheduler(Thread):
 
     def run(self):
         while self.context.state != STOPPED:
-            workers = [w for w in self.context.pool[:] if not w.closed]
-            available = self.free_workers(workers, 0.8)
+            available = self.free_workers(self.context.pool[:], 0.8)
             self.schedule_tasks(available, 0.6)
 
 
@@ -252,8 +259,6 @@ class PoolMaintainer(Thread):
         results channel has been closed and which current task
         has not started.
         """
-        ##TODO: wait for SIGCHLD
-        #sleep(timeout)
         self.context.expired_workers.clear()
         self.context.expired_workers.wait(timeout)
         return [w for w in workers if not w.is_alive() and w.expired]

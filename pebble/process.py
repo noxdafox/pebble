@@ -305,8 +305,8 @@ class PoolMaintainer(Thread):
         results channel has been closed and which current task
         has not started.
         """
-        self.context.expired_workers.clear()
         self.context.expired_workers.wait(timeout)
+        self.context.expired_workers.clear()
         return [w for w in workers if not w.is_alive() and w.expired]
 
     def respawn_workers(self):
@@ -364,6 +364,19 @@ class ProcessPool(object):
         self._results_fetcher.start()
         self._context.state = RUNNING
 
+    @staticmethod
+    def _join_workers(workers, timeout=None):
+        counter = 0
+
+        while len(workers) > 0 and (timeout is None or counter < timeout):
+            for worker in workers[:]:
+                worker.join(timeout is not None and 0.1 or None)
+                if not worker.is_alive():
+                    workers.remove(worker)
+            counter += timeout is not None and (len(workers)) / 10.0 or 0
+
+        return workers
+
     @property
     def active(self):
         return self._context.state == RUNNING and True or False
@@ -382,7 +395,6 @@ class ProcessPool(object):
         for w in self._context.pool:
             w.channel.close()
             w.terminate()
-        self._connection.close()
 
     def kill(self):
         """Kills the pool forcing all workers to terminate immediately."""
@@ -400,25 +412,33 @@ class ProcessPool(object):
         it block until all workers exited or raise TimeoutError.
 
         """
-        counter = 0
-
         if self._context.state == RUNNING:
             raise RuntimeError('The Pool is still running')
-        # if timeout is set join workers until its value
-        while counter < timeout and len(self._context.pool) > 0:
-            counter += (len(self._context.pool) + 2) / 10.0
-            if self._task_scheduler.is_alive():
+
+        self._connection.close()
+
+        if timeout > 0:
+            counter = 0
+
+            # wait for Pool threads
+            while (self._task_scheduler.is_alive() or
+                   self._results_fetcher.is_alive()) and counter < timeout:
                 self._task_scheduler.join(0.1)
-            if self._results_fetcher.is_alive():
                 self._results_fetcher.join(0.1)
-            self._context.pool = [w for w in self._context.pool
-                                  if w.join(0.1) is None and w.is_alive()]
-        # verify timeout expired
-        if timeout > 0 and counter >= timeout and self._context.pool:
-            raise TimeoutError('Workers are still running')
-        # timeout not set
-        self._context.pool = [w for w in self._context.pool if w.join() is None
-                              and w.is_alive()]
+                counter += 0.2
+            # wait for Pool processes
+            timeout = counter < timeout and timeout - counter or 0
+            self._context.pool = self._join_workers(self._context.pool[:],
+                                                    timeout)
+            # verify timeout expired
+            if len(self._context.pool) > 0:
+                raise TimeoutError('Workers are still running')
+        else:
+            if (self._task_scheduler.is_alive() or
+                self._results_fetcher.is_alive()):
+                self._task_scheduler.join()
+                self._results_fetcher.join()
+            self._context.pool = self._join_workers(self._context.pool[:])
 
     def schedule(self, function, args=(), kwargs={}, identifier=None,
                  callback=None, timeout=0):

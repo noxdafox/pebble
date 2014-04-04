@@ -59,7 +59,7 @@ class ProcessWorker(Process):
         self.initargs = initargs
         self.daemon = True
         self.expire = None
-        self.counter = count()  # task counter
+        self.task_counter = count()  # task counter
         self.queue = deque()  # queued tasks
         self.channel = None  # task/result channel
         self.closed = False  # no more task allowed
@@ -67,6 +67,24 @@ class ProcessWorker(Process):
     @property
     def expired(self):
         return self.channel.closed
+
+    @property
+    def counter(self):
+        return next(self.task_counter)
+
+    @property
+    def current(self):
+        try:
+            return self.queue[0]
+        except IndexError:
+            return None
+
+    def get_current(self):
+        """Gets the task which is currently under processing."""
+        try:
+            return self.queue.popleft()
+        except IndexError:
+            return None
 
     def finalize(self, expire, channel):
         """Finalizes the worker, to be called after it has been started."""
@@ -89,25 +107,6 @@ class ProcessWorker(Process):
         except:  # process already dead or Windows platform
             pass
 
-    def task_valid(self, timestamp):
-        """Check if current task is not in timeout or cancelled;
-        if so, stop the worker and return the task."""
-        task = None
-
-        try:
-            curr = self.queue[0]
-            if curr.timeout > 0 and timestamp - curr._timestamp > curr.timeout:
-                task = self.queue.popleft()
-                task._set(TimeoutError("Task timeout"))
-                self.stop()
-            elif curr.cancelled:
-                task = self.queue.popleft()
-                self.stop()
-        except IndexError:  # no tasks in worker queue
-            pass
-
-        return task
-
     def schedule_task(self, task):
         """Sends a *Task* to the worker."""
         if len(self.queue) == 0:  # scheduled task is current one
@@ -115,7 +114,7 @@ class ProcessWorker(Process):
         self.queue.append(task)
         try:
             self.channel.send((task._function, task._args, task._kwargs))
-            if self.limit > 0 and next(self.counter) >= self.limit - 1:
+            if self.limit > 0 and self.counter >= self.limit - 1:
                 self.closed = True
         except Exception:  # worker closed
             self.queue.popleft()
@@ -172,7 +171,7 @@ class ProcessWorker(Process):
                 error = err
                 error.traceback = format_exc()
 
-        while self.limit == 0 or next(self.counter) < self.limit:
+        while self.limit == 0 or self.counter < self.limit:
             try:  # get next task and execute it
                 function, args, kwargs = self.channel.recv()
                 results = function(*args, **kwargs)
@@ -256,6 +255,26 @@ class ResultsFetcher(Thread):
         except:  # worker expired or stopped
             return []
 
+    @staticmethod
+    def current_task_valid(workers):
+        """Check if current tasks have been cancelled or timing out."""
+        tasks = []
+        timestamp = time()
+
+        for worker in workers:
+            current = worker.current
+            if current is not None:
+                if (current.timeout > 0 and
+                    timestamp - current._timestamp > current.timeout):
+                    worker.stop()
+                    current._set(TimeoutError("Task timeout"))
+                    tasks.append(worker.get_current())
+                elif current.cancelled:
+                    worker.stop()
+                    tasks.append(worker.get_current())
+
+        return tasks
+
     def finalize_tasks(self, tasks):
         for task in tasks:
             if task._callback is not None:
@@ -267,9 +286,8 @@ class ResultsFetcher(Thread):
 
     def run(self):
         while self.context.state != STOPPED:
-            timestamp = time()
             workers = [w for w in self.context.pool[:] if not w.expired]
-            tasks = [w.task_valid(timestamp) for w in workers]
+            tasks = self.current_task_valid(workers)
             ready = self.results(workers, 0.6)
             tasks.extend([w.task_complete() for w in ready])
             self.finalize_tasks([t for t in tasks if t is not None])

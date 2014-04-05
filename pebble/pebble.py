@@ -157,12 +157,13 @@ class Task(object):
 
 
 class PoolContext(object):
+    """Container for the Pool state."""
     def __init__(self, state, workers, task_limit, queue, queueargs):
         self.state = state
         self.workers = workers
         self.pool = []
         self.limit = task_limit
-        self.counter = count()
+        self.task_counter = count()
         self.expired_workers = Event()
         if queue is not None:
             if isclass(queue):
@@ -171,3 +172,7 @@ class PoolContext(object):
                 raise ValueError("Queue must be Class")
         else:
             self.queue = Queue()
+
+    @property
+    def counter(self):
+        return next(self.task_counter)

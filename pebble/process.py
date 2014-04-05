@@ -117,7 +117,7 @@ class ProcessWorker(Process):
             if self.limit > 0 and self.counter >= self.limit - 1:
                 self.closed = True
         except Exception:  # worker closed
-            self.queue.popleft()
+            self.queue.pop()
             self.expire.set()
             task._timestamp = 0
             raise RuntimeError('Worker closed')
@@ -246,7 +246,11 @@ class ResultsFetcher(Thread):
 
     @staticmethod
     def results(workers, timeout):
-        """Wait for expired workers."""
+        """Waits for ready tasks.
+
+        Returns a list of ready workers.
+
+        """
         descriptors = [w.channel for w in workers if not w.expired]
         try:
             timeout = len(descriptors) > 0 and timeout or 0.01
@@ -257,7 +261,11 @@ class ResultsFetcher(Thread):
 
     @staticmethod
     def current_task_valid(workers):
-        """Check if current tasks have been cancelled or timing out."""
+        """Check if current tasks have been cancelled or timing out.
+
+        Returns a list of Tasks.
+
+        """
         tasks = []
         timestamp = time()
 
@@ -276,6 +284,7 @@ class ResultsFetcher(Thread):
         return tasks
 
     def finalize_tasks(self, tasks):
+        """Runs callbacks and sets task done in queue."""
         for task in tasks:
             if task._callback is not None:
                 try:
@@ -319,9 +328,9 @@ class PoolMaintainer(Thread):
     def expired_workers(self, workers, timeout):
         """Wait for expired workers.
 
-        Expired workers are those which are not alive, which
-        results channel has been closed and which current task
-        has not started.
+        Expired workers are those which are not alive and which
+        channel has been closed.
+
         """
         self.context.expired_workers.wait(timeout)
         self.context.expired_workers.clear()
@@ -329,7 +338,7 @@ class PoolMaintainer(Thread):
 
     def respawn_workers(self):
         """Respawn missing workers."""
-        pool = []
+        workers = []
 
         for _ in range(self.context.workers - len(self.context.pool)):
             worker = ProcessWorker(self.connection.address,
@@ -338,9 +347,9 @@ class PoolMaintainer(Thread):
             worker.start()
             worker_channel = self.connection.accept()
             worker.finalize(self.context.expired_workers, worker_channel)
-            pool.append(worker)  # add worker to pool
+            workers.append(worker)  # add worker to pool
 
-        return pool
+        return workers
 
     def run(self):
         while self.context.state != STOPPED:
@@ -484,7 +493,7 @@ class ProcessPool(object):
             raise ValueError('function must be callable')
         if not isinstance(timeout, int):
             raise ValueError('timeout must be integer')
-        task = Task(next(self._context.counter), function, args, kwargs,
+        task = Task(self._context.counter, function, args, kwargs,
                     callback, timeout, identifier)
         self._context.queue.put(task)
 

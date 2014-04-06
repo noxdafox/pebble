@@ -117,14 +117,9 @@ class ProcessWorker(Process):
         if len(self.queue) == 0:  # scheduled task is current one
             task._timestamp = time()
         self.queue.append(task)
-        try:
-            self.channel.send((task._function, task._args, task._kwargs))
-            if self.limit > 0 and self.counter >= self.limit - 1:
-                self.closed = True
-        except Exception:  # worker closed
-            self.queue.pop()
-            task._timestamp = 0
-            raise RuntimeError('Worker closed')
+        self.channel.send((task._function, task._args, task._kwargs))
+        if self.limit > 0 and self.counter >= self.limit - 1:
+            self.closed = True
 
     def task_complete(self):
         """Waits for the next task to be completed and sets the task.

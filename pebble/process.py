@@ -18,7 +18,7 @@ import os
 import sys
 import atexit
 
-from time import time
+from time import time, sleep
 from select import select
 from itertools import count
 from traceback import format_exc, print_exc
@@ -27,13 +27,13 @@ from collections import Callable, deque
 from multiprocessing import Process
 from multiprocessing.connection import Listener, Client
 try:  # Python 2
-    from Queue import Empty
+    from Queue import Queue, Empty
     from cPickle import PicklingError
 except:  # Python 3
-    from queue import Empty
+    from queue import Queue, Empty
     from pickle import PicklingError
 
-from .pebble import TimeoutError, Task, PoolContext
+from .pebble import TimeoutError, TaskCancelled, Task, PoolContext, coroutine
 
 ### platform dependent code ###
 if os.name in ('posix', 'os2'):
@@ -42,6 +42,13 @@ if os.name in ('posix', 'os2'):
 else:
     FAMILY = 'AF_INET'
     from signal import SIG_IGN, SIGINT, signal
+
+
+SEND = 0
+RECV = 1
+TIMEOUT = 2
+CANCELLED = 3
+TERMINATE = 4
 
 
 STOPPED = 0
@@ -58,7 +65,6 @@ class ProcessWorker(Process):
         self.initializer = initializer
         self.initargs = initargs
         self.daemon = True
-        self.expire = None
         self.task_counter = count()  # task counter
         self.queue = deque()  # queued tasks
         self.channel = None  # task/result channel
@@ -86,9 +92,8 @@ class ProcessWorker(Process):
         except IndexError:
             return None
 
-    def finalize(self, expire, channel):
+    def finalize(self, channel):
         """Finalizes the worker, to be called after it has been started."""
-        self.expire = expire
         self.channel = channel
 
     def stop(self):
@@ -118,7 +123,6 @@ class ProcessWorker(Process):
                 self.closed = True
         except Exception:  # worker closed
             self.queue.pop()
-            self.expire.set()
             task._timestamp = 0
             raise RuntimeError('Worker closed')
 
@@ -130,6 +134,7 @@ class ProcessWorker(Process):
 
         """
         task = None
+        results = None
 
         try:
             task = self.queue.popleft()
@@ -137,15 +142,13 @@ class ProcessWorker(Process):
             pass
         try:
             results = self.channel.recv()
-            if task:
-                task._set(results)
             if len(self.queue) > 0:
                 self.queue[0]._timestamp = time()
         except (EOFError, IOError):  # process expired
             self.channel.close()
-            self.expire.set()
+            raise RuntimeError('Worker expired')
 
-        return task
+        return task, results
 
     def run(self):
         """Worker process logic."""
@@ -196,33 +199,118 @@ class ProcessWorker(Process):
         sys.exit(0)
 
 
-class TaskScheduler(Thread):
-    """Sends tasks to the workers."""
-    def __init__(self, context, rejected):
+class PoolManager(Thread):
+    """Maintains the workers within the Pool."""
+    def __init__(self, context, rejected, connection,
+                 event_queue, initializer, initargs):
         Thread.__init__(self)
         self.daemon = True
         self.context = context
         self.rejected = rejected
+        self.initargs = initargs
+        self.event_queue = event_queue
+        self.initializer = initializer
+        self.connection = connection
 
-    @staticmethod
-    def free_workers(workers, timeout):
+    def clean_workers(self):
+        """Join expired workers and collect pending tasks."""
+        for worker in [w for w in self.context.pool[:] if w.expired]:
+            worker.join()
+            self.rejected.extend(worker.queue)
+            self.context.pool.remove(worker)
+
+    def respawn_workers(self):
+        """Respawn missing workers."""
+        for _ in range(self.context.workers - len(self.context.pool)):
+            worker = ProcessWorker(self.connection.address,
+                                   self.context.limit,
+                                   self.initializer, self.initargs)
+            worker.start()
+            worker.finalize(self.connection.accept())
+            self.context.pool.append(worker)
+
+    def run(self):
+        while self.context.state != STOPPED:
+            self.respawn_workers()
+            self.context.expired_workers.wait(0.8)
+            self.context.expired_workers.clear()
+            self.clean_workers()
+
+
+class TaskManager(Thread):
+    """Sends tasks to the workers."""
+    def __init__(self, context, rejected, event_queue):
+        Thread.__init__(self)
+        self.daemon = True
+        self.context = context
+        self.rejected = rejected
+        self.event_queue = event_queue
+        self.event_handlers = None
+
+    def pool_event(self, timeout):
+        event = None,
+        worker = None
+
+        event, worker = self.task_events()
+        if event is None:
+            event, worker = self.channel_events(timeout)
+
+        return event, worker
+
+    def task_events(self):
+        """Check if current tasks have been cancelled or timing out."""
+        timestamp = time()
+
+        for worker in self.context.pool:
+            current = worker.current
+            if current is not None and current.started:
+                if (current.timeout > 0 and
+                    timestamp - current._timestamp > current.timeout):
+                    return TIMEOUT, worker
+                if current.cancelled:
+                    return CANCELLED, worker
+
+        return None, None
+
+    def channel_events(self, timeout):
         """Wait for available workers."""
-        descriptors = [w.channel for w in workers if not w.closed]
-        try:
-            timeout = len(descriptors) > 0 and timeout or 0.01
-            _, ready, _ = select([], descriptors, [], timeout)
-            return [w for w in workers if w.channel in ready]
-        except:  # worker expired or stopped
-            return []
+        pool = self.context.pool
+        recv_channels = [w.channel for w in pool if not w.expired]
+        send_channels = []
 
-    def schedule_tasks(self, workers, timeout):
-        """For each worker, delivers a task if available."""
-        for worker in workers:
+        # poll on send channels only if there are queued tasks
+        if len(self.rejected) > 0 or not self.context.queue.empty():
+            send_channels = [w.channel for w in pool if not w.closed]
+
+        # poll for ready channels
+        timeout = len(recv_channels + send_channels) > 0 and timeout or 0.01
+        try:
+            recv, send, _ = select(recv_channels, send_channels, [], timeout)
+        except:  # select on expired worker
+            return
+
+        # return event
+        for ready in recv:
+            for worker in pool:
+                if worker.channel == ready:
+                    return RECV, worker
+        for ready in send:
+            for worker in pool:
+                if worker.channel == ready:
+                    return SEND, worker
+
+        return None, None
+
+    @coroutine
+    def schedule_task(self):
+        while 1:
+            worker = (yield)
+
             try:
                 try:  # first get any rejected task
                     task = self.rejected.popleft()
                 except IndexError:  # then get enqueued ones
-                    task = self.context.queue.get(timeout=timeout)
+                    task = self.context.queue.get_nowait()
                 try:
                     worker.schedule_task(task)
                 except RuntimeError:  # worker closed
@@ -230,136 +318,64 @@ class TaskScheduler(Thread):
             except Empty:  # no tasks available
                 continue
 
-    def run(self):
-        while self.context.state != STOPPED:
-            available = self.free_workers(self.context.pool[:], 0.8)
-            self.schedule_tasks(available, 0.6)
+    @coroutine
+    def task_done(self):
+        while 1:
+            worker = (yield)
 
+            try:
+                task, results = worker.task_complete()
+                task._set(results)
+                self.task_callback.send(task)
+                self.context.queue.task_done()
+            except RuntimeError:  # worker expired
+                self.context.expired_workers.set()
 
-class ResultsFetcher(Thread):
-    """Fetches results from the pool and forwards them to their tasks."""
-    def __init__(self, context, rejected):
-        Thread.__init__(self)
-        self.daemon = True
-        self.context = context
-        self.rejected = rejected
+    @coroutine
+    def task_timeout(self):
+        while 1:
+            worker = (yield)
 
-    @staticmethod
-    def results(workers, timeout):
-        """Waits for ready tasks.
+            worker.stop()
+            task = worker.get_current()
+            task._set(TimeoutError('Task timeout'))
+            self.task_callback.send(task)
 
-        Returns a list of ready workers.
+    @coroutine
+    def task_cancelled(self):
+        while 1:
+            worker = (yield)
 
-        """
-        descriptors = [w.channel for w in workers if not w.expired]
-        try:
-            timeout = len(descriptors) > 0 and timeout or 0.01
-            ready, _, _ = select(descriptors, [], [], timeout)
-            return [w for w in workers if w.channel in ready]
-        except:  # worker expired or stopped
-            return []
+            worker.stop()
+            task = worker.get_current()
+            task._set(TaskCancelled('Task cancelled'))
+            self.task_callback.send(task)
 
-    @staticmethod
-    def current_task_valid(workers):
-        """Check if current tasks have been cancelled or timing out.
+    @coroutine
+    def task_callback(self):
+        while 1:
+            task = (yield)
 
-        Returns a list of Tasks.
-
-        """
-        tasks = []
-        timestamp = time()
-
-        for worker in workers:
-            current = worker.current
-            if current is not None:
-                if (current.timeout > 0 and
-                    timestamp - current._timestamp > current.timeout):
-                    worker.stop()
-                    current._set(TimeoutError("Task timeout"))
-                    tasks.append(worker.get_current())
-                elif current.cancelled:
-                    worker.stop()
-                    tasks.append(worker.get_current())
-
-        return tasks
-
-    def finalize_tasks(self, tasks):
-        """Runs callbacks and sets task done in queue."""
-        for task in tasks:
             if task._callback is not None:
                 try:
                     task._callback(task)
-                except:
+                except Exception:
                     print_exc()
-            self.context.queue.task_done()
+                    # self.context.state = ERROR
 
     def run(self):
+        self.event_handlers = (self.schedule_task(), self.task_done(),
+                               self.task_timeout(), self.task_cancelled())
+        self.task_callback = self.task_callback()
+
         while self.context.state != STOPPED:
-            workers = [w for w in self.context.pool[:] if not w.expired]
-            tasks = self.current_task_valid(workers)
-            ready = self.results(workers, 0.6)
-            tasks.extend([w.task_complete() for w in ready])
-            self.finalize_tasks([t for t in tasks if t is not None])
+            event, worker = self.pool_event(0.8)
+            if event is not None:
+                self.event_handlers[event].send(worker)
 
-
-class PoolMaintainer(Thread):
-    """Maintains the workers within the Pool."""
-    def __init__(self, context, rejected, connection,
-                 initializer, initargs):
-        Thread.__init__(self)
-        self.daemon = True
-        self.context = context
-        self.rejected = rejected
-        self.initargs = initargs
-        self.initializer = initializer
-        self.connection = connection
-
-    @staticmethod
-    def clean_workers(workers):
-        """Join expired workers and collect pending tasks."""
-        rejected = []
-
-        for worker in workers:
-            worker.join()
-            rejected.extend(worker.queue)
-
-        return rejected
-
-    def expired_workers(self, workers, timeout):
-        """Wait for expired workers.
-
-        Expired workers are those which are not alive and which
-        channel has been closed.
-
-        """
-        self.context.expired_workers.wait(timeout)
-        self.context.expired_workers.clear()
-        return [w for w in workers if not w.is_alive() and w.expired]
-
-    def respawn_workers(self):
-        """Respawn missing workers."""
-        workers = []
-
-        for _ in range(self.context.workers - len(self.context.pool)):
-            worker = ProcessWorker(self.connection.address,
-                                   self.context.limit,
-                                   self.initializer, self.initargs)
-            worker.start()
-            worker_channel = self.connection.accept()
-            worker.finalize(self.context.expired_workers, worker_channel)
-            workers.append(worker)  # add worker to pool
-
-        return workers
-
-    def run(self):
-        while self.context.state != STOPPED:
-            respawned = self.respawn_workers()
-            self.context.pool.extend(respawned)
-            expired = self.expired_workers(self.context.pool[:], 0.8)
-            for worker in expired:
-                self.context.pool.remove(worker)
-            rejected_tasks = self.clean_workers(expired)
-            self.rejected.extend(rejected_tasks)
+        for handler in self.event_handlers:
+            handler.close()
+        self.task_callback.close()
 
 
 class ProcessPool(object):
@@ -369,11 +385,12 @@ class ProcessPool(object):
                                     queue, queueargs)
         self._connection = Listener(family=FAMILY)
         self._rejected = deque()  # task enqueued on dead worker
-        self._task_scheduler = TaskScheduler(self._context, self._rejected)
-        self._pool_maintainer = PoolMaintainer(self._context, self._rejected,
-                                               self._connection, initializer,
-                                               initargs)
-        self._results_fetcher = ResultsFetcher(self._context, self._rejected)
+        self._event_queue = Queue()  # events PoolManager and TaskManager
+        self._pool_manager = PoolManager(self._context, self._rejected,
+                                         self._connection, self._event_queue,
+                                         initializer, initargs)
+        self._task_manager = TaskManager(self._context, self._rejected,
+                                         self._event_queue)
         self.initializer = initializer
         self.initargs = initargs
 
@@ -386,9 +403,8 @@ class ProcessPool(object):
 
     def _start(self):
         """Starts the pool."""
-        self._task_scheduler.start()
-        self._pool_maintainer.start()
-        self._results_fetcher.start()
+        self._pool_manager.start()
+        self._task_manager.start()
         self._context.state = RUNNING
 
     @staticmethod
@@ -417,8 +433,9 @@ class ProcessPool(object):
     def stop(self):
         """Stops the pool without performing any pending task."""
         self._context.state = STOPPED
-        if self._pool_maintainer.is_alive():
-            self._pool_maintainer.join()
+        if (self._pool_manager.is_alive() or self._task_manager.is_alive()):
+            self._pool_manager.join()
+            self._task_manager.join()
         for w in self._context.pool:
             w.channel.close()
             w.terminate()
@@ -426,8 +443,9 @@ class ProcessPool(object):
     def kill(self):
         """Kills the pool forcing all workers to terminate immediately."""
         self._context.state = STOPPED
-        if self._pool_maintainer.is_alive():
-            self._pool_maintainer.join()
+        if (self._pool_manager.is_alive() or self._task_manager.is_alive()):
+            self._pool_manager.join()
+            self._task_manager.join()
         for w in self._context.pool:
             w.channel.close()
             w.kill()
@@ -445,26 +463,13 @@ class ProcessPool(object):
         self._connection.close()
 
         if timeout > 0:
-            counter = 0
-
-            # wait for Pool threads
-            while (self._task_scheduler.is_alive() or
-                   self._results_fetcher.is_alive()) and counter < timeout:
-                self._task_scheduler.join(0.1)
-                self._results_fetcher.join(0.1)
-                counter += 0.2
             # wait for Pool processes
-            timeout = counter < timeout and timeout - counter or 0
             self._context.pool = self._join_workers(self._context.pool[:],
                                                     timeout)
             # verify timeout expired
             if len(self._context.pool) > 0:
                 raise TimeoutError('Workers are still running')
         else:
-            if (self._task_scheduler.is_alive() or
-                self._results_fetcher.is_alive()):
-                self._task_scheduler.join()
-                self._results_fetcher.join()
             self._context.pool = self._join_workers(self._context.pool[:])
 
     def schedule(self, function, args=(), kwargs={}, identifier=None,

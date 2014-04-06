@@ -19,11 +19,23 @@
 from uuid import uuid4
 from inspect import isclass
 from itertools import count
+from functools import wraps
 from threading import Condition, Lock, Event
 try:  # Python 2
     from Queue import Queue
 except:  # Python 3
     from queue import Queue
+
+
+def coroutine(function):
+    """Coroutine decorator, turns a function into a coroutine starting it."""
+    @wraps(function)
+    def wrapper(*args, **kwargs):
+        crtn = function(*args, **kwargs)
+        next(crtn)
+        return crtn
+
+    return wrapper
 
 
 class PebbleError(Exception):

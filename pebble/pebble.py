@@ -177,6 +177,8 @@ class PoolContext(object):
         self.limit = task_limit
         self.task_counter = count()
         self.expired_workers = Event()
+        self.initializer = None
+        self.initargs = None
         if queue is not None:
             if isclass(queue):
                 self.queue = queue(*queueargs)

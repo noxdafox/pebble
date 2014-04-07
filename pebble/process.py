@@ -18,7 +18,7 @@ import os
 import sys
 import atexit
 
-from time import time, sleep
+from time import time
 from select import select
 from itertools import count
 from traceback import format_exc, print_exc
@@ -67,7 +67,10 @@ def schedule_task(queue, rejected, timeout):
                 task = rejected.popleft()
             except IndexError:  # then get enqueued ones
                 task = queue.get(timeout=timeout)
-            worker.schedule_task(task)
+            try:
+                worker.schedule_task(task)
+            except RuntimeError:  # worker expired
+                rejected.appendleft(task)
         except Empty:  # no tasks available
             continue
 
@@ -191,9 +194,14 @@ class ProcessWorker(Process):
         if len(self.queue) == 0:  # scheduled task is current one
             task._timestamp = time()
         self.queue.append(task)
-        self.channel.send((task._function, task._args, task._kwargs))
-        if self.limit > 0 and self.counter >= self.limit - 1:
-            self.closed = True
+        try:
+            self.channel.send((task._function, task._args, task._kwargs))
+            if self.limit > 0 and self.counter >= self.limit - 1:
+                self.closed = True
+        except (IOError, OSError):
+            self.queue.pop()
+            task._timestamp = 0
+            raise RuntimeError('Worker stopped')
 
     def task_complete(self):
         """Waits for the next task to be completed and sets the task.

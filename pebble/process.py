@@ -44,17 +44,28 @@ else:
     from signal import SIG_IGN, SIGINT, signal
 
 
-SEND = 0
-RECV = 1
-TIMEOUT = 2
-CANCELLED = 3
-EXPIRED = 4
+RECV = 0
+TIMEOUT = 1
+CANCELLED = 2
+EXPIRED = 3
+SEND = 4
 
 
 STOPPED = 0
 RUNNING = 1
 CLOSING = 2
 CREATED = 3
+
+
+def spawn_worker(context, connection):
+    worker = ProcessWorker(connection.address,
+                           context.limit,
+                           None, None)
+    worker.start()
+    worker_channel = connection.accept()
+    worker.finalize(worker_channel)
+
+    return worker
 
 
 @coroutine
@@ -76,7 +87,7 @@ def schedule_task(queue, rejected, timeout):
 
 
 @coroutine
-def task_done(queue, callback_handler):
+def task_done(queue, callback_handler, worker_expired):
     while 1:
         worker = (yield)
 
@@ -86,7 +97,7 @@ def task_done(queue, callback_handler):
             callback_handler.send(task)
             queue.task_done()
         except RuntimeError:  # worker expired
-            pass
+            worker_expired.send(worker)
 
 
 @coroutine
@@ -112,13 +123,16 @@ def task_cancelled(callback_handler):
 
 
 @coroutine
-def worker_expired(pool, rejected):
+def worker_expired(context, connection, rejected):
+    pool = context.pool
+
     while 1:
         worker = (yield)
 
         worker.join()
         rejected.extend(worker.queue)
         pool.remove(worker)
+        pool.append(spawn_worker(context, connection))
 
 
 @coroutine
@@ -319,36 +333,21 @@ class PoolManager(Thread):
 
         return [(RECV, w) for w in pool if w.channel in ready]
 
-    def respawn_workers(self):
-        """Respawn missing workers."""
-        pool = []
-
-        for _ in range(self.context.workers - len(self.context.pool)):
-            worker = ProcessWorker(self.connection.address,
-                                   self.context.limit,
-                                   None, None)
-            worker.start()
-            worker_channel = self.connection.accept()
-            worker.finalize(worker_channel)
-            pool.append(worker)  # add worker to pool
-
-        return pool
-
     def run(self):
         # initialize coroutines
         callback_manager = task_callback()
-        results_fetcher = task_done(self.context.queue, callback_manager)
+        workers_manager = worker_expired(self.context, self.connection,
+                                         self.rejected)
+        results_fetcher = task_done(self.context.queue, callback_manager,
+                                    workers_manager)
         timeout_manager = task_timeout(callback_manager)
         cancellation_manager = task_cancelled(callback_manager)
-        workers_manager = worker_expired(self.context.pool, self.rejected)
-        self.events_handlers = (callback_manager,
-                                results_fetcher,
+        self.events_handlers = (results_fetcher,
                                 timeout_manager,
                                 cancellation_manager,
                                 workers_manager)
 
         while self.context.state != STOPPED:
-            self.context.pool.extend(self.respawn_workers())
             events = self.pool_events(0.8)
             for event, worker in events:
                 self.events_handlers[event].send(worker)
@@ -365,7 +364,6 @@ class TaskScheduler(Thread):
         self.daemon = True
         self.context = context
         self.rejected = rejected
-        self.event_handlers = None
 
     @staticmethod
     def schedule_ready(workers, timeout):
@@ -377,27 +375,18 @@ class TaskScheduler(Thread):
         except:  # select on expired worker
             return []
 
-        return [(SEND, w) for w in workers if w.channel in ready]
-
-    def pool_events(self, timeout):
-        events = []  # (event, worker)
-
-        events.extend(self.schedule_ready(self.context.pool, timeout))
-
-        return events
+        return [w for w in workers if w.channel in ready]
 
     def run(self):
+        pool = self.context.pool
         # initialize coroutines
         task_scheduler = schedule_task(self.context.queue, self.rejected, 0.8)
-        self.events_handlers = (task_scheduler, )
 
         while self.context.state != STOPPED:
-            events = self.pool_events(0.2)
-            for event, worker in events:
-                self.events_handlers[event].send(worker)
+            for worker in self.schedule_ready(pool[:], 0.2):
+                task_scheduler.send(worker)
 
-        for handler in self.events_handlers:
-            handler.close()
+        task_scheduler.close()
 
 
 class ProcessPool(object):
@@ -423,6 +412,11 @@ class ProcessPool(object):
 
     def _start(self):
         """Starts the pool."""
+        # spawn workers
+        for _ in range(self._context.workers):
+            self._context.pool.append(spawn_worker(self._context,
+                                                   self._connection))
+        # start maintenance routines
         self._pool_manager.start()
         self._task_scheduler.start()
         self._context.state = RUNNING
@@ -453,8 +447,10 @@ class ProcessPool(object):
     def stop(self):
         """Stops the pool without performing any pending task."""
         self._context.state = STOPPED
-        if self._pool_manager.is_alive():
+        if (self._pool_manager.is_alive() or self._task_scheduler.is_alive()):
             self._pool_manager.join()
+            self._task_scheduler.join()
+
         for w in self._context.pool:
             w.channel.close()
             w.terminate()
@@ -462,8 +458,9 @@ class ProcessPool(object):
     def kill(self):
         """Kills the pool forcing all workers to terminate immediately."""
         self._context.state = STOPPED
-        if self._pool_manager.is_alive():
+        if (self._pool_manager.is_alive() or self._task_scheduler.is_alive()):
             self._pool_manager.join()
+            self._task_scheduler.join()
         for w in self._context.pool:
             w.channel.close()
             w.kill()

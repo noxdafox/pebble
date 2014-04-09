@@ -190,7 +190,6 @@ class ProcessWorker(Process):
     def stop(self):
         """Stops the worker terminating the process."""
         self.closed = True
-        self.channel.close()
         self.terminate()
         self.join(1)
         if self.is_alive():

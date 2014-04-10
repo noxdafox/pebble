@@ -29,7 +29,7 @@ except:  # Python 3
 
 from .thread import ThreadWorker, ThreadPool
 from .process import ProcessWorker, ProcessPool, FAMILY
-from .pebble import Task
+from .pebble import Task, TimeoutError
 
 
 def synchronized(lock):
@@ -238,6 +238,24 @@ class ProcessWrapper(object):
         self.callback = callback
         update_wrapper(self, function)
 
+    @staticmethod
+    def task_valid(worker):
+        """Check if the current task is not cancelled or timeout."""
+        task = None
+        timestamp = time()
+        current = worker.current
+        timeout = lambda c, t: c.timeout and t - c._timestamp > c.timeout
+
+        if timeout(current, timestamp):
+            worker.stop()
+            task = worker.get_current()
+            task._set(TimeoutError('Task timeout'))
+        elif current.cancelled:
+            worker.stop()
+            task = worker.get_current()
+
+        return task
+
     @thread
     def _handle_job(self, worker):
         task = None
@@ -247,7 +265,7 @@ class ProcessWrapper(object):
             if worker.channel.poll(0.2):
                 task = worker.task_complete()
             else:
-                task = worker.task_valid(time())
+                task = self.task_valid(worker)
         # run tasks callback
         if task._callback is not None:
             try:

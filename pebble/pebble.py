@@ -20,7 +20,7 @@ from uuid import uuid4
 from inspect import isclass
 from itertools import count
 from functools import wraps
-from threading import Condition, Lock, Event
+from threading import Condition, Lock
 try:  # Python 2
     from Queue import Queue
 except:  # Python 3
@@ -169,16 +169,20 @@ class Task(object):
 
 
 class PoolContext(object):
-    """Container for the Pool state."""
-    def __init__(self, state, workers, task_limit, queue, queueargs):
+    """Container for the Pool state.
+
+    Wraps all the variables needed to represent a Pool.
+
+    """
+    def __init__(self, state, workers, task_limit, queue, queueargs,
+                 initializer, initargs):
         self.state = state
         self.workers = workers
         self.pool = []
         self.limit = task_limit
         self.task_counter = count()
-        self.expired_workers = Event()
-        self.initializer = None
-        self.initargs = None
+        self.initializer = initializer
+        self.initargs = initargs
         if queue is not None:
             if isclass(queue):
                 self.queue = queue(*queueargs)
@@ -189,4 +193,5 @@ class PoolContext(object):
 
     @property
     def counter(self):
+        """Tasks counter."""
         return next(self.task_counter)

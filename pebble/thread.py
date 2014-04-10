@@ -81,7 +81,7 @@ class ThreadPool(object):
     def __init__(self, workers=1, task_limit=0, queue=None, queueargs=None,
                  initializer=None, initargs=None):
         self._context = PoolContext(CREATED, workers, task_limit,
-                                    queue, queueargs)
+                                    queue, queueargs, initializer, initargs)
         self._pool_maintainer = Thread(target=self._maintain_pool)
         self._pool_maintainer.daemon = True
         self.initializer = initializer
@@ -105,6 +105,22 @@ class ThreadPool(object):
                 w.start()
                 self._context.pool.append(w)
             sleep(0.6)
+
+    @property
+    def initializer(self):
+        return self._context.initializer
+
+    @initializer.setter
+    def initializer(self, value):
+        self._context.initializer = value
+
+    @property
+    def initargs(self):
+        return self._context.initargs
+
+    @initargs.setter
+    def initargs(self, value):
+        self._context.initargs = value
 
     @property
     def active(self):
@@ -173,7 +189,7 @@ class ThreadPool(object):
             raise RuntimeError('The Pool is not running')
         if not isinstance(function, Callable):
             raise ValueError('function must be callable')
-        task = Task(next(self._context.counter), function, args, kwargs,
+        task = Task(self._context.counter, function, args, kwargs,
                     callback, 0, identifier)
         self._context.queue.put(task)
 

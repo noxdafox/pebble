@@ -179,6 +179,7 @@ def worker_expired(context, connection, pending):
 
     *context* is the PoolContext object.
     *connection* is the Listener object to set up Pool - Worker channels.
+    *pending* queue of pending tasks as pending by other Workers.
 
     """
     pool = context.pool
@@ -207,6 +208,7 @@ def task_callback():
                 task._callback(task)
             except Exception:
                 print_exc()
+                ## TODO: context state == ERROR
                 # self.context.state = ERROR
 
 
@@ -361,7 +363,14 @@ class ProcessWorker(Process):
 
 
 class PoolManager(Thread):
-    """Sends tasks to the workers."""
+    """Main Pool management routine.
+
+    Collects expired workers and respawn them.
+    Checks for timeout/cancelled tasks.
+    Fetches the results and forwards them to the *Tasks*.
+    Runs callbacks.
+
+    """
     def __init__(self, context, pending, connection):
         Thread.__init__(self)
         self.daemon = True
@@ -441,7 +450,11 @@ class PoolManager(Thread):
 
 
 class TaskScheduler(Thread):
-    """Sends tasks to the workers."""
+    """Schedule the *Tasks* whithin the workers.
+
+    Ensures Workers to have always a ready task, if available.
+
+    """
     def __init__(self, context, pending):
         Thread.__init__(self)
         self.daemon = True
@@ -502,22 +515,6 @@ class ProcessPool(object):
                                          self._connection)
         self._task_scheduler = TaskScheduler(self._context, self._pending)
 
-    @property
-    def initializer(self):
-        return self._context.initializer
-
-    @initializer.setter
-    def initializer(self, value):
-        self._context.initializer = value
-
-    @property
-    def initargs(self):
-        return self._context.initargs
-
-    @initargs.setter
-    def initargs(self, value):
-        self._context.initargs = value
-
     def __enter__(self):
         return self
 
@@ -549,6 +546,22 @@ class ProcessPool(object):
             counter += timeout is not None and (len(workers)) / 10.0 or 0
 
         return workers
+
+    @property
+    def initializer(self):
+        return self._context.initializer
+
+    @initializer.setter
+    def initializer(self, value):
+        self._context.initializer = value
+
+    @property
+    def initargs(self):
+        return self._context.initargs
+
+    @initargs.setter
+    def initargs(self, value):
+        self._context.initargs = value
 
     @property
     def active(self):

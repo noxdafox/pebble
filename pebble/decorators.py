@@ -263,7 +263,8 @@ class ProcessWrapper(object):
         # wait for task to complete, timeout or to be cancelled
         while task is None:
             if worker.channel.poll(0.2):
-                task = worker.task_complete()
+                task, results = worker.task_complete()
+                task._set(results)
             else:
                 task = self.task_valid(worker)
         # run tasks callback
@@ -288,7 +289,7 @@ class ProcessWrapper(object):
                  self.callback, self.timeout, None)
         w = ProcessWorker(self._connection.address)
         w.start()
-        w.finalize(self._connection)
+        w.finalize(self._connection.accept())
         w.schedule_task(t)
         self._handle_job(self, w)
 

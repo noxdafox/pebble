@@ -30,10 +30,11 @@ CREATED = 3
 
 
 class ThreadWorker(Thread):
-    def __init__(self, queue, limit, initializer, initargs):
+    def __init__(self, queue, limit, expired, initializer, initargs):
         Thread.__init__(self)
         self.queue = queue
         self.limit = limit
+        self.expired = expired
         self.initializer = initializer
         self.initargs = initargs
         self.daemon = True
@@ -76,13 +77,18 @@ class ThreadWorker(Thread):
                 error = None
                 results = None
 
+        ##TODO: deinitializer
+        if self.expired is not None:
+            self.expired.set()
+
 
 class ThreadPool(object):
     def __init__(self, workers=1, task_limit=0, queue=None, queueargs=None,
                  initializer=None, initargs=None):
         self._context = PoolContext(CREATED, workers, task_limit,
                                     queue, queueargs, initializer, initargs)
-        self._pool_maintainer = Thread(target=self._maintain_pool)
+        self._pool_maintainer = Thread(target=self._maintain_pool,
+                                       args=[0.8])
         self._pool_maintainer.daemon = True
         self.initializer = initializer
         self.initargs = initargs
@@ -94,17 +100,20 @@ class ThreadPool(object):
         self.close()
         self.join()
 
-    def _maintain_pool(self):
+    def _maintain_pool(self, timeout):
         while self._context.state != STOPPED:
             expired = [w for w in self._context.pool if not w.is_alive()]
             self._context.pool = [w for w in self._context.pool
                                   if w not in expired]
             for _ in range(self._context.workers - len(self._context.pool)):
                 w = ThreadWorker(self._context.queue, self._context.limit,
+                                 self._context.workers_event,
                                  self.initializer, self.initargs)
                 w.start()
                 self._context.pool.append(w)
-            sleep(0.6)
+
+            self._context.workers_event.wait(timeout)
+            self._context.workers_event.clear()
 
     @property
     def initializer(self):

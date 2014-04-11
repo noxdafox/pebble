@@ -113,7 +113,7 @@ class ThreadWrapper(object):
         t = Task(next(self._counter),
                  self._function, args, kwargs, self.callback, 0, None)
         q = DummyQueue(t)
-        w = ThreadWorker(q, 1, None, None)
+        w = ThreadWorker(q, 1, None, None, None)
         w.start()
         return t
 

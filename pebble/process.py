@@ -158,24 +158,27 @@ class ProcessWorker(Process):
         results = None
         signal(SIGINT, SIG_IGN)
 
-        def exit_function(channel):
-            ## TODO: deinitializer
-            if channel is not None:
-                channel.close()
-        atexit.register(exit_function, self.channel)
-
+        # connect to parent process (Pool)
         try:
             self.channel = Client(self.address)
         except:  # main process shutdown
             sys.exit(1)
 
-        if self.initializer is not None:  # run initializer function
+        # run initializer function
+        if self.initializer is not None:
             try:
                 self.initializer(*self.initargs)
             except Exception as err:
                 error = err
                 error.traceback = format_exc()
 
+        # install deinitializers
+        def exit_function(channel):
+            ## TODO: deinitializer
+            channel.close()
+        atexit.register(exit_function, self.channel)
+
+        # main process loop
         while self.limit == 0 or self.counter < self.limit:
             try:  # get next task and execute it
                 function, args, kwargs = self.channel.recv()
@@ -238,8 +241,7 @@ class PoolManager(Thread):
                                    self.context.initializer,
                                    self.context.initargs)
             worker.start()
-            worker_channel = self.connection.accept()
-            worker.finalize(worker_channel)
+            worker.finalize(self.connection.accept())
 
             pool.append(worker)
 
@@ -383,7 +385,7 @@ class ResultsManager(Thread):
                              w.current.started and w.current._cancelled]
         self.cancelled_tasks(cancelled_workers)
 
-    def wait_for_results(self, timeout):
+    def wait_for_result(self, timeout):
         """Waits for results to be ready and generates related events.
 
         *timeout* is the amount of time to wait for any result to be ready.
@@ -403,7 +405,7 @@ class ResultsManager(Thread):
     def run(self):
         while self.context.state != STOPPED:
             self.problematic_tasks()
-            ready_workers = self.wait_for_results(0.8)
+            ready_workers = self.wait_for_result(0.8)
             self.done_tasks(ready_workers)
 
 
@@ -444,7 +446,6 @@ class ProcessPool(object):
 
     def _start(self):
         """Starts the pool."""
-        # start maintenance routines
         self._pool_manager.start()
         self._task_scheduler.start()
         self._results_manager.start()

@@ -246,7 +246,7 @@ class PoolManager(Thread):
     def run(self):
         while self.context.state != STOPPED:
             self.spawn_workers()
-            expired_workers = self.wait_for_worker(0.2)
+            expired_workers = self.wait_for_worker(0.8)
             self.cleanup_workers(expired_workers)
 
 
@@ -294,7 +294,7 @@ class TaskScheduler(Thread):
 
     def run(self):
         while self.context.state != STOPPED:
-            ready_workers = self.wait_for_channel(0.2)
+            ready_workers = self.wait_for_channel(0.6)
             self.schedule_tasks(ready_workers, 0.2)
 
 
@@ -376,11 +376,11 @@ class ResultsManager(Thread):
 
         timestamp = time()
         timeout_workers = [w for w in workers if w.current is not None and
-                           timeout(w.current, timestamp)]
+                           w.current.started and timeout(w.current, timestamp)]
         self.timeout_tasks(timeout_workers)
 
         cancelled_workers = [w for w in workers if w.current is not None and
-                             w.current._cancelled]
+                             w.current.started and w.current._cancelled]
         self.cancelled_tasks(cancelled_workers)
 
     def wait_for_results(self, timeout):
@@ -403,7 +403,7 @@ class ResultsManager(Thread):
     def run(self):
         while self.context.state != STOPPED:
             self.problematic_tasks()
-            ready_workers = self.wait_for_results(0.2)
+            ready_workers = self.wait_for_results(0.8)
             self.done_tasks(ready_workers)
 
 

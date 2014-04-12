@@ -70,7 +70,7 @@ class ProcessWorker(Process):
 
         """
         if self.limit > 0:
-            return not self.is_alive() and self.counter >= self.limit
+            return not self.is_alive() or self.counter >= self.limit
         else:
             return not self.is_alive()
 
@@ -105,26 +105,24 @@ class ProcessWorker(Process):
         """Stops the worker terminating the process."""
         self.channel.close()
         self.terminate()
-        self.join(3)
-        if self.is_alive():
-            self.kill()
+        self.join()
 
     def kill(self):
         """Kills the process."""
         try:
             os.kill(self.pid, SIGKILL)
         except:  # process already dead or Windows platform
-            self.terminate()  # one more try
+            pass
 
     def schedule_task(self, task):
         """Sends a *Task* to the worker."""
-        if len(self.queue) == 0:  # scheduled task is current one
+        if self.current is None:
             task._timestamp = time()
         self.queue.append(task)
 
         try:
             self.channel.send((task._function, task._args, task._kwargs))
-        except (IOError, OSError):
+        except (IOError, OSError):  # process killed (task timeout/cancelled)
             self.queue.pop()
             task._timestamp = 0
             self.channel.close()
@@ -142,7 +140,7 @@ class ProcessWorker(Process):
 
         try:
             results = self.channel.recv()
-        except (EOFError, IOError, OSError):  # process expired
+        except EOFError:  # process expired
             self.channel.close()
             raise RuntimeError('Worker expired')
 
@@ -200,6 +198,7 @@ class ProcessWorker(Process):
             self.counter += 1
             error = results = None
 
+        self.channel.close()
         sys.exit(0)
 
 
@@ -221,7 +220,7 @@ class PoolManager(Thread):
         self.context.workers_event.wait(timeout)
         self.context.workers_event.clear()
 
-        return [w for w in self.context.pool[:] if w.expired]
+        return [w for w in self.context.pool if w.expired]
 
     def cleanup_workers(self, expired):
         pool = self.context.pool
@@ -374,11 +373,12 @@ class ResultsManager(Thread):
 
         """
         workers = self.context.pool[:]
-        timeout = lambda c, t: c.timeout and t - c._timestamp > c.timeout
+        timeout = lambda c, t: t - c._timestamp > c.timeout
 
         timestamp = time()
         timeout_workers = [w for w in workers if w.current is not None and
-                           w.current.started and timeout(w.current, timestamp)]
+                           w.current.timeout > 0 and w.current.started and
+                           timeout(w.current, timestamp)]
         self.timeout_tasks(timeout_workers)
 
         cancelled_workers = [w for w in workers if w.current is not None and

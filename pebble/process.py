@@ -126,7 +126,6 @@ class ProcessWorker(Process):
         except (IOError, OSError):  # process killed (task timeout/cancelled)
             self.queue.pop()
             task._timestamp = 0
-            self.channel.close()
             raise RuntimeError('Worker stopped')
 
         self.counter += 1

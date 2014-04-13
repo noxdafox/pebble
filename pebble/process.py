@@ -14,6 +14,7 @@
 # along with Pebble.  If not, see <http://www.gnu.org/licenses/>.
 
 
+import gc
 import os
 import sys
 import atexit
@@ -230,6 +231,9 @@ class PoolManager(Thread):
             self.pending.extend(worker.queue)
             pool.remove(worker)
 
+        # force garbage collection as Python3 is a bit lazy
+        gc.collect()
+
     def spawn_workers(self):
         """Spawns missing Workers."""
         pool = self.context.pool
@@ -263,9 +267,8 @@ class TaskScheduler(Thread):
         self.context = context
         self.pending = pending
 
-    def wait_for_channel(self, timeout):
+    def wait_for_channel(self, workers, timeout):
         """Waits for free channels to send new tasks."""
-        workers = self.context.pool[:]
         channels = [w.channel for w in workers if not w.closed]
 
         timeout = len(channels) > 0 and timeout or 0.01
@@ -294,8 +297,10 @@ class TaskScheduler(Thread):
                 continue
 
     def run(self):
+        pool = self.context.pool
+
         while self.context.state != STOPPED:
-            ready_workers = self.wait_for_channel(0.6)
+            ready_workers = self.wait_for_channel(pool[:], 0.6)
             self.schedule_tasks(ready_workers, 0.2)
 
 
@@ -367,12 +372,11 @@ class ResultsManager(Thread):
             ## TODO: context state == ERROR
             # self.context.state = ERROR
 
-    def problematic_tasks(self):
+    def problematic_tasks(self, workers):
         """Check for timeout or cancelled tasks
         and generates related events.
 
         """
-        workers = self.context.pool[:]
         timeout = lambda c, t: t - c._timestamp > c.timeout
 
         timestamp = time()
@@ -385,13 +389,12 @@ class ResultsManager(Thread):
                              w.current.started and w.current._cancelled]
         self.cancelled_tasks(cancelled_workers)
 
-    def wait_for_result(self, timeout):
+    def wait_for_result(self, workers, timeout):
         """Waits for results to be ready and generates related events.
 
         *timeout* is the amount of time to wait for any result to be ready.
 
         """
-        workers = self.context.pool[:]
         channels = [w.channel for w in workers if not w.expired]
 
         timeout = len(channels) > 0 and timeout or 0.01
@@ -403,9 +406,11 @@ class ResultsManager(Thread):
         return [w for w in workers if w.channel in ready]
 
     def run(self):
+        pool = self.context.pool
+
         while self.context.state != STOPPED:
-            self.problematic_tasks()
-            ready_workers = self.wait_for_result(0.8)
+            self.problematic_tasks(pool[:])
+            ready_workers = self.wait_for_result(pool[:], 0.8)
             self.done_tasks(ready_workers)
 
 

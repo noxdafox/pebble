@@ -152,7 +152,7 @@ class TestThreadPool(unittest.TestCase):
         """ThreadPool is stopped without consuming more tasks."""
         tp = ThreadPool()
         for i in range(0, 10):
-            tp.schedule(jp, args=(1, ))
+            tp.schedule(jp_long, args=(1, ))
         tp.stop()
         tp.join()
         self.assertFalse(tp._context.queue.empty())
@@ -182,7 +182,7 @@ class TestThreadPool(unittest.TestCase):
         tp.schedule(jp_very_long, args=(1, ))
         time.sleep(0.1)
         tp.stop()
-        self.assertRaises(TimeoutError, tp.join, 0.5)
+        self.assertRaises(TimeoutError, tp.join, 0.1)
         tp.join()
 
     def test_thread_pool_no_new_tasks(self):

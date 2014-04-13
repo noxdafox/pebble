@@ -33,7 +33,8 @@ except:  # Python 3
     from queue import Empty
     from pickle import PicklingError
 
-from .pebble import TimeoutError, Task, PoolContext
+from .pebble import TimeoutError, Task, PoolContext, PoolManager
+from .pebble import STOPPED, RUNNING, CLOSING, CREATED
 
 ### platform dependent code ###
 if os.name in ('posix', 'os2'):
@@ -42,13 +43,6 @@ if os.name in ('posix', 'os2'):
 else:
     FAMILY = 'AF_INET'
     from signal import SIG_IGN, SIGINT, signal
-
-
-# Pool states
-STOPPED = 0
-RUNNING = 1
-CLOSING = 2
-CREATED = 3
 
 
 class ProcessWorker(Process):
@@ -202,25 +196,12 @@ class ProcessWorker(Process):
         sys.exit(0)
 
 
-class PoolManager(Thread):
-    """Pool management routine.
-
-    Respawns missing workers.
-    Collects expired ones and cleans them up.
-    """
+class ProcessPoolManager(PoolManager):
+    """ProcessPool management routine."""
     def __init__(self, context, pending, connection):
-        Thread.__init__(self)
-        self.daemon = True
-        self.context = context
+        PoolManager.__init__(self, context)
         self.pending = pending
         self.connection = connection
-
-    def wait_for_worker(self, timeout):
-        """Waits for expired workers and restarts them."""
-        self.context.workers_event.wait(timeout)
-        self.context.workers_event.clear()
-
-        return [w for w in self.context.pool if w.expired]
 
     def cleanup_workers(self, expired):
         pool = self.context.pool
@@ -246,12 +227,6 @@ class PoolManager(Thread):
             worker.finalize(self.connection.accept())
 
             pool.append(worker)
-
-    def run(self):
-        while self.context.state != STOPPED:
-            self.spawn_workers()
-            expired_workers = self.wait_for_worker(0.8)
-            self.cleanup_workers(expired_workers)
 
 
 class TaskScheduler(Thread):
@@ -433,12 +408,12 @@ class ProcessPool(object):
     """
     def __init__(self, workers=1, task_limit=0, queue=None, queueargs=None,
                  initializer=None, initargs=None):
-        self._context = PoolContext(CREATED, workers, task_limit,
-                                    queue, queueargs, initializer, initargs)
+        self._context = PoolContext(workers, task_limit, queue, queueargs,
+                                    initializer, initargs)
         self._connection = Listener(family=FAMILY)
         self._pending = deque()  # task enqueued on dead worker
-        self._pool_manager = PoolManager(self._context, self._pending,
-                                         self._connection)
+        self._pool_manager = ProcessPoolManager(self._context, self._pending,
+                                                self._connection)
         self._task_scheduler = TaskScheduler(self._context, self._pending)
         self._results_manager = ResultsManager(self._context)
 

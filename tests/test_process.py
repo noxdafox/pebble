@@ -107,6 +107,15 @@ class TestProcessPool(unittest.TestCase):
                                          kwargs={'keyword_argument': 1}))
         self.assertEqual(sum([t.get()[0] for t in tasks]), 10)
 
+    def test_process_pool_different_processs(self):
+        """ProcessPool multiple tasks are handled by different processes."""
+        tasks = []
+        with ProcessPool(workers=2) as pp:
+            for i in range(0, 100):
+                tasks.append(pp.schedule(jp, args=(1, ),
+                                         kwargs={'keyword_argument': 1}))
+        self.assertEqual(len(set([t.get()[1] for t in tasks])), 2)
+
     def test_process_pool_restart(self):
         """ProcessPool expired processes are restarted."""
         tasks = []

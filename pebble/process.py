@@ -269,7 +269,7 @@ class TaskScheduler(Thread):
 
     def wait_for_channel(self, workers, timeout):
         """Waits for free channels to send new tasks."""
-        channels = [w.channel for w in workers if not w.closed]
+        channels = [w.channel for w in workers]
 
         timeout = len(channels) > 0 and timeout or 0.01
         try:
@@ -300,7 +300,8 @@ class TaskScheduler(Thread):
         pool = self.context.pool
 
         while self.context.state != STOPPED:
-            ready_workers = self.wait_for_channel(pool[:], 0.6)
+            workers = [w for w in pool[:] if not w.closed]
+            ready_workers = self.wait_for_channel(workers, 0.6)
             self.schedule_tasks(ready_workers, 0.2)
 
 
@@ -395,7 +396,7 @@ class ResultsManager(Thread):
         *timeout* is the amount of time to wait for any result to be ready.
 
         """
-        channels = [w.channel for w in workers if not w.expired]
+        channels = [w.channel for w in workers]
 
         timeout = len(channels) > 0 and timeout or 0.01
         try:
@@ -406,11 +407,11 @@ class ResultsManager(Thread):
         return [w for w in workers if w.channel in ready]
 
     def run(self):
-        pool = self.context.pool
+        workers = lambda: [w for w in self.context.pool[:] if not w.expired]
 
         while self.context.state != STOPPED:
-            self.problematic_tasks(pool[:])
-            ready_workers = self.wait_for_result(pool[:], 0.8)
+            self.problematic_tasks(workers())
+            ready_workers = self.wait_for_result(workers(), 0.8)
             self.done_tasks(ready_workers)
 
 

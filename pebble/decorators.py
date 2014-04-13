@@ -29,7 +29,7 @@ except:  # Python 3
 
 from .thread import ThreadWorker, ThreadPool
 from .process import ProcessWorker, ProcessPool, FAMILY
-from .pebble import Task
+from .pebble import Task, TimeoutError
 
 
 def synchronized(lock):
@@ -113,7 +113,7 @@ class ThreadWrapper(object):
         t = Task(next(self._counter),
                  self._function, args, kwargs, self.callback, 0, None)
         q = DummyQueue(t)
-        w = ThreadWorker(q, 1, None, None)
+        w = ThreadWorker(q, 1, None, None, None)
         w.start()
         return t
 
@@ -238,6 +238,24 @@ class ProcessWrapper(object):
         self.callback = callback
         update_wrapper(self, function)
 
+    @staticmethod
+    def task_valid(worker):
+        """Check if the current task is not cancelled or timeout."""
+        task = None
+        timestamp = time()
+        current = worker.current
+        timeout = lambda c, t: c.timeout and t - c._timestamp > c.timeout
+
+        if timeout(current, timestamp):
+            worker.stop()
+            task = worker.get_current()
+            task._set(TimeoutError('Task timeout'))
+        elif current.cancelled:
+            worker.stop()
+            task = worker.get_current()
+
+        return task
+
     @thread
     def _handle_job(self, worker):
         task = None
@@ -245,9 +263,10 @@ class ProcessWrapper(object):
         # wait for task to complete, timeout or to be cancelled
         while task is None:
             if worker.channel.poll(0.2):
-                task = worker.task_complete()
+                task, results = worker.task_complete()
+                task._set(results)
             else:
-                task = worker.task_valid(time())
+                task = self.task_valid(worker)
         # run tasks callback
         if task._callback is not None:
             try:
@@ -270,7 +289,7 @@ class ProcessWrapper(object):
                  self.callback, self.timeout, None)
         w = ProcessWorker(self._connection.address)
         w.start()
-        w.finalize(self._connection)
+        w.finalize(self._connection.accept())
         w.schedule_task(t)
         self._handle_job(self, w)
 

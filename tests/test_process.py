@@ -108,16 +108,16 @@ class TestProcessPool(unittest.TestCase):
         self.assertEqual(sum([t.get()[0] for t in tasks]), 10)
 
     def test_process_pool_different_processs(self):
-        """ProcessPool multiple tasks are handled by different process."""
+        """ProcessPool multiple tasks are handled by different processes."""
         tasks = []
-        with ProcessPool(workers=2) as tp:
-            for i in range(0, 5):
-                tasks.append(tp.schedule(jp_long, args=(1, ),
+        with ProcessPool(workers=2) as pp:
+            for i in range(0, 100):
+                tasks.append(pp.schedule(jp, args=(1, ),
                                          kwargs={'keyword_argument': 1}))
         self.assertEqual(len(set([t.get()[1] for t in tasks])), 2)
 
     def test_process_pool_restart(self):
-        """ProcessPool expired processs are restarted."""
+        """ProcessPool expired processes are restarted."""
         tasks = []
         with ProcessPool(task_limit=2) as tp:
             for i in range(0, 5):
@@ -149,7 +149,7 @@ class TestProcessPool(unittest.TestCase):
                             kwargs={'keyword_argument': 1},
                             timeout=1)
             time.sleep(0.3)
-            p = tp._pool[0]
+            p = tp._context.pool[0]
             try:
                 t.get()
             except TimeoutError:
@@ -166,12 +166,12 @@ class TestProcessPool(unittest.TestCase):
     def test_process_pool_default_queue(self):
         """ProcessPool default queue has same pool size."""
         with ProcessPool() as tp:
-            self.assertEqual(tp._queue.maxsize, 0)
+            self.assertEqual(tp._context.queue.maxsize, 0)
 
     def test_process_pool_queue(self):
         """ProcessPool static queue is correctly initialized."""
         with ProcessPool(queue=Queue, queueargs=(5, )) as tp:
-            self.assertEqual(tp._queue.maxsize, 5)
+            self.assertEqual(tp._context.queue.maxsize, 5)
 
     def test_process_pool_initializer(self):
         """ProcessPool initializer is correctly run."""
@@ -191,10 +191,10 @@ class TestProcessPool(unittest.TestCase):
         """ProcessPool is stopped without consuming more tasks."""
         tp = ProcessPool()
         for i in range(0, 10):
-            tp.schedule(jp, args=(1, ))
+            tp.schedule(jp_long, args=(1, ))
         tp.stop()
         tp.join()
-        self.assertFalse(tp._queue.empty())
+        self.assertFalse(tp._context.queue.empty())
 
     def test_process_pool_close(self):
         """ProcessPool is closed consuming all tasks."""
@@ -203,7 +203,7 @@ class TestProcessPool(unittest.TestCase):
             tp.schedule(jp, args=(1, ))
         tp.close()
         tp.join()
-        self.assertTrue(tp._queue.qsize() <= 1)
+        self.assertTrue(tp._context.queue.qsize() <= 1)
 
     def test_process_pool_join_running(self):
         """ProcessPool RuntimeError is raised
@@ -220,7 +220,7 @@ class TestProcessPool(unittest.TestCase):
         tp = ProcessPool()
         tp.schedule(jp_very_long, args=(1, ))
         time.sleep(0.3)
-        tp._state = 2
+        tp._context.state = 2
         self.assertRaises(TimeoutError, tp.join, timeout=0.1)
         tp.kill()
 

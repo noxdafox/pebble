@@ -321,11 +321,11 @@ class TestThreadPoolDecorator(unittest.TestCase):
 
     def test_thread_pool_default_queue(self):
         """ThreadPoolDecorator default queue has same pool size."""
-        self.assertEqual(tjob_pool._pool._queue.maxsize, 0)
+        self.assertEqual(tjob_pool._pool._context.queue.maxsize, 0)
 
     def test_thread_pool_queue(self):
         """ThreadPoolDecorator queue is correctly initialized."""
-        self.assertEqual(tjob_pool_queue._pool._queue.maxsize, 5)
+        self.assertEqual(tjob_pool_queue._pool._context.queue.maxsize, 5)
 
     def test_thread_pool_queue_error(self):
         """ThreadPoolDecorator raises ValueError
@@ -511,11 +511,11 @@ class TestProcessPoolDecorator(unittest.TestCase):
 
     def test_process_pool_default_queue(self):
         """ProcessPoolDecorator default queue has same pool size."""
-        self.assertEqual(pjob_pool._pool._queue.maxsize, 0)
+        self.assertEqual(pjob_pool._pool._context.queue.maxsize, 0)
 
     def test_process_pool_queue(self):
         """ProcessPoolDecorator Queue is correctly initialized."""
-        self.assertEqual(pjob_pool_queue._pool._queue.maxsize, 5)
+        self.assertEqual(pjob_pool_queue._pool._context.queue.maxsize, 5)
 
     def test_process_pool_queue_error(self):
         """ProcessPoolDecorator raises ValueError

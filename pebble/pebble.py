@@ -65,7 +65,7 @@ class TaskCancelled(PebbleError):
 class Task(object):
     """Handler to the ongoing task."""
     def __init__(self, task_nr, function, args, kwargs,
-                 callback, timeout, identifier):
+                 callback=None, timeout=0, identifier=None, event=None):
         self.id = identifier is not None and identifier or uuid4()
         self.timeout = timeout
         self._function = function
@@ -78,6 +78,7 @@ class Task(object):
         self._task_ready = Condition(Lock())
         self._timestamp = 0
         self._callback = callback
+        self._event = event  # used by ProcessWrapper decorator
 
     def __str__(self):
         return self.__repr__()
@@ -153,6 +154,9 @@ class Task(object):
         self._results = TaskCancelled("Task cancelled")
         self._ready = self._cancelled = True
         self._task_ready.notify_all()
+        # notify process decorator
+        if self._event is not None:
+            self._event.set()
 
     def _set(self, results):
         """Sets the results within the task."""

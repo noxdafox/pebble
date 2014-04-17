@@ -47,7 +47,8 @@ else:
 
 class ProcessWorker(Process):
     """Worker class for processes."""
-    def __init__(self, address, limit=0, initializer=None, initargs=None):
+    def __init__(self, address, limit=0, initializer=None, initargs=None,
+                 event=None):
         Process.__init__(self)
         self.address = address
         self.limit = limit
@@ -57,6 +58,7 @@ class ProcessWorker(Process):
         self.counter = 0  # task counter
         self.queue = deque()  # queued tasks
         self.channel = None  # task/result channel
+        self.event = event  # used by decorator ProcessWrapper
 
     @property
     def closed(self):
@@ -166,6 +168,7 @@ class ProcessWorker(Process):
 
         # install deinitializers
         def exit_function(channel):
+            print('bye')
             ## TODO: deinitializer
             channel.close()
         atexit.register(exit_function, self.channel)
@@ -192,6 +195,8 @@ class ProcessWorker(Process):
             self.counter += 1
             error = results = None
 
+        if self.event is not None:  # notify process decorator
+            self.event.set()
         self.channel.close()
         sys.exit(0)
 

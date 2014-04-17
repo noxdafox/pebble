@@ -16,11 +16,11 @@
 
 import sys
 
-from time import time
 from itertools import count
 from collections import Callable
 from functools import update_wrapper, wraps
 from traceback import print_exc
+from multiprocessing import Event
 from multiprocessing.connection import Listener
 try:  # Python 2
     from cPickle import PicklingError
@@ -233,40 +233,24 @@ class ProcessWrapper(object):
     def __init__(self, function, timeout, callback):
         self._function = function
         self._counter = count()
-        self._connection = None
+        self._connection = Listener(family=FAMILY)
         self.timeout = timeout
         self.callback = callback
         update_wrapper(self, function)
 
-    @staticmethod
-    def task_valid(worker):
-        """Check if the current task is not cancelled or timeout."""
-        task = None
-        timestamp = time()
-        current = worker.current
-        timeout = lambda c, t: c.timeout and t - c._timestamp > c.timeout
-
-        if timeout(current, timestamp):
-            worker.stop()
-            task = worker.get_current()
-            task._set(TimeoutError('Task timeout'))
-        elif current.cancelled:
-            worker.stop()
-            task = worker.get_current()
-
-        return task
-
     @thread
     def _handle_job(self, worker):
         task = None
+        timeout = self.timeout > 0 and self.timeout or None
 
         # wait for task to complete, timeout or to be cancelled
-        while task is None:
-            if worker.channel.poll(0.2):
-                task, results = worker.task_complete()
-                task._set(results)
-            else:
-                task = self.task_valid(worker)
+        if worker.event.wait(timeout=timeout):
+            task, results = worker.task_complete()
+        else:
+            task = worker.get_current()
+            task._set(TimeoutError('Task timeout'))
+            worker.terminate()
+
         # run tasks callback
         if task._callback is not None:
             try:
@@ -274,23 +258,26 @@ class ProcessWrapper(object):
             except:
                 print_exc()
 
-        # join the process
+        # cleanup the worker
+        worker.channel.close()
         worker.join()
 
     def __call__(self, *args, **kwargs):
-        if self._connection is None:
-            self._connection = Listener(family=FAMILY)
+        event = Event()  # task cancel or task done event
         # serialize decorated function
         function = dump_function(self._function)
-        # attach decorated function to the arguments
-        args = list(args)
-        args.insert(0, function)
+        args = [function] + list(args)
+
         t = Task(next(self._counter), trampoline, args, kwargs,
-                 self.callback, self.timeout, None)
-        w = ProcessWorker(self._connection.address)
+                 callback=self.callback, timeout=self.timeout,
+                 event=event)
+
+        w = ProcessWorker(self._connection.address, limit=1, event=event)
         w.start()
         w.finalize(self._connection.accept())
+
         w.schedule_task(t)
+
         self._handle_job(self, w)
 
         return t

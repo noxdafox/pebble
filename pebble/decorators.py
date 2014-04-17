@@ -287,7 +287,7 @@ class ProcessWrapper(object):
         args.insert(0, function)
         t = Task(next(self._counter), trampoline, args, kwargs,
                  self.callback, self.timeout, None)
-        w = ProcessWorker(self._connection.address)
+        w = ProcessWorker(self._connection.address, limit=1)
         w.start()
         w.finalize(self._connection.accept())
         w.schedule_task(t)

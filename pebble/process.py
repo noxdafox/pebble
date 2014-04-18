@@ -58,7 +58,7 @@ class ProcessWorker(Process):
         self.counter = 0  # task counter
         self.queue = deque()  # queued tasks
         self.channel = None  # task/result channel
-        self.event = event  # used by decorator ProcessWrapper
+        self.event = event  # process decorator notifier
 
     @property
     def closed(self):
@@ -191,12 +191,12 @@ class ProcessWorker(Process):
                     sys.exit(1)
                 except PicklingError as err:
                     self.channel.send(err)
+                if self.event is not None:
+                    self.event.set()  # notify to process decorator
 
             self.counter += 1
             error = results = None
 
-        if self.event is not None:  # notify process decorator
-            self.event.set()
         self.channel.close()
         sys.exit(0)
 

@@ -238,18 +238,48 @@ class ProcessWrapper(object):
         self.callback = callback
         update_wrapper(self, function)
 
-    @thread
-    def _handle_job(self, worker):
-        task = None
-        timeout = self.timeout > 0 and self.timeout or None
+    @staticmethod
+    def _spawn_worker(connection, event):
+        """Spawns a new worker and returns it."""
+        worker = ProcessWorker(connection.address, limit=1, event=event)
 
-        # wait for task to complete, timeout or to be cancelled
+        worker.start()
+        worker.finalize(connection.accept())
+
+        return worker
+
+    @staticmethod
+    def _wait_for_task(worker, timeout):
+        """Waits for task to complete, timeout or be cancelled.
+
+        Blocks until one of the events happen.
+        Returns the task.
+
+        """
+        task = worker.current
+
         if worker.event.wait(timeout=timeout):
-            task, results = worker.task_complete()
-        else:
-            task = worker.get_current()
+            if not task.cancelled:  # task complete
+                _, results = worker.task_complete()
+                task._set(results)
+            else:  # task cancelled
+                worker.stop()
+        else:  # task timeout
+            worker.stop()
             task._set(TimeoutError('Task timeout'))
-            worker.terminate()
+
+        return task
+
+    @thread
+    def _handle_worker(self, worker):
+        """Handles the lifecycle of a single worker.
+
+        Waits for task to be completed, runs the callback
+        and cleans up the worker.
+
+        """
+        timeout = self.timeout > 0 and self.timeout or None
+        task = self._wait_for_task(worker, timeout)
 
         # run tasks callback
         if task._callback is not None:
@@ -264,23 +294,22 @@ class ProcessWrapper(object):
 
     def __call__(self, *args, **kwargs):
         event = Event()  # task cancel or task done event
+
         # serialize decorated function
         function = dump_function(self._function)
         args = [function] + list(args)
 
-        t = Task(next(self._counter), trampoline, args, kwargs,
-                 callback=self.callback, timeout=self.timeout,
-                 event=event)
+        # create task and worker
+        task = Task(next(self._counter), trampoline, args, kwargs,
+                    callback=self.callback, timeout=self.timeout,
+                    event=event)
+        worker = self._spawn_worker(self._connection, event)
+        worker.schedule_task(task)
 
-        w = ProcessWorker(self._connection.address, limit=1, event=event)
-        w.start()
-        w.finalize(self._connection.accept())
+        # wait for task completion in separate thread
+        self._handle_worker(self, worker)
 
-        w.schedule_task(t)
-
-        self._handle_job(self, w)
-
-        return t
+        return task
 
 
 class ProcessPoolWrapper(object):

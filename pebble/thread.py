@@ -25,7 +25,8 @@ from .pebble import STOPPED, RUNNING, CLOSING, CREATED
 
 
 class ThreadWorker(Thread):
-    def __init__(self, queue, limit, event, initializer, initargs):
+    def __init__(self, queue, limit=0, event=None,
+                 initializer=None, initargs=None):
         Thread.__init__(self)
         self.queue = queue
         self.limit = limit

@@ -110,12 +110,14 @@ class ThreadWrapper(object):
         update_wrapper(self, function)
 
     def __call__(self, *args, **kwargs):
-        t = Task(next(self._counter),
-                 self._function, args, kwargs, self.callback, 0, None)
-        q = DummyQueue(t)
-        w = ThreadWorker(q, 1, None, None, None)
-        w.start()
-        return t
+        task = Task(next(self._counter), self._function, args, kwargs,
+                    callback=self.callback)
+
+        dummy_queue = DummyQueue(task)
+        worker = ThreadWorker(dummy_queue, limit=1)
+        worker.start()
+
+        return task
 
 
 class ThreadPoolWrapper(object):
@@ -133,12 +135,13 @@ class ThreadPoolWrapper(object):
                                    callback=self.callback)
 
 
-class DummyQueue(list):
-    def __init__(self, elements):
-        super(DummyQueue, self).__init__(((elements), ))
+class DummyQueue(object):
+    """Mocks a queue for the ThreadWorker."""
+    def __init__(self, task):
+        self.task = task
 
     def get(self):
-        return self.pop()
+        return self.task
 
     def task_done(self):
         pass
@@ -230,6 +233,7 @@ def load_function(state):
 
 
 class ProcessWrapper(object):
+    """Used by *process* decorator."""
     def __init__(self, function, timeout, callback):
         self._function = function
         self._counter = count()
@@ -313,6 +317,7 @@ class ProcessWrapper(object):
 
 
 class ProcessPoolWrapper(object):
+    """Used by *process_pool* decorator."""
     def __init__(self, function, workers=1, task_limit=0,
                  queue=None, queueargs=None,
                  initializer=None, initargs=None, callback=None, timeout=0):
@@ -326,9 +331,8 @@ class ProcessPoolWrapper(object):
     def __call__(self, *args, **kwargs):
         # serialize decorated function
         function = dump_function(self._function)
-        # attach decorated function to the arguments
-        args = list(args)
-        args.insert(0, function)
+        args = [function] + list(args)
+
         return self._pool.schedule(trampoline, args=args, kwargs=kwargs,
                                    callback=self.callback,
                                    timeout=self.timeout)

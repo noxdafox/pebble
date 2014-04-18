@@ -168,7 +168,6 @@ class ProcessWorker(Process):
 
         # install deinitializers
         def exit_function(channel):
-            print('bye')
             ## TODO: deinitializer
             channel.close()
         atexit.register(exit_function, self.channel)
@@ -225,9 +224,9 @@ class ProcessPoolManager(PoolManager):
 
         for _ in range(self.context.workers - len(pool)):
             worker = ProcessWorker(self.connection.address,
-                                   self.context.limit,
-                                   self.context.initializer,
-                                   self.context.initargs)
+                                   limit=self.context.limit,
+                                   initializer=self.context.initializer,
+                                   initargs=self.context.initargs)
             worker.start()
             worker.finalize(self.connection.accept())
 

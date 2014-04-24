@@ -1,0 +1,30 @@
+Source: pebble
+Section: python
+X-Python-Version: >= 2.6
+X-Python3-Version: >= 3.2
+Build-Depends: debhelper (>= 8),
+               dh-python,
+               python-all (>= 2.6.6-3~),
+               python-setuptools,
+               python3-all,
+               python3-setuptools,
+
+
+Package: python-pebble
+Architecture: all
+Depends: ${python:Depends}, ${misc:Depends}
+Description: Python Pebble (Python 2)
+  Pebble provides a neat API to manage threads and processes
+  within a Python application.
+  .
+  This is the Python 2 version of the package.
+
+
+Package: python3-pebble
+Architecture: all
+Depends: ${python3:Depends}, ${misc:Depends}
+Description: Python Pebble (Python 3)
+  Pebble provides a neat API to manage threads and processes
+  within a Python application.
+  .
+  This is the Python 3 version of the package.

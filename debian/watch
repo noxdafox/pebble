@@ -1,0 +1,3 @@
+version=3
+opts=uversionmangle=s/(rc|dev|a|b|c)/~$1/ \
+https://pypi.python.org/packages/source/P/Pebble/Pebble-(.*)\.(?:tar\.gz|zip|tar\.bz2)

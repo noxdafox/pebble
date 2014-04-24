@@ -26,11 +26,13 @@ except:  # Python 3
     from queue import Queue
 
 
-# Pool states
+# Pool and Workers states
 STOPPED = 0
 RUNNING = 1
-CLOSING = 2
+CLOSED = 2
 CREATED = 3
+EXPIRED = 4
+ERROR = 5
 
 
 class PebbleError(Exception):
@@ -64,8 +66,8 @@ class TaskCancelled(PebbleError):
 
 class Task(object):
     """Handler to the ongoing task."""
-    def __init__(self, task_nr, function, args, kwargs,
-                 callback=None, timeout=0, identifier=None, event=None):
+    def __init__(self, task_nr, function=None, args=None, kwargs=None,
+                 callback=None, timeout=0, identifier=None):
         self.id = identifier is not None and identifier or uuid4()
         self.timeout = timeout
         self._function = function
@@ -78,7 +80,6 @@ class Task(object):
         self._task_ready = Condition(Lock())
         self._timestamp = 0
         self._callback = callback
-        self._event = event  # used by ProcessWrapper decorator
 
     def __str__(self):
         return self.__repr__()
@@ -154,9 +155,6 @@ class Task(object):
         self._results = TaskCancelled("Task cancelled")
         self._ready = self._cancelled = True
         self._task_ready.notify_all()
-        # notify process decorator
-        if self._event is not None:
-            self._event.set()
 
     def _set(self, results):
         """Sets the results within the task."""
@@ -211,10 +209,10 @@ class PoolManager(Thread):
 
     def wait_for_worker(self, timeout):
         """Waits for expired workers and restarts them."""
-        self.context.workers_event.wait(timeout)
+        self.context.workers_event.wait(timeout=timeout)
         self.context.workers_event.clear()
 
-        return [w for w in self.context.pool if w.expired]
+        return [w for w in self.context.pool if w.state == EXPIRED]
 
     def cleanup_workers(self, expired):
         raise NotImplementedError('Not implemented')

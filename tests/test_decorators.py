@@ -7,7 +7,7 @@ try:  # Python 2
 except:  # Python 3
     from queue import Queue
 
-from pebble import TimeoutError
+from pebble import TimeoutError, TaskCancelled
 from pebble import synchronized, thread, thread_pool, process, process_pool
 
 
@@ -393,13 +393,11 @@ class TestProcessDecorator(unittest.TestCase):
         self.assertEqual(2, self.callback_results)
 
     def test_process_error(self):
-        """ProcessDecorator that an exception in a process task
-        is raised by get."""
+        """ProcessDecorator exceptions in process tasks are raised by get."""
         self.assertRaises(Exception, pjob_error(1, 1).get)
 
     def test_process_error_callback(self):
-        """ProcessDecorator that an exception in a task
-        is managed in callback."""
+        """ProcessDecorator exception in tasks are managed in callback."""
         pjob_error.callback = self.error_callback
         pjob_error(1, 1)
         event.wait()
@@ -421,6 +419,21 @@ class TestProcessDecorator(unittest.TestCase):
     def test_process_no_timeout(self):
         """ProcessDecorator timeout doesn't kill the task."""
         self.assertEqual(pjob_long_timeout().get(), 1)
+
+    def test_process_cancelled(self):
+        """ProcessDecorator TaskCancelled is raised if task is cancelled."""
+        task = pjob_long()
+        task.cancel()
+        self.assertRaises(TaskCancelled, task.get)
+
+    def test_process_cancelled_callback(self):
+        """ProcessDecorator TaskCancelled is raised within the callback
+        if task is cancelled."""
+        pjob_long.callback = self.error_callback
+        task = pjob_long()
+        task.cancel()
+        event.wait()
+        self.assertTrue(isinstance(self.exception, TaskCancelled))
 
     def test_process_unserializable(self):
         """ProcessDecorator PicklingError is returned

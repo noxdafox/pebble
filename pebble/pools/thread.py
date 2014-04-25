@@ -20,10 +20,14 @@ from itertools import count
 from threading import Thread
 from collections import Callable
 
-from ..pebble import Task, TimeoutError, PoolContext, PoolManager
-from ..pebble import STOPPED, RUNNING, CLOSED, CREATED, EXPIRED
+from ..pebble import Task, TimeoutError
+from .commons import PoolContext, PoolManager
+from .commons import STOPPED, RUNNING, CLOSED, CREATED, EXPIRED
 
 
+# --------------------------------------------------------------------------- #
+#                              Pool's Worker                                  #
+# --------------------------------------------------------------------------- #
 class ThreadWorker(Thread):
     def __init__(self, queue, limit, event, initializer, initargs):
         Thread.__init__(self)
@@ -105,6 +109,9 @@ class ThreadWorker(Thread):
         self.worker_event.set()
 
 
+# --------------------------------------------------------------------------- #
+#                        Pool's Internal Routines                             #
+# --------------------------------------------------------------------------- #
 class ThreadPoolManager(PoolManager):
     """ThreadPool management routine."""
     def __init__(self, context):
@@ -132,6 +139,9 @@ class ThreadPoolManager(PoolManager):
             pool.append(worker)
 
 
+# --------------------------------------------------------------------------- #
+#                               Thread Pool                                   #
+# --------------------------------------------------------------------------- #
 class ThreadPool(object):
     """A ThreadPool allows to schedule jobs into a Pool of Threades
     which will perform them concurrently.

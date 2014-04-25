@@ -31,8 +31,9 @@ except:  # Python 3
     from queue import Empty
     from pickle import PicklingError
 
-from ..pebble import TimeoutError, Task, PoolContext, PoolManager
-from ..pebble import STOPPED, RUNNING, CLOSED, CREATED, EXPIRED
+from ..pebble import TimeoutError, Task
+from .commons import PoolContext, PoolManager
+from .commons import STOPPED, RUNNING, CLOSED, CREATED, EXPIRED
 
 ### platform dependent code ###
 if os.name in ('posix', 'os2'):

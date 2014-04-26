@@ -132,7 +132,7 @@ class ProcessWorker(Process):
 
         try:
             results = self.channel.recv()
-        except EOFError:  # process expired
+        except (IOError, EOFError):  # process expired
             self.channel.close()
             raise RuntimeError('Worker expired')
 

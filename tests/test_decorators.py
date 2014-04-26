@@ -82,6 +82,12 @@ def tjob_pool(argument, keyword_argument=0):
     return argument + keyword_argument, threading.current_thread()
 
 
+@thread_pool(workers=2, callback=callback)
+def tjob_pool_long(argument, keyword_argument=0):
+    time.sleep(1)
+    return argument + keyword_argument, threading.current_thread()
+
+
 @thread_pool(workers=2, queue=Queue, queueargs=(5, ))
 def tjob_pool_queue(argument, keyword_argument=0):
     return argument + keyword_argument, threading.current_thread()
@@ -157,6 +163,12 @@ def pjob_pool_single(argument, keyword_argument=0):
 
 @process_pool(workers=2, callback=callback)
 def pjob_pool(argument, keyword_argument=0):
+    return argument + keyword_argument, os.getpid()
+
+
+@process_pool(workers=2, callback=callback)
+def pjob_pool_long(argument, keyword_argument=0):
+    time.sleep(1)
     return argument + keyword_argument, os.getpid()
 
 
@@ -256,6 +268,21 @@ class TestThreadDecorators(unittest.TestCase):
         event.wait()
         self.assertEqual('BOOM!', str(self.exception))
 
+    def test_thread_cancelled(self):
+        """ThreadDecorator TaskCancelled is raised if task is cancelled."""
+        task = tjob_long()
+        task.cancel()
+        self.assertRaises(TaskCancelled, task.get)
+
+    def test_thread_cancelled_callback(self):
+        """ThreadDecorator TaskCancelled is raised within the callback
+        if task is cancelled."""
+        tjob_long.callback = self.error_callback
+        task = tjob_long()
+        task.cancel()
+        event.wait()
+        self.assertTrue(isinstance(self.exception, TaskCancelled))
+
 
 class TestThreadPoolDecorator(unittest.TestCase):
     def setUp(self):
@@ -347,6 +374,22 @@ class TestThreadPoolDecorator(unittest.TestCase):
         is raised by get."""
         task = tjob_pool_init_error(1, 1)
         self.assertRaises(Exception, task.get)
+
+    def test_thread_pool_cancel(self):
+        """ThreadPool callback gets notification if Task is cancelled."""
+        tjob_pool_long.callback = self.error_callback
+        task = tjob_pool_long(1, 1)
+        task.cancel()
+        event.wait()
+        self.assertTrue(isinstance(self.exception, TaskCancelled))
+
+    def test_thread_pool_callback_error(self):
+        """ThreadPool error within callback is safely handled."""
+        tjob_pool_long.callback = self.error_callback
+        task = tjob_pool_long(1, 1)
+        task.cancel()
+        event.wait()
+        self.assertTrue(tjob_pool_long._pool.active)
 
 
 class TestProcessDecorator(unittest.TestCase):
@@ -550,3 +593,19 @@ class TestProcessPoolDecorator(unittest.TestCase):
         is raised by get."""
         task = pjob_pool_init_error(1, 1)
         self.assertRaises(Exception, task.get)
+
+    def test_process_pool_cancel(self):
+        """ProcessPool callback gets notification if Task is cancelled."""
+        pjob_pool_long.callback = self.error_callback
+        task = pjob_pool_long(1, 1)
+        task.cancel()
+        event.wait()
+        self.assertTrue(isinstance(self.exception, TaskCancelled))
+
+    def test_process_pool_callback_error(self):
+        """ProcessPool error within callback is safely handled."""
+        pjob_pool_long.callback = self.error_callback
+        task = pjob_pool_long(1, 1)
+        task.cancel()
+        event.wait()
+        self.assertTrue(pjob_pool_long._pool.active)

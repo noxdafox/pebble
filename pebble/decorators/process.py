@@ -138,7 +138,7 @@ def decorator_worker(channel, event, function, args, kwargs):
     results = None
 
     try:
-        if sys.platform != 'windows':
+        if sys.platform != 'win32':
             results = function(*args, **kwargs)
         else:
             results = trampoline(function, *args, **kwargs)
@@ -244,7 +244,7 @@ class ProcessWrapper(object):
         event = Event()
         reader, writer = Pipe(duplex=False)
 
-        if sys.platform != 'windows':
+        if sys.platform != 'win32':
             function = self._function
         else:
             function = trampoline

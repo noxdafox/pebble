@@ -17,55 +17,36 @@
 
 
 from uuid import uuid4
-from inspect import isclass
-from itertools import count
-from threading import Thread, Condition, Lock, Event
-try:  # Python 2
-    from Queue import Queue
-except:  # Python 3
-    from queue import Queue
+from threading import Condition, Lock
 
 
-# Pool states
-STOPPED = 0
-RUNNING = 1
-CLOSING = 2
-CREATED = 3
-
-
+# --------------------------------------------------------------------------- #
+#                                 Exceptions                                  #
+# --------------------------------------------------------------------------- #
 class PebbleError(Exception):
     """Pebble base exception."""
     pass
 
 
-class TimeoutError(PebbleError):
-    """Raised when Task.get() timeout expires."""
-    def __init__(self, msg):
-        self.msg = msg
-
-    def __repr__(self):
-        return "%s %s" % (self.__class__, self.msg)
-
-    def __str__(self):
-        return str(self.msg)
-
-
 class TaskCancelled(PebbleError):
     """Raised if get is called on a cancelled task."""
-    def __init__(self, msg):
+    pass
+
+
+class TimeoutError(PebbleError):
+    """Raised when a timeout expires."""
+    def __init__(self, msg, value=0):
         self.msg = msg
-
-    def __repr__(self):
-        return "%s %s" % (self.__class__, self.msg)
-
-    def __str__(self):
-        return str(self.msg)
+        self.value = value
 
 
+# --------------------------------------------------------------------------- #
+#                               Common Objects                                #
+# --------------------------------------------------------------------------- #
 class Task(object):
     """Handler to the ongoing task."""
-    def __init__(self, task_nr, function, args, kwargs,
-                 callback, timeout, identifier):
+    def __init__(self, task_nr, function=None, args=None, kwargs=None,
+                 callback=None, timeout=0, identifier=None):
         self.id = identifier is not None and identifier or uuid4()
         self.timeout = timeout
         self._function = function
@@ -161,66 +142,3 @@ class Task(object):
                 self._ready = True
                 self._results = results
                 self._task_ready.notify_all()
-
-
-class PoolContext(object):
-    """Container for the Pool state.
-
-    Wraps all the variables needed to represent a Pool.
-
-    """
-    def __init__(self, workers, limit, queue, queueargs,
-                 initializer, initargs):
-        self.state = CREATED
-        self.workers = workers
-        self.pool = []
-        self.limit = limit
-        self.task_counter = count()
-        self.workers_event = Event()
-        self.initializer = initializer
-        self.initargs = initargs
-        if queue is not None:
-            if isclass(queue):
-                self.queue = queue(*queueargs)
-            else:
-                raise ValueError("Queue must be Class")
-        else:
-            self.queue = Queue()
-
-    @property
-    def counter(self):
-        """Tasks counter."""
-        return next(self.task_counter)
-
-
-class PoolManager(Thread):
-    """Pool management routine.
-
-    Respawns missing workers.
-    Collects expired ones and cleans them up.
-
-    """
-    def __init__(self, context):
-        Thread.__init__(self)
-        self.daemon = True
-        self.context = context
-
-    def wait_for_worker(self, timeout):
-        """Waits for expired workers and restarts them."""
-        self.context.workers_event.wait(timeout)
-        self.context.workers_event.clear()
-
-        return [w for w in self.context.pool if w.expired]
-
-    def cleanup_workers(self, expired):
-        raise NotImplementedError('Not implemented')
-
-    def spawn_workers(self):
-        """Spawns missing Workers."""
-        raise NotImplementedError('Not implemented')
-
-    def run(self):
-        while self.context.state != STOPPED:
-            self.spawn_workers()
-            expired_workers = self.wait_for_worker(0.8)
-            self.cleanup_workers(expired_workers)

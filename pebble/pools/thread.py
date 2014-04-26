@@ -20,13 +20,18 @@ from itertools import count
 from threading import Thread
 from collections import Callable
 
-from .pebble import Task, TimeoutError, PoolContext, PoolManager
-from .pebble import STOPPED, RUNNING, CLOSING, CREATED
+from ..pebble import Task, TimeoutError
+from .commons import PoolContext, PoolManager
+from .commons import STOPPED, RUNNING, CLOSED, CREATED, EXPIRED
 
 
+# --------------------------------------------------------------------------- #
+#                              Pool's Worker                                  #
+# --------------------------------------------------------------------------- #
 class ThreadWorker(Thread):
     def __init__(self, queue, limit, event, initializer, initargs):
         Thread.__init__(self)
+        self._state = CREATED
         self.queue = queue
         self.limit = limit
         self.worker_event = event
@@ -35,14 +40,35 @@ class ThreadWorker(Thread):
         self.daemon = True
 
     @property
-    def expired(self):
-        return not self.is_alive()
+    def state(self):
+        if not self.is_alive():
+            return EXPIRED
+
+        return self._state
+
+    @staticmethod
+    def task_complete(task, results):
+        task._set(results)
+        if task._callback is not None:
+            try:
+                task._callback(task)
+            except:
+                print_exc()
+                ## TODO: context state == ERROR
+                # self.state = ERROR
+
+    def stop(self):
+        """Stops the worker."""
+        self._state = STOPPED
 
     def run(self):
+        self._state = RUNNING
+
         error = None
         results = None
         counter = count()
 
+        # run initializer function
         if self.initializer is not None:
             try:
                 self.initializer(*self.initargs)
@@ -50,37 +76,42 @@ class ThreadWorker(Thread):
                 error = err
                 error.traceback = format_exc()
 
-        while self.limit == 0 or next(counter) < self.limit:
+        while self._state == RUNNING and (self.limit == 0 or
+                                          next(counter) < self.limit):
             task = self.queue.get()
-            if task is None:  # worker terminated
+
+            # pool termination sentinel
+            if task is None:
                 self.queue.task_done()
                 return
+
             function = task._function
             args = task._args
             kwargs = task._kwargs
+
             try:
                 if not task._cancelled:
                     task._timestamp = time()
                     results = function(*args, **kwargs)
             except Exception as err:
-                error = err
-                error.traceback = format_exc()
+                if error is None:  # do not overwrite initializer errors
+                    error = err
+                    error.traceback = format_exc()
             finally:
-                task._set(error is not None and error or results)
-                if task._callback is not None:
-                    try:
-                        task._callback(task)
-                    except:
-                        print_exc()
+                self.task_complete(task,
+                                   error is not None and error or results)
                 self.queue.task_done()
-                error = None
-                results = None
+
+            error = None
+            results = None
 
         ##TODO: deinitializer
-        if self.worker_event is not None:
-            self.worker_event.set()
+        self.worker_event.set()
 
 
+# --------------------------------------------------------------------------- #
+#                        Pool's Internal Routines                             #
+# --------------------------------------------------------------------------- #
 class ThreadPoolManager(PoolManager):
     """ThreadPool management routine."""
     def __init__(self, context):
@@ -108,6 +139,9 @@ class ThreadPoolManager(PoolManager):
             pool.append(worker)
 
 
+# --------------------------------------------------------------------------- #
+#                               Thread Pool                                   #
+# --------------------------------------------------------------------------- #
 class ThreadPool(object):
     """A ThreadPool allows to schedule jobs into a Pool of Threades
     which will perform them concurrently.
@@ -183,7 +217,7 @@ class ThreadPool(object):
 
     def close(self):
         """Closes the pool allowing all queued tasks to be performed."""
-        self._context.state = CLOSING
+        self._context.state = CLOSED
         self._context.queue.join()
         self.stop()
 
@@ -193,7 +227,7 @@ class ThreadPool(object):
         self._join_managers()
 
         for w in self._context.pool:
-            w.limit = - 1
+            w.stop()
         for w in self._context.pool:
             self._context.queue.put(None)
 

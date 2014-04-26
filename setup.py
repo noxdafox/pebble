@@ -21,7 +21,7 @@ setup(
     license="LGPL",
     keywords="thread process pool decorator",
     url="https://github.com/noxdafox/pebble",
-    packages=['pebble', 'tests'],
+    packages=['pebble', 'pebble.pools', 'pebble.decorators', 'tests'],
     long_description=read('README.txt'),
     classifiers=[
         "Programming Language :: Python",

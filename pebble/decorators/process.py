@@ -17,6 +17,7 @@
 import sys
 
 from itertools import count
+from types import MethodType
 from collections import Callable
 from functools import update_wrapper
 from traceback import print_exc, format_exc
@@ -186,6 +187,13 @@ class ProcessWrapper(object):
         self.callback = callback
         update_wrapper(self, function)
 
+    def __get__(self, instance, owner=None):
+        """Turns the decorator into a descriptor
+        in order to use it with methods."""
+        if instance is None:
+            return self
+        return MethodType(self, instance)
+
     @staticmethod
     def _spawn_worker(function, writer, event, *args, **kwargs):
         """Spawns a new worker and returns it."""
@@ -256,7 +264,7 @@ class ProcessWrapper(object):
                                     callback=self.callback,
                                     timeout=self.timeout, event=event)
 
-        self._handle_worker(self, task, worker, reader, event)
+        self._handle_worker(task, worker, reader, event)
 
         return task
 
@@ -272,6 +280,13 @@ class ProcessPoolWrapper(object):
         self.timeout = timeout
         self.callback = callback
         update_wrapper(self, function)
+
+    def __get__(self, instance, owner=None):
+        """Turns the decorator into a descriptor
+        in order to use it with methods."""
+        if instance is None:
+            return self
+        return MethodType(self, instance)
 
     def __call__(self, *args, **kwargs):
         args = [dump_function(self._function)] + list(args)

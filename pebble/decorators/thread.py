@@ -16,6 +16,7 @@
 
 from time import time
 from itertools import count
+from types import MethodType
 from threading import Thread
 from collections import Callable
 from functools import update_wrapper
@@ -121,11 +122,18 @@ class ThreadWrapper(object):
         self.callback = callback
         update_wrapper(self, function)
 
+    def __get__(self, instance, owner=None):
+        """Turns the decorator into a descriptor
+        in order to use it with methods."""
+        if instance is None:
+            return self
+        return MethodType(self, instance)
+
     def __call__(self, *args, **kwargs):
         task = Task(next(self._counter), self._function, args, kwargs,
                     callback=self.callback)
 
-        worker = Thread(target=decorator_worker, args=(task, ))
+        worker = Thread(target=decorator_worker, args=[task])
         worker.daemon = True
         worker.start()
 
@@ -141,6 +149,13 @@ class ThreadPoolWrapper(object):
                                 initializer, initargs)
         self.callback = callback
         update_wrapper(self, function)
+
+    def __get__(self, instance, owner=None):
+        """Turns the decorator into a descriptor
+        in order to use it with methods."""
+        if instance is None:
+            return self
+        return MethodType(self, instance)
 
     def __call__(self, *args, **kwargs):
         return self._pool.schedule(self._function, args=args, kwargs=kwargs,

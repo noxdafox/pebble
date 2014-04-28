@@ -23,9 +23,9 @@ from functools import update_wrapper
 from traceback import print_exc, format_exc
 from multiprocessing import Process, Pipe, Event
 try:  # Python 2
-    from cPickle import PicklingError
+    from cPickle import PicklingError, loads, dumps
 except:  # Python 3
-    from pickle import PicklingError
+    from pickle import PicklingError, loads, dumps
 
 from ..pebble import Task, TimeoutError, TaskCancelled
 from ..pools.process import ProcessPool
@@ -93,9 +93,12 @@ def process_pool(*args, **kwargs):
 #                                 Internals                                   #
 # --------------------------------------------------------------------------- #
 # -------------------- Deal with decoration and pickling -------------------- #
-def trampoline(function, *args, **kwargs):
+def trampoline(state, *args, **kwargs):
     """Trampoline function for decorators."""
-    func = load_function(function)
+    if state['type'] == 'function':
+        func = load_function(state)
+    elif state['type'] == 'method':
+        func = load_method(state)
     return func(*args, **kwargs)
 
 
@@ -107,11 +110,17 @@ def dump_function(function):
         __import__(module)
         mod = sys.modules[module]
         getattr(mod, name)
-        return {'name': name, 'module': module}
+        return {'type': 'function', 'name': name, 'module': module}
     except (ImportError, KeyError, AttributeError):
         raise PicklingError(
             "Can't pickle %r: it's not found as %s.%s" %
             (function, module, name))
+
+
+def dump_method(method, instance):
+    """Dumps the decorated method for pickling."""
+    name = method.__name__
+    return {'type': 'method', 'name': name, 'object': dumps(instance)}
 
 
 def load_function(state):
@@ -121,6 +130,15 @@ def load_function(state):
     __import__(module)
     mod = sys.modules[module]
     decorated = getattr(mod, name)
+    return decorated._function
+
+
+def load_method(state):
+    """Loads the method and extracts it from its decorator."""
+    name = state.get('name')
+    instance = state.get('object')
+    obj = loads(instance)
+    decorated = getattr(obj, name)
     return decorated._function
 
 
@@ -256,7 +274,10 @@ class ProcessWrapper(object):
             function = self._function
         else:
             function = trampoline
-            args = [dump_function(self._function)] + list(args)
+            if self._ismethod:
+                args = [dump_method(self._function, args[0])] + list(args)
+            else:
+                args = [dump_function(self._function)] + list(args)
 
         worker = self._spawn_worker(writer, event, function, args, kwargs)
 
@@ -274,6 +295,7 @@ class ProcessPoolWrapper(object):
     def __init__(self, function, workers=1, task_limit=0,
                  queue=None, queueargs=None,
                  initializer=None, initargs=None, callback=None, timeout=0):
+        self._ismethod = False
         self._function = function
         self._pool = ProcessPool(workers, task_limit, queue, queueargs,
                                  initializer, initargs)
@@ -284,12 +306,16 @@ class ProcessPoolWrapper(object):
     def __get__(self, instance, owner=None):
         """Turns the decorator into a descriptor
         in order to use it with methods."""
+        self._ismethod = True
         if instance is None:
             return self
         return MethodType(self, instance)
 
     def __call__(self, *args, **kwargs):
-        args = [dump_function(self._function)] + list(args)
+        if self._ismethod:
+            args = [dump_method(self._function, args[0])] + list(args)
+        else:
+            args = [dump_function(self._function)] + list(args)
 
         return self._pool.schedule(trampoline, args=args, kwargs=kwargs,
                                    callback=self.callback,

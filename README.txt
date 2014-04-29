@@ -8,6 +8,11 @@ Description
 Pebble provides a neat API to manage threads and processes within an application.
 
 
+  .. note::
+
+     Since Pebble 2.5 it is possible to decorate instance methods.
+
+
 Examples
 --------
 
@@ -65,11 +70,11 @@ Callbacks can be dynamically (re)assigned, useful to set instance methods as cal
                 self.errors += 1
 
 	@process
-	def do_job():
+	def do_job(self):
 	    return 1
 
 	@process
-	def do_wrong_job():
+	def do_wrong_job(self):
 	    raise Exception("Ops!")
 
 

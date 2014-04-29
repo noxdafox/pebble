@@ -203,29 +203,9 @@ class ThreadClass(object):
     def tjob(self, argument, keyword_argument=1):
         return self.value + argument + keyword_argument
 
-    @staticmethod
-    @thread
-    def tjob_static(argument, keyword_argument=1):
-        return argument + keyword_argument
-
-    @classmethod
-    @thread
-    def tjob_class(cls, argument, keyword_argument=1):
-        return cls.class_value + argument + keyword_argument
-
     @thread_pool
     def tjob_pool(self, argument, keyword_argument=1):
         return self.value + argument + keyword_argument
-
-    @staticmethod
-    @thread_pool
-    def tjob_pool_static(argument, keyword_argument=1):
-        return argument + keyword_argument
-
-    @classmethod
-    @thread_pool
-    def tjob_pool_class(cls, argument, keyword_argument=1):
-        return cls.class_value + argument + keyword_argument
 
 
 class ProcessClass(object):
@@ -238,29 +218,9 @@ class ProcessClass(object):
     def pjob(self, argument, keyword_argument=1):
         return self.value + argument + keyword_argument
 
-    @staticmethod
-    @process
-    def pjob_static(argument, keyword_argument=1):
-        return argument + keyword_argument
-
-    @classmethod
-    @process
-    def pjob_class(cls, argument, keyword_argument=1):
-        return cls.class_value + argument + keyword_argument
-
     @process_pool
     def pjob_pool(self, argument, keyword_argument=1):
         return self.value + argument + keyword_argument
-
-    @staticmethod
-    @process_pool
-    def pjob_pool_static(argument, keyword_argument=1):
-        return argument + keyword_argument
-
-    @classmethod
-    @process_pool
-    def pjob_pool_class(cls, argument, keyword_argument=1):
-        return cls.class_value + argument + keyword_argument
 
 
 class UnserializeableError(Exception):
@@ -323,16 +283,6 @@ class TestThreadDecorators(unittest.TestCase):
         task = self.threadclass.tjob(1)
         self.assertEqual(task.get(), 3)
 
-    def test_class_decorated_staticmethod(self):
-        """ThreadDecorator decorated staticmethod."""
-        task = self.threadclass.tjob_static(1)
-        self.assertEqual(task.get(), 2)
-
-    def test_class_decorated_classmethod(self):
-        """ThreadDecorator decorated classmethod."""
-        task = self.threadclass.tjob_class(1)
-        self.assertEqual(task.get(), 3)
-
     def test_thread_callback_static(self):
         """ThreadDecorator static callback is executed with thread task."""
         tjob_callback(1, 1)
@@ -393,16 +343,6 @@ class TestThreadPoolDecorator(unittest.TestCase):
     def test_class_pool_decorated_method(self):
         """ThreadPoolDecorator decorated method."""
         task = self.threadclass.tjob_pool(1)
-        self.assertEqual(task.get(), 3)
-
-    def test_class_pool_decorated_staticmethod(self):
-        """ThreadPoolDecorator decorated staticmethod."""
-        task = self.threadclass.tjob_pool_static(1)
-        self.assertEqual(task.get(), 2)
-
-    def test_class_pool_decorated_classmethod(self):
-        """ThreadPoolDecorator decorated classmethod."""
-        task = self.threadclass.tjob_pool_class(1)
         self.assertEqual(task.get(), 3)
 
     def test_thread_pool_single_task(self):
@@ -530,16 +470,6 @@ class TestProcessDecorator(unittest.TestCase):
         task = self.processclass.pjob(1)
         self.assertEqual(task.get(), 3)
 
-    def test_class_decorated_staticmethod(self):
-        """ProcessDecorator decorated staticmethod."""
-        task = self.processclass.pjob_static(1)
-        self.assertEqual(task.get(), 2)
-
-    def test_class_decorated_classmethod(self):
-        """ProcessDecorator decorated classmethod."""
-        task = self.processclass.pjob_class(1)
-        self.assertEqual(task.get(), 3)
-
     def test_process_callback_static(self):
         """ProcessDecorator static callback is executed once task is done."""
         pjob_callback(1, 1)
@@ -642,16 +572,6 @@ class TestProcessPoolDecorator(unittest.TestCase):
     def test_class_decorated_method(self):
         """ProcessPoolDecorator decorated method."""
         task = self.processclass.pjob_pool(1)
-        self.assertEqual(task.get(), 3)
-
-    def test_class_decorated_staticmethod(self):
-        """ProcessPoolDecorator decorated staticmethod."""
-        task = self.processclass.pjob_pool_static(1)
-        self.assertEqual(task.get(), 2)
-
-    def test_class_decorated_classmethod(self):
-        """ProcessPoolDecorator decorated classmethod."""
-        task = self.processclass.pjob_pool_class(1)
         self.assertEqual(task.get(), 3)
 
     def test_process_pool_single_task(self):

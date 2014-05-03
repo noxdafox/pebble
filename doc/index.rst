@@ -14,6 +14,10 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
 :mod:`decorators`
 -----------------
 
+.. note::
+
+   The *thread_pool* and *process_pool* decorators are convenience methods to turn the decorated functions into pool of workers, the underlying implementation is the same as the *ThreadPool* and *ProcessPool*.
+
 .. decorator:: thread(callback=None)
 
    When called, the *function* will be run in a new thread, a *Task* object will be returned to the caller.
@@ -54,9 +58,31 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
 
    The *synchronized* decorator accepts all the synchronizing objects exposed by the Python standard *threading* and *multiprocessing* libraries.
 
-.. note::
+.. decorator:: sighandler(signals)
 
-   The *thread_pool* and *process_pool* decorators are convenience methods to turn the decorated functions into pool of workers, the underlying implementation is the same as the *ThreadPool* and *ProcessPool*.
+   Convenience decorator for setting the decorated *function* as signal handler for the specified *signals*.
+
+   *signals* can either be a single signal or a list/tuple of signals.
+
+   For example the syntax ::
+
+     import signal
+     from pebble import sighandler
+
+     @sighandler((signal.SIGINT, signal.SIGTERM))
+     def signal_handler(signum, frame):
+         print("Termination request received!")
+
+   Is equivalent to ::
+
+     import signal
+
+     def signal_handler(signum, frame):
+         print("Termination request received!")
+
+     signal.signal(signal.SIGINT, signal_handler)
+     signal.signal(signal.TERM, signal_handler)
+
 
 :mod:`Pools`
 -----------------

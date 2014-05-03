@@ -1,5 +1,6 @@
 import os
 import time
+import signal
 import unittest
 import threading
 try:  # Python 2
@@ -9,6 +10,7 @@ except:  # Python 3
 
 from pebble import TimeoutError, TaskCancelled
 from pebble import synchronized, thread, thread_pool, process, process_pool
+from pebble import sighandler
 
 
 lock = threading.Lock()
@@ -43,6 +45,18 @@ def initializer_error(value):
 def function():
     """A docstring."""
     return lock.acquire(False)
+
+
+@sighandler(signal.SIGALRM)
+def signal_handler(signum, frame):
+    """A docstring."""
+    global results
+    results = 1
+
+
+@sighandler((signal.SIGFPE, signal.SIGIO))
+def signals_handler(signum, frame):
+    pass
 
 
 @thread
@@ -247,6 +261,30 @@ class TestSynchronizedDecorator(unittest.TestCase):
         function()
         self.assertTrue(lock.acquire(False))
         lock.release()
+
+
+class TestSigHandler(unittest.TestCase):
+    def test_wrapper_decorator_docstring(self):
+        """Sighandler docstring of the original function is preserved."""
+        self.assertEqual(signal_handler.__doc__, "A docstring.")
+
+    def test_sighandler(self):
+        """Sighandler installs SIGALRM."""
+        self.assertEqual(signal.getsignal(signal.SIGALRM).__name__,
+                         signal_handler.__name__)
+
+    def test_sighandler_multiple(self):
+        """Sighandler installs SIGFPE and SIGIO."""
+        self.assertEqual(signal.getsignal(signal.SIGFPE).__name__,
+                         signals_handler.__name__)
+        self.assertEqual(signal.getsignal(signal.SIGIO).__name__,
+                         signals_handler.__name__)
+
+    def test_sigalarm_sighandler(self):
+        """Sighandler for SIGALARM works."""
+        os.kill(os.getpid(), signal.SIGALRM)
+        time.sleep(0.1)
+        self.assertEqual(results, 1)
 
 
 class TestThreadDecorators(unittest.TestCase):

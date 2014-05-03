@@ -36,7 +36,7 @@ def synchronized(lock):
     return wrap
 
 
-def signal_handler(signals):
+def sighandler(signals):
     """Sets the decorated function as signal handler of given *signals*.
 
     *signals* can be either a single signal or a list/tuple
@@ -44,13 +44,15 @@ def signal_handler(signals):
 
     """
     def wrap(function):
+        if isinstance(signals, (list, tuple)):
+            for signum in signals:
+                signal.signal(signum, function)
+        else:
+            signal.signal(signals, function)
+
         @wraps(function)
         def wrapper(*args, **kwargs):
-            if isinstance(signals, (list, tuple)):
-                for signum in signals:
-                    signal.signal(signum, function)
-            else:
-                signal.signal(signals, function)
+            return function(*args, **kwargs)
 
         return wrapper
 

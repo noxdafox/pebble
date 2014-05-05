@@ -29,7 +29,7 @@ except:  # Python 3
     from pickle import PicklingError
 
 from .worker import worker as process_worker
-#from ..thread import worker as thread_worker
+from ..thread import worker as thread_worker
 from ..pebble import Task, TimeoutError, TaskCancelled
 from .generic import trampoline, dump_function, dump_method
 
@@ -81,7 +81,7 @@ def task_worker(queue, function, args, kwargs):
             queue.put(error)
 
 
-#@thread_worker(daemon=True)
+@thread_worker(daemon=True)
 def task_lifecycle(task, ismethod):
     """Starts a new worker, waits for the *Task* to be performed,
     collects results, runs the callback and cleans up the process.

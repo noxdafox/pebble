@@ -19,21 +19,21 @@ from itertools import count
 from types import MethodType
 from collections import Callable
 from functools import update_wrapper
-from multiprocessing import Queue, Empty
+from multiprocessing import Queue
 from traceback import print_exc, format_exc
 try:  # Python 2
-    from cPickle import PicklingError, loads, dumps
+    from Queue import Empty
+    from cPickle import PicklingError
 except:  # Python 3
-    from pickle import PicklingError, loads, dumps
+    from queue import Empty
+    from pickle import PicklingError
 
 from .worker import worker as process_worker
-from ..thread import worker as thread_worker
+#from ..thread import worker as thread_worker
 from ..pebble import Task, TimeoutError, TaskCancelled
+from .generic import trampoline, dump_function, dump_method
 
 
-# --------------------------------------------------------------------------- #
-#                          Decorator Functions                                #
-# --------------------------------------------------------------------------- #
 def task(*args, **kwargs):
     """Turns a *function* into a Process and runs its logic within.
 
@@ -44,10 +44,10 @@ def task(*args, **kwargs):
 
     """
     def wrapper(function):
-        return ProcessWrapper(function, timeout, callback)
+        return TaskDecoratorWrapper(function, timeout, callback)
 
     if len(args) == 1 and not len(kwargs) and isinstance(args[0], Callable):
-        return ProcessWrapper(args[0], 0, None)
+        return TaskDecoratorWrapper(args[0], 0, None)
     elif not len(args) and len(kwargs):
         timeout = kwargs.get('timeout', 0)
         callback = kwargs.get('callback')
@@ -57,20 +57,14 @@ def task(*args, **kwargs):
         raise ValueError("Decorator accepts only keyword arguments.")
 
 
-# --------------------------------------------------------------------------- #
-#                                 Internals                                   #
-# --------------------------------------------------------------------------- #
-# ----------------------- @task decorator specific ----------------------- #
 @process_worker(daemon=True)
 def task_worker(queue, function, args, kwargs):
+    """Runs the actual function in separate process."""
     error = None
     results = None
 
     try:
-        if sys.platform != 'win32':
-            results = function(*args, **kwargs)
-        else:
-            results = trampoline(function, *args, **kwargs)
+        results = function(*args, **kwargs)
     except (IOError, OSError):
         sys.exit(1)
     except Exception as err:
@@ -87,9 +81,12 @@ def task_worker(queue, function, args, kwargs):
             queue.put(error)
 
 
-@thread_worker(daemon=True)
+#@thread_worker(daemon=True)
 def task_lifecycle(task, ismethod):
-    """Starts a new worker and performs its *Task*."""
+    """Starts a new worker, waits for the *Task* to be performed,
+    collects results, runs the callback and cleans up the process.
+
+    """
     args = task._args
     queue = task._queue
     function = task._function
@@ -121,13 +118,14 @@ def task_lifecycle(task, ismethod):
     process.join()
 
 
-class ProcessDecoratorTask(Task):
+class ProcessTask(Task):
     """Expands the *Task* object to support *process* decorator."""
-    def __init__(self, task_nr, callback=None, timeout=0, identifier=None,
-                 queue=None):
-        super(ProcessDecoratorTask, self).__init__(task_nr, callback=callback,
-                                                   timeout=timeout,
-                                                   identifier=identifier)
+    def __init__(self, task_nr, function=None, args=None, kwargs=None,
+                 callback=None, timeout=0, identifier=None, queue=None):
+        super(ProcessTask, self).__init__(task_nr, callback=callback,
+                                          function=function, args=args,
+                                          kwargs=kwargs, timeout=timeout,
+                                          identifier=identifier)
         self._queue = queue
 
     def _cancel(self):
@@ -137,59 +135,8 @@ class ProcessDecoratorTask(Task):
         self._queue.put(TaskCancelled('Task Cancelled'))
 
 
-# -------------------- Deal with decoration and pickling -------------------- #
-def trampoline(state, *args, **kwargs):
-    """Trampoline function for decorators."""
-    if state['type'] == 'function':
-        func = load_function(state)
-    elif state['type'] == 'method':
-        func = load_method(state)
-    return func(*args, **kwargs)
-
-
-def dump_function(function):
-    """Dumps the decorated function for pickling."""
-    try:
-        name = function.__name__
-        module = function.__module__
-        __import__(module)
-        mod = sys.modules[module]
-        getattr(mod, name)
-        return {'type': 'function', 'name': name, 'module': module}
-    except (ImportError, KeyError, AttributeError):
-        raise PicklingError(
-            "Can't pickle %r: it's not found as %s.%s" %
-            (function, module, name))
-
-
-def dump_method(method, instance):
-    """Dumps the decorated method for pickling."""
-    name = method.__name__
-    return {'type': 'method', 'name': name, 'object': dumps(instance)}
-
-
-def load_function(state):
-    """Loads the function and extracts it from its decorator."""
-    name = state.get('name')
-    module = state.get('module')
-    __import__(module)
-    mod = sys.modules[module]
-    decorated = getattr(mod, name)
-    return decorated._function
-
-
-def load_method(state):
-    """Loads the method and extracts it from its decorator."""
-    name = state.get('name')
-    instance = state.get('object')
-    obj = loads(instance)
-    decorated = getattr(obj, name)
-    return decorated._function
-
-
-# ----------------------- Decorated function Wrappers ----------------------- #
-class ProcessWrapper(object):
-    """Used by *process* decorator."""
+class TaskDecoratorWrapper(object):
+    """Used by *task* decorator."""
     def __init__(self, function, timeout, callback):
         self._counter = count()
         self._function = function
@@ -209,11 +156,10 @@ class ProcessWrapper(object):
     def __call__(self, *args, **kwargs):
         queue = Queue()
 
-        task = ProcessDecoratorTask(next(self._counter),
-                                    function=self._function,
-                                    args=args, kwargs=kwargs,
-                                    callback=self.callback,
-                                    timeout=self.timeout, queue=queue)
+        task = ProcessTask(next(self._counter),
+                           function=self._function, args=args, kwargs=kwargs,
+                           callback=self.callback, timeout=self.timeout,
+                           queue=queue)
 
         task_lifecycle(task, self._ismethod)
 

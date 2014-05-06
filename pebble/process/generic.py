@@ -13,59 +13,24 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with Pebble.  If not, see <http://www.gnu.org/licenses/>.
 
-import sys
 
-try:  # Python 2
-    from cPickle import PicklingError, loads, dumps
-except:  # Python 3
-    from pickle import PicklingError, loads, dumps
+_registered_functions = {}
 
 
 # -------------------- Deal with decoration and pickling -------------------- #
-def trampoline(state, *args, **kwargs):
+def trampoline(identifier, *args, **kwargs):
     """Trampoline function for decorators."""
-    if state['type'] == 'function':
-        func = load_function(state)
-    elif state['type'] == 'method':
-        func = load_method(state)
-    return func(*args, **kwargs)
+    function = _registered_functions[identifier]
+
+    return function(*args, **kwargs)
 
 
-def dump_function(function):
-    """Dumps the decorated function for pickling."""
-    try:
-        name = function.__name__
-        module = function.__module__
-        __import__(module)
-        mod = sys.modules[module]
-        getattr(mod, name)
-        return {'type': 'function', 'name': name, 'module': module}
-    except (ImportError, KeyError, AttributeError):
-        raise PicklingError(
-            "Can't pickle %r: it's not found as %s.%s" %
-            (function, module, name))
+def dump_function(function, args):
+    global _registered_functions
 
+    identifier = id(function)
+    if identifier not in _registered_functions:
+        _registered_functions[identifier] = function
+    args = [identifier] + list(args)
 
-def dump_method(method, instance):
-    """Dumps the decorated method for pickling."""
-    name = method.__name__
-    return {'type': 'method', 'name': name, 'object': dumps(instance)}
-
-
-def load_function(state):
-    """Loads the function and extracts it from its decorator."""
-    name = state.get('name')
-    module = state.get('module')
-    __import__(module)
-    mod = sys.modules[module]
-    decorated = getattr(mod, name)
-    return decorated._function
-
-
-def load_method(state):
-    """Loads the method and extracts it from its decorator."""
-    name = state.get('name')
-    instance = state.get('object')
-    obj = loads(instance)
-    decorated = getattr(obj, name)
-    return decorated._function
+    return trampoline, args

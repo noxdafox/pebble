@@ -13,21 +13,36 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with Pebble.  If not, see <http://www.gnu.org/licenses/>.
 
+import os
 
 from functools import wraps
 from multiprocessing import Process
+from types import FunctionType, MethodType
+
+from .generic import dump_function
 
 
-def worker(daemon=False):
+def worker(*args, **kwargs):
     """Runs the decorated *function* in a separate process.
 
     Returns the *Process* object.
 
     """
-    def wrap(function):
+    name = None
+    daemon = False
+
+    # decorator without parameters
+    if len(args) > 0 and isinstance(args[0], (FunctionType, MethodType)):
+        function = args[0]
+
         @wraps(function)
         def wrapper(*args, **kwargs):
-            process = Process(target=function, args=args, kwargs=kwargs)
+            if os.name == 'nt':
+                func, args = dump_function(function, args)
+            else:
+                func = function
+
+            process = Process(target=func, name=name, args=args, kwargs=kwargs)
             process.daemon = daemon
             process.start()
 
@@ -35,4 +50,29 @@ def worker(daemon=False):
 
         return wrapper
 
-    return wrap
+    # decorator with parameters
+    elif len(kwargs) > 0:
+        name = kwargs.get('name', None)
+        daemon = kwargs.get('daemon', False)
+
+        def wrap(function):
+
+            @wraps(function)
+            def wrapper(*args, **kwargs):
+                if os.name == 'nt':
+                    func, args = dump_function(function, args)
+                else:
+                    func = function
+
+                process = Process(target=func, name=name, args=args, kwargs=kwargs)
+                process.daemon = daemon
+                process.start()
+
+                return process
+
+            return wrapper
+
+        return wrap
+
+    else:
+        raise ValueError("Decorator accepts only keyword arguments.")

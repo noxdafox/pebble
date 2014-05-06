@@ -13,6 +13,7 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with Pebble.  If not, see <http://www.gnu.org/licenses/>.
 
+import os
 import sys
 
 from itertools import count
@@ -31,7 +32,7 @@ except:  # Python 3
 from .worker import worker as process_worker
 from ..thread import worker as thread_worker
 from ..pebble import Task, TimeoutError, TaskCancelled
-from .generic import trampoline, dump_function, dump_method
+from .generic import dump_function
 
 
 def task(*args, **kwargs):
@@ -82,7 +83,7 @@ def task_worker(queue, function, args, kwargs):
 
 
 @thread_worker(daemon=True)
-def task_lifecycle(task, ismethod):
+def task_lifecycle(task):
     """Starts a new worker, waits for the *Task* to be performed,
     collects results, runs the callback and cleans up the process.
 
@@ -92,13 +93,8 @@ def task_lifecycle(task, ismethod):
     function = task._function
     timeout = task.timeout > 0 and task.timeout or None
 
-    if sys.platform == 'win32':
-        if ismethod:
-            args = [dump_method(function, args[0])] + list(args)
-        else:
-            args = [dump_function(function)] + list(args)
-
-        function = trampoline
+    if os.name == 'nt':
+        function, args = dump_function(function, args)
 
     process = task_worker(queue, function, task._args, task._kwargs)
 
@@ -148,7 +144,6 @@ class TaskDecoratorWrapper(object):
     def __get__(self, instance, owner=None):
         """Turns the decorator into a descriptor
         in order to use it with methods."""
-        self._ismethod = True
         if instance is None:
             return self
         return MethodType(self, instance)

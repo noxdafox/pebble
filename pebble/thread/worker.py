@@ -16,18 +16,26 @@
 
 from functools import wraps
 from threading import Thread
+from types import FunctionType, MethodType
 
 
-def worker(daemon=False):
+def worker(*args, **kwargs):
     """Runs the decorated *function* in a separate thread.
 
     Returns the *Thread* object.
 
     """
-    def wrap(function):
+    name = None
+    daemon = False
+
+    # decorator without parameters
+    if len(args) > 0 and isinstance(args[0], (FunctionType, MethodType)):
+        function = args[0]
+
         @wraps(function)
         def wrapper(*args, **kwargs):
-            thread = Thread(target=function, args=args, kwargs=kwargs)
+            thread = Thread(target=function, name=name, args=args,
+                            kwargs=kwargs)
             thread.daemon = daemon
             thread.start()
 
@@ -35,4 +43,25 @@ def worker(daemon=False):
 
         return wrapper
 
-    return wrap
+    # decorator with parameters
+    elif len(kwargs) > 0:
+        name = kwargs.get('name', None)
+        daemon = kwargs.get('daemon', False)
+
+        def wrap(function):
+
+            @wraps(function)
+            def wrapper(*args, **kwargs):
+                thread = Thread(target=function, name=name, args=args,
+                                kwargs=kwargs)
+                thread.daemon = daemon
+                thread.start()
+
+                return thread
+
+            return wrapper
+
+        return wrap
+
+    else:
+        raise ValueError("Decorator accepts only keyword arguments.")

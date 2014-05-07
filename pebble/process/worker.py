@@ -42,7 +42,8 @@ def worker(*args, **kwargs):
             else:
                 func = function
 
-            process = Process(target=func, name=name, args=args, kwargs=kwargs)
+            process = Process(target=func, name=name, args=args,
+                              kwargs=kwargs)
             process.daemon = daemon
             process.start()
 
@@ -64,7 +65,8 @@ def worker(*args, **kwargs):
                 else:
                     func = function
 
-                process = Process(target=func, name=name, args=args, kwargs=kwargs)
+                process = Process(target=func, name=name, args=args,
+                                  kwargs=kwargs)
                 process.daemon = daemon
                 process.start()
 

@@ -36,8 +36,8 @@ class TaskCancelled(PebbleError):
 class TimeoutError(PebbleError):
     """Raised when a timeout expires."""
     def __init__(self, msg, value=0):
-        self.msg = msg
-        self.value = value
+        super(TimeoutError, self).__init__(msg)
+        self.timeout = value
 
 
 # --------------------------------------------------------------------------- #

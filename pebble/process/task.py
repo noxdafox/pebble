@@ -22,10 +22,10 @@ from collections import Callable
 from functools import update_wrapper
 from traceback import print_exc, format_exc
 try:  # Python 2
-    from Channel import Empty
+    from Queue import Empty
     from cPickle import PicklingError
 except:  # Python 3
-    from channel import Empty
+    from queue import Empty
     from pickle import PicklingError
 
 from .worker import worker as process_worker
@@ -101,8 +101,10 @@ def task_lifecycle(task):
         results = channel.get(timeout)
         task._set(results)
     except Empty:
-        process.terminate()
-        task._set(TimeoutError('Task Timeout'))
+        task._set(TimeoutError('Task Timeout', timeout))
+
+    process.terminate()
+    process.join()
 
     if task._callback is not None:
         try:
@@ -110,11 +112,9 @@ def task_lifecycle(task):
         except Exception:
             print_exc()
 
-    process.join()
-
 
 class ProcessTask(Task):
-    """Expands the *Task* object to support *process* decorator."""
+    """Extends the *Task* object to support *process* decorator."""
     def __init__(self, task_nr, function=None, args=None, kwargs=None,
                  callback=None, timeout=0, identifier=None, channel=None):
         super(ProcessTask, self).__init__(task_nr, callback=callback,
@@ -155,6 +155,6 @@ class TaskDecoratorWrapper(object):
                            callback=self.callback, timeout=self.timeout,
                            channel=channel)
 
-        task_lifecycle(task, self._ismethod)
+        task_lifecycle(task)
 
         return task

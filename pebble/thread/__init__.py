@@ -1,3 +1,4 @@
-__all__ = ['worker']
+__all__ = ['worker', 'task']
 
 from .worker import worker
+from .task import task

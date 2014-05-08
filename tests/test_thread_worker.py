@@ -26,7 +26,7 @@ class TestThreadWorkerObj(object):
 
     @thread.worker
     def instmethod(self, queue):
-        queue.put(self.a)
+        queue.put(self.b)
 
     @staticmethod
     @thread.worker
@@ -87,7 +87,7 @@ class TestThreadWorker(unittest.TestCase):
         thrd = self.workerobj.instmethod(queue)
         results = queue.get()
         thrd.join()
-        self.assertEqual(results, 0)
+        self.assertEqual(results, 1)
 
     def test_static_method(self):
         """Thread Worker decorated static methods."""

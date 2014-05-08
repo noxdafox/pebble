@@ -24,7 +24,7 @@ class TestProcessWorkerObj(object):
 
     @process.worker
     def instmethod(self, queue):
-        queue.put(self.a)
+        queue.put(self.b)
 
     @staticmethod
     @process.worker
@@ -95,7 +95,7 @@ class TestProcessWorker(unittest.TestCase):
         thrd = self.workerobj.instmethod(queue)
         results = queue.get()
         thrd.join()
-        self.assertEqual(results, 0)
+        self.assertEqual(results, 1)
 
     def test_static_method(self):
         """Process Worker decorated static methods."""

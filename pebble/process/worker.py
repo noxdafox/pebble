@@ -22,6 +22,20 @@ from types import FunctionType, MethodType
 from .generic import dump_function
 
 
+def wrapped(function, name, daemon, *args, **kwargs):
+    """Starts decorated function within a process."""
+    if os.name == 'nt':
+        func, args = dump_function(function, args)
+    else:
+        func = function
+
+    process = Process(target=func, name=name, args=args, kwargs=kwargs)
+    process.daemon = daemon
+    process.start()
+
+    return process
+
+
 def worker(*args, **kwargs):
     """Runs the decorated *function* in a separate process.
 
@@ -37,17 +51,7 @@ def worker(*args, **kwargs):
 
         @wraps(function)
         def wrapper(*args, **kwargs):
-            if os.name == 'nt':
-                func, args = dump_function(function, args)
-            else:
-                func = function
-
-            process = Process(target=func, name=name, args=args,
-                              kwargs=kwargs)
-            process.daemon = daemon
-            process.start()
-
-            return process
+            return wrapped(function, name, daemon, *args, **kwargs)
 
         return wrapper
 
@@ -60,17 +64,7 @@ def worker(*args, **kwargs):
 
             @wraps(function)
             def wrapper(*args, **kwargs):
-                if os.name == 'nt':
-                    func, args = dump_function(function, args)
-                else:
-                    func = function
-
-                process = Process(target=func, name=name, args=args,
-                                  kwargs=kwargs)
-                process.daemon = daemon
-                process.start()
-
-                return process
+                return wrapped(function, name, daemon, *args, **kwargs)
 
             return wrapper
 

@@ -19,6 +19,15 @@ from threading import Thread
 from types import FunctionType, MethodType
 
 
+def wrapped(function, name, daemon, *args, **kwargs):
+    """Starts decorated function within a thread."""
+    thread = Thread(target=function, name=name, args=args, kwargs=kwargs)
+    thread.daemon = daemon
+    thread.start()
+
+    return thread
+
+
 def worker(*args, **kwargs):
     """Runs the decorated *function* in a separate thread.
 
@@ -34,12 +43,7 @@ def worker(*args, **kwargs):
 
         @wraps(function)
         def wrapper(*args, **kwargs):
-            thread = Thread(target=function, name=name, args=args,
-                            kwargs=kwargs)
-            thread.daemon = daemon
-            thread.start()
-
-            return thread
+            return wrapped(function, name, daemon, *args, **kwargs)
 
         return wrapper
 
@@ -52,12 +56,7 @@ def worker(*args, **kwargs):
 
             @wraps(function)
             def wrapper(*args, **kwargs):
-                thread = Thread(target=function, name=name, args=args,
-                                kwargs=kwargs)
-                thread.daemon = daemon
-                thread.start()
-
-                return thread
+                return wrapped(function, name, daemon, *args, **kwargs)
 
             return wrapper
 

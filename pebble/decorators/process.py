@@ -208,6 +208,7 @@ class ProcessWrapper(object):
     def __get__(self, instance, owner=None):
         """Turns the decorator into a descriptor
         in order to use it with methods."""
+        self._ismethod = True
         if instance is None:
             return self
         return MethodType(self, instance)

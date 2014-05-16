@@ -20,6 +20,15 @@ from uuid import uuid4
 from threading import Condition, Lock
 
 
+# Pool states
+STOPPED = 0
+RUNNING = 1
+CLOSED = 2
+CREATED = 3
+EXPIRED = 4
+ERROR = 5
+
+
 # --------------------------------------------------------------------------- #
 #                                 Exceptions                                  #
 # --------------------------------------------------------------------------- #
@@ -36,8 +45,8 @@ class TaskCancelled(PebbleError):
 class TimeoutError(PebbleError):
     """Raised when a timeout expires."""
     def __init__(self, msg, value=0):
-        self.msg = msg
-        self.value = value
+        super(TimeoutError, self).__init__(msg)
+        self.timeout = value
 
 
 # --------------------------------------------------------------------------- #

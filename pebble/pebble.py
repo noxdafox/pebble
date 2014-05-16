@@ -20,6 +20,15 @@ from uuid import uuid4
 from threading import Condition, Lock
 
 
+# Pool states
+STOPPED = 0
+RUNNING = 1
+CLOSED = 2
+CREATED = 3
+EXPIRED = 4
+ERROR = 5
+
+
 # --------------------------------------------------------------------------- #
 #                                 Exceptions                                  #
 # --------------------------------------------------------------------------- #

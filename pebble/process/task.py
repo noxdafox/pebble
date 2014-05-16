@@ -31,7 +31,7 @@ except:  # Python 3
 from .worker import worker as process_worker
 from ..thread import worker as thread_worker
 from ..pebble import Task, TimeoutError, TaskCancelled
-from .generic import Channel, dump_function
+from .generic import SimpleQueue, dump_function
 
 
 def task(*args, **kwargs):
@@ -58,7 +58,7 @@ def task(*args, **kwargs):
 
 
 @process_worker(daemon=True)
-def task_worker(channel, function, args, kwargs):
+def task_worker(queue, function, args, kwargs):
     """Runs the actual function in separate process."""
     error = None
     results = None
@@ -72,33 +72,35 @@ def task_worker(channel, function, args, kwargs):
         error.traceback = format_exc()
     finally:
         try:
-            channel.put(error is not None and error or results)
+            queue.put(error is not None and error or results)
         except (IOError, OSError, EOFError):
             sys.exit(1)
         except PicklingError as err:
             error = err
             error.traceback = format_exc()
-            channel.put(error)
+            queue.put(error)
 
 
 @thread_worker(daemon=True)
-def task_lifecycle(task):
-    """Starts a new worker, waits for the *Task* to be performed,
+def task_manager(task):
+    """Task's lifecycle manager.
+
+    Starts a new worker, waits for the *Task* to be performed,
     collects results, runs the callback and cleans up the process.
 
     """
     args = task._args
-    channel = task._channel
+    queue = task._queue
     function = task._function
     timeout = task.timeout > 0 and task.timeout or None
 
     if os.name == 'nt':
         function, args = dump_function(function, args)
 
-    process = task_worker(channel, function, task._args, task._kwargs)
+    process = task_worker(queue, function, task._args, task._kwargs)
 
     try:
-        results = channel.get(timeout)
+        results = queue.get(timeout)
         task._set(results)
     except Empty:
         task._set(TimeoutError('Task Timeout', timeout))
@@ -116,18 +118,18 @@ def task_lifecycle(task):
 class ProcessTask(Task):
     """Extends the *Task* object to support *process* decorator."""
     def __init__(self, task_nr, function=None, args=None, kwargs=None,
-                 callback=None, timeout=0, identifier=None, channel=None):
+                 callback=None, timeout=0, identifier=None, queue=None):
         super(ProcessTask, self).__init__(task_nr, callback=callback,
                                           function=function, args=args,
                                           kwargs=kwargs, timeout=timeout,
                                           identifier=identifier)
-        self._channel = channel
+        self._queue = queue
 
     def _cancel(self):
         """Overrides the *Task* cancel method in order to signal it
         to the *process* decorator handler."""
         self._cancelled = True
-        self._channel.put(TaskCancelled('Task Cancelled'))
+        self._queue.put(TaskCancelled('Task Cancelled'))
 
 
 class TaskDecoratorWrapper(object):
@@ -148,13 +150,13 @@ class TaskDecoratorWrapper(object):
         return MethodType(self, instance)
 
     def __call__(self, *args, **kwargs):
-        channel = Channel()
+        queue = SimpleQueue()
 
         task = ProcessTask(next(self._counter),
                            function=self._function, args=args, kwargs=kwargs,
                            callback=self.callback, timeout=self.timeout,
-                           channel=channel)
+                           queue=queue)
 
-        task_lifecycle(task)
+        task_manager(task)
 
         return task

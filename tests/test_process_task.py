@@ -72,6 +72,7 @@ class TestProcessTask(unittest.TestCase):
         results = 0
         exception = None
         event.clear()
+        self.results = 0
         self.taskobj = TestProcessTaskObj()
 
     def callback(self, task):

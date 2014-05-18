@@ -29,7 +29,7 @@ except:  # Python 3
     from queue import Queue
     from pickle import PicklingError
 
-from .generic import DuplexQueue, suspend
+from .generic import SimpleQueue, suspend
 from .worker import worker as process_worker
 from ..thread import worker as thread_worker
 from ..pebble import Task, TimeoutError, TaskCancelled
@@ -45,11 +45,6 @@ else:
 
 ACK = 0  # task aknowledged by worker
 RES = 1  # task results from worker
-RET = 2  # queue termination
-
-# DuplexQueue sides
-POOL = 0
-WORKER = 1
 
 
 def stop_worker(worker):
@@ -63,7 +58,7 @@ def stop_worker(worker):
         print_exc()
 
 
-def get_task(queue, pid):
+def get_task(task_queue, result_queue):
     """Gets new task for Pool Worker.
 
     Waits for next task to be ready, unpacks its contents
@@ -71,8 +66,8 @@ def get_task(queue, pid):
 
     """
     try:
-        number, function, args, kwargs = queue.get(WORKER)
-        queue.put((ACK, number, pid), WORKER)
+        number, function, args, kwargs = task_queue.get()
+        result_queue.put((ACK, number, os.getpid()))
 
         return number, function, args, kwargs
     except (IOError, OSError, EOFError):
@@ -82,22 +77,23 @@ def get_task(queue, pid):
 def put_results(queue, number, results):
     """Sends results back to Pool."""
     try:
-        queue.put((RES, number, results), WORKER)
+        queue.put((RES, number, results))
     except PicklingError as error:
-        queue.put((RES, number, error), WORKER)
+        queue.put((RES, number, error))
     except (IOError, OSError, EOFError):
         sys.exit(1)
 
 
 @process_worker(daemon=True)
-def pool_worker(queue, initializer, initargs, limit):
+def pool_worker(queues, initializer, initargs, limit):
     """Runs the actual function in separate process."""
     error = None
     results = None
-    pid = os.getpid()
     counter = count()
     signal(SIGINT, SIG_IGN)
-    queue._sides[POOL].close()
+    task_queue, result_queue = queues
+    task_queue._writer.close()
+    result_queue._reader.close()
 
     if initializer is not None:
         try:
@@ -107,21 +103,46 @@ def pool_worker(queue, initializer, initargs, limit):
             error.traceback = format_exc()
 
     while limit == 0 or next(counter) < limit:
-        number, function, args, kwargs = get_task(queue, pid)
+        number, function, args, kwargs = get_task(task_queue, result_queue)
 
         try:
             results = function(*args, **kwargs)
         except Exception as err:
-            if error is None:  # do not overwrite initializer errors
+            if error is None:
                 error = err
                 error.traceback = format_exc()
 
-        put_results(queue, number, error is not None and error or results)
+        put_results(result_queue, number,
+                    error is not None and error or results)
 
         error = None
         results = None
 
     sys.exit(0)
+
+
+class TaskQueue(SimpleQueue):
+    def __init__(self):
+        super(TaskQueue, self).__init__()
+        self._wlock = None
+
+    def _make_put_method(self):
+        def put(obj):
+            return self._writer.send(obj)
+
+        return put
+
+
+class ResultQueue(SimpleQueue):
+    def __init__(self):
+        super(ResultQueue, self).__init__()
+        self._rlock = None
+
+    def _make_get_method(self):
+        def get():
+            return self._reader.recv()
+
+        return get
 
 
 class PoolManager(object):
@@ -131,7 +152,8 @@ class PoolManager(object):
         self.pool = {}  # {pid: process}
         self.tasks = {}  # {task_number: task_obj}
         self.managers = None
-        self.workers_queue = None
+        self.task_queue = TaskQueue()
+        self.result_queue = ResultQueue()
         self.initializer = initializer
         self.initargs = initargs
         self.worker_number = workers
@@ -148,39 +170,45 @@ class PoolManager(object):
     def task_scheduler(self):
         """Schedules tasks in queue to the workers."""
         queue = self.queue
-        put = lambda o: self.workers_queue.put(o, POOL)
+        tasks = self.tasks
+        put = lambda o: self.task_queue.put(o)
 
         while self.state != STOPPED:
             task = queue.get()
 
             if task is not None:
                 number = task.number
-                self.tasks[number] = task
+                tasks[number] = task
 
                 put((number, task._function, task._args, task._kwargs))
+            else:  # stop sentinel
+                return
 
     @thread_worker(daemon=True)
     def task_manager(self):
         """Checks for tasks cancelled or timing out."""
         pool = self.pool
         tasks = self.tasks
-        queue = self.workers_queue
         timeout = lambda t, timestamp: timestamp - t._timestamp > t.timeout
 
         while self.state != STOPPED:
             tick = time()
 
             for task in tasks.values():
+                results = None
+
                 if (task.timeout > 0 and task.started and timeout(task, tick)):
-                    with suspend(queue):
-                        stop_worker(pool[task._pid])
-                    tasks.pop(task.number)
-                    self.task_done(task, TimeoutError('Task timeout'))
+                    results = TimeoutError('Task timeout')
                 elif task.started and task.cancelled:
-                    with suspend(queue):
-                        stop_worker(pool[task._pid])
+                    results = TaskCancelled('Task cancelled')
+
+                if results is not None:
+                    with suspend(self.task_queue):
+                        with suspend(self.result_queue):
+                            stop_worker(pool[task._pid])
+
                     tasks.pop(task.number)
-                    self.task_done(task, TaskCancelled('Task cancelled'))
+                    self.task_done(task, results)
 
             sleep(0.2)
 
@@ -191,29 +219,28 @@ class PoolManager(object):
 
         """
         tasks = self.tasks
-        get = lambda: self.workers_queue.get(POOL)
+        get = lambda: self.result_queue.get()
 
         while self.state != STOPPED:
-            message = get()
+            try:
+                message, number, data = get()
+            except TypeError:  # stop sentinel
+                return
 
-            if message[0] is ACK:
-                _, number, pid = message
+            if message is ACK:
                 task = tasks[number]
                 task._timestamp = time()
-                task._pid = pid
-            elif message[0] is RES:
-                _, number, results = message
+                task._pid = data
+            elif message is RES:
                 task = tasks.pop(number)
-                self.task_done(task, results)
-            elif message[0] is RET:
-                return
+                self.task_done(task, data)
 
     @thread_worker(daemon=True)
     def workers_manager(self):
         """Collects expired workers and spawn new ones."""
         pool = self.pool
-        queue = self.workers_queue
         workers = self.worker_number
+        queues = (self.task_queue, self.result_queue)
 
         while self.state != STOPPED:
             expired = [w for w in pool.values() if not w.is_alive()]
@@ -223,34 +250,35 @@ class PoolManager(object):
                 pool.pop(worker.pid)
 
             for _ in range(workers - len(pool)):
-                worker = pool_worker(queue, self.initializer, self.initargs,
+                worker = pool_worker(queues, self.initializer, self.initargs,
                                      self.worker_limit)
                 pool[worker.pid] = worker
 
             sleep(0.2)
 
     def start(self):
-        self.workers_queue = DuplexQueue()
-
+        """Start the Pool managers."""
         ts = self.task_scheduler()
         tm = self.task_manager()
         mm = self.message_manager()
         wm = self.workers_manager()
-
         self.managers = (ts, tm, mm, wm)
+
+        self.state = RUNNING
 
     def stop(self):
         """Stop the pool."""
         self.state = STOPPED
         self.queue.put(None)
-        self.workers_queue.put([RET], WORKER)
+        self.result_queue.put(None)
 
         for manager in self.managers:
             manager.join()
 
-        with suspend(self.workers_queue):
-            for worker in self.pool:
-                worker.terminate()
+        with suspend(self.queues[0]):
+            with suspend(self.queues[1]):
+                for worker in self.pool:
+                    worker.terminate()
 
     def kill(self):
         """Forces all workers to stop."""
@@ -319,7 +347,8 @@ class Pool(object):
                  initializer=None, initargs=None):
         self._counter = count()
         self._pool_manager = PoolManager(queue, queueargs,
-                                         initializer, initargs, workers, task_limit)
+                                         initializer, initargs,
+                                         workers, task_limit)
 
     def __enter__(self):
         return self

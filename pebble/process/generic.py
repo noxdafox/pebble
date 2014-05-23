@@ -54,9 +54,9 @@ def suspend(queue):
         yield queue
     finally:
         if queue._rlock is not None:
-            queue._rlock.acquire()
+            queue._rlock.release()
         if queue._wlock is not None:
-            queue._wlock.acquire()
+            queue._wlock.release()
 
 
 class SimpleQueue(object):
@@ -69,6 +69,9 @@ class SimpleQueue(object):
 
     def empty(self):
         return not self._reader.poll()
+
+    def wait(self, timeout=None):
+        return self._reader.poll(timeout)
 
     def __getstate__(self):
         return (self._reader, self._writer,
@@ -83,11 +86,11 @@ class SimpleQueue(object):
 
     def _make_get_method(self):
         def get(timeout=None):
-            if self._reader.poll(timeout):
-                with self._rlock:
+            with self._rlock:
+                if self._reader.poll(timeout):
                     return self._reader.recv()
-            else:
-                raise Empty
+                else:
+                    raise Empty
 
         return get
 

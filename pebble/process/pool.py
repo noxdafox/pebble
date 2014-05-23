@@ -23,10 +23,10 @@ from time import sleep, time
 from collections import Callable
 from traceback import format_exc, print_exc
 try:  # Python 2
-    from Queue import Queue
+    from Queue import Queue, Empty
     from cPickle import PicklingError
 except:  # Python 3
-    from queue import Queue
+    from queue import Queue, Empty
     from pickle import PicklingError
 
 from .generic import SimpleQueue, suspend
@@ -58,20 +58,40 @@ def stop_worker(worker):
         print_exc()
 
 
-def get_task(task_queue, result_queue):
+def join_workers(pool, timeout=None):
+    """Join terminated workers."""
+    counter = 0
+
+    while len(pool) > 0 and (timeout is None or counter < timeout):
+        for identifier, worker in pool.items():
+            worker.join(timeout is not None and 0.1 or None)
+            if not worker.is_alive():
+                pool.pop(identifier)
+        counter += timeout is not None and len(pool) / 10.0 or 0
+
+    return pool
+
+
+def get_task(task_queue, result_queue, pid):
     """Gets new task for Pool Worker.
 
     Waits for next task to be ready, unpacks its contents
     and sends back an acknowledgment to the Pool.
 
     """
-    try:
-        number, function, args, kwargs = task_queue.get()
-        result_queue.put((ACK, number, os.getpid()))
+    function = None
 
-        return number, function, args, kwargs
-    except (IOError, OSError, EOFError):
-        sys.exit(1)
+    while function is None:
+        try:
+            task_queue.wait()
+            number, function, args, kwargs = task_queue.get(timeout=0)
+            result_queue.put((ACK, number, pid))
+        except Empty:
+            continue
+        except (IOError, OSError, EOFError):
+            sys.exit(1)
+
+    return number, function, args, kwargs
 
 
 def put_results(queue, number, results):
@@ -84,16 +104,17 @@ def put_results(queue, number, results):
         sys.exit(1)
 
 
-@process_worker(daemon=True)
+@process_worker(name='pool_worker', daemon=True)
 def pool_worker(queues, initializer, initargs, limit):
     """Runs the actual function in separate process."""
     error = None
-    results = None
+    value = None
     counter = count()
+    pid = os.getpid()
     signal(SIGINT, SIG_IGN)
-    task_queue, result_queue = queues
-    task_queue._writer.close()
-    result_queue._reader.close()
+    tasks, results = queues
+    tasks._writer.close()
+    results._reader.close()
 
     if initializer is not None:
         try:
@@ -103,22 +124,123 @@ def pool_worker(queues, initializer, initargs, limit):
             error.traceback = format_exc()
 
     while limit == 0 or next(counter) < limit:
-        number, function, args, kwargs = get_task(task_queue, result_queue)
+        number, function, args, kwargs = get_task(tasks, results, pid)
 
         try:
-            results = function(*args, **kwargs)
+            value = function(*args, **kwargs)
         except Exception as err:
             if error is None:
                 error = err
                 error.traceback = format_exc()
 
-        put_results(result_queue, number,
-                    error is not None and error or results)
+        put_results(results, number, error is not None and error or value)
 
         error = None
-        results = None
+        value = None
 
     sys.exit(0)
+
+
+@thread_worker(name='task_scheduler', daemon=True)
+def task_scheduler(pool_context):
+    """Schedules tasks in queue to the workers."""
+    queue = pool_context.queue
+    tasks = pool_context.tasks
+    put = lambda o: pool_context.task_queue.put(o)
+
+    while pool_context.state not in (ERROR, STOPPED):
+        task = queue.get()
+
+        if task is not None:
+            number = task.number
+            tasks[number] = task
+
+            put((number, task._function, task._args, task._kwargs))
+        else:  # stop sentinel
+            return
+
+
+@thread_worker(name='task_manager', daemon=True)
+def task_manager(pool_context):
+    """Checks for tasks cancelled or timing out."""
+    pool = pool_context.pool
+    tasks = pool_context.tasks
+    timeout = lambda task, tick: tick - task._timestamp > task.timeout
+
+    while pool_context.state not in (ERROR, STOPPED):
+        timestamp = time()
+        running = [t for t in tasks.values() if t.started and not t.ready]
+
+        for task in running:
+            error = None
+
+            if (task.timeout > 0 and timeout(task, timestamp)):
+                error = TimeoutError('Task timeout')
+            elif task.cancelled:
+                error = TaskCancelled('Task cancelled')
+
+            if error is not None:
+                try:
+                    del tasks[task.number]
+                    pool_context.task_done(task, error)
+
+                    with suspend(pool_context.task_queue):
+                        with suspend(pool_context.result_queue):
+                            stop_worker(pool[task._pid])
+                except KeyError:  # task completed or worker already expired
+                    continue
+
+        sleep(0.2)
+
+
+@thread_worker(name='message_manager', daemon=True)
+def message_manager(pool_context):
+    """Gather messages from workers,
+    sets tasks status and runs callbacks.
+
+    """
+    tasks = pool_context.tasks
+    get = lambda: pool_context.result_queue.get()
+
+    while pool_context.state not in (ERROR, STOPPED):
+        try:
+            message, number, data = get()
+
+            if message is ACK:
+                task = tasks[number]
+                task._timestamp = time()
+                task._pid = data
+            elif message is RES:
+                task = tasks.pop(number)
+                pool_context.task_done(task, data)
+        except KeyError:  # task was cancelled
+            continue
+        except TypeError:  # stop sentinel
+            return
+
+
+@thread_worker(name='worker_manager', daemon=True)
+def worker_manager(pool_context):
+    """Collects expired workers and spawns new ones."""
+    pool = pool_context.pool
+    limit = pool_context.worker_limit
+    initializer = pool_context.initializer
+    initargs = pool_context.initargs
+    workers = pool_context.worker_number
+    queues = (pool_context.task_queue, pool_context.result_queue)
+
+    while pool_context.state not in (ERROR, STOPPED):
+        expired = [w for w in pool.values() if not w.is_alive()]
+
+        for worker in expired:
+            worker.join()
+            del pool[worker.pid]
+
+        for _ in range(workers - len(pool)):
+            worker = pool_worker(queues, initializer, initargs, limit)
+            pool[worker.pid] = worker
+
+        sleep(0.2)
 
 
 class TaskQueue(SimpleQueue):
@@ -145,7 +267,7 @@ class ResultQueue(SimpleQueue):
         return get
 
 
-class PoolManager(object):
+class PoolContext(object):
     def __init__(self, queue, queueargs, initializer, initargs,
                  workers, limit):
         self.state = CREATED
@@ -166,152 +288,32 @@ class PoolManager(object):
         else:
             self.queue = Queue()
 
-    @thread_worker(daemon=True)
-    def task_scheduler(self):
-        """Schedules tasks in queue to the workers."""
-        queue = self.queue
-        tasks = self.tasks
-        put = lambda o: self.task_queue.put(o)
-
-        while self.state != STOPPED:
-            task = queue.get()
-
-            if task is not None:
-                number = task.number
-                tasks[number] = task
-
-                put((number, task._function, task._args, task._kwargs))
-            else:  # stop sentinel
-                return
-
-    @thread_worker(daemon=True)
-    def task_manager(self):
-        """Checks for tasks cancelled or timing out."""
-        pool = self.pool
-        tasks = self.tasks
-        timeout = lambda t, timestamp: timestamp - t._timestamp > t.timeout
-
-        while self.state != STOPPED:
-            tick = time()
-
-            for task in tasks.values():
-                results = None
-
-                if (task.timeout > 0 and task.started and timeout(task, tick)):
-                    results = TimeoutError('Task timeout')
-                elif task.started and task.cancelled:
-                    results = TaskCancelled('Task cancelled')
-
-                if results is not None:
-                    with suspend(self.task_queue):
-                        with suspend(self.result_queue):
-                            stop_worker(pool[task._pid])
-
-                    tasks.pop(task.number)
-                    self.task_done(task, results)
-
-            sleep(0.2)
-
-    @thread_worker(daemon=True)
-    def message_manager(self):
-        """Gather messages from workers,
-        sets tasks status and runs callbacks.
-
-        """
-        tasks = self.tasks
-        get = lambda: self.result_queue.get()
-
-        while self.state != STOPPED:
-            try:
-                message, number, data = get()
-            except TypeError:  # stop sentinel
-                return
-
-            if message is ACK:
-                task = tasks[number]
-                task._timestamp = time()
-                task._pid = data
-            elif message is RES:
-                task = tasks.pop(number)
-                self.task_done(task, data)
-
-    @thread_worker(daemon=True)
-    def workers_manager(self):
-        """Collects expired workers and spawn new ones."""
-        pool = self.pool
-        workers = self.worker_number
-        queues = (self.task_queue, self.result_queue)
-
-        while self.state != STOPPED:
-            expired = [w for w in pool.values() if not w.is_alive()]
-
-            for worker in expired:
-                worker.join()
-                pool.pop(worker.pid)
-
-            for _ in range(workers - len(pool)):
-                worker = pool_worker(queues, self.initializer, self.initargs,
-                                     self.worker_limit)
-                pool[worker.pid] = worker
-
-            sleep(0.2)
-
-    def start(self):
-        """Start the Pool managers."""
-        ts = self.task_scheduler()
-        tm = self.task_manager()
-        mm = self.message_manager()
-        wm = self.workers_manager()
-        self.managers = (ts, tm, mm, wm)
-
-        self.state = RUNNING
-
     def stop(self):
         """Stop the pool."""
-        self.state = STOPPED
-        self.queue.put(None)
-        self.result_queue.put(None)
-
-        for manager in self.managers:
-            manager.join()
-
-        with suspend(self.queues[0]):
-            with suspend(self.queues[1]):
-                for worker in self.pool:
+        with suspend(self.task_queue):
+            with suspend(self.result_queue):
+                for worker in self.pool.itervalues():
                     worker.terminate()
 
     def kill(self):
         """Forces all workers to stop."""
         self.stop()
 
-        with suspend(self.workers_queue):
-            for worker in self.pool:
-                stop_worker(worker)
+        with suspend(self.task_queue):
+            with suspend(self.result_queue):
+                for worker in self.pool.itervalues():
+                    stop_worker(worker)
 
     def join(self, timeout):
         if self.state == RUNNING:
             raise RuntimeError('The Pool is still running')
 
         if timeout > 0:
-            self.pool = self.join_workers(timeout)
+            self.pool = join_workers(self.pool, timeout)
             if len(self.pool) > 0:
                 raise TimeoutError('Workers are still running')
         else:
-            self.pool = self.join_workers()
-
-    def join_workers(self, timeout=None):
-        """Join terminated workers."""
-        counter = 0
-        workers = self.pool
-
-        while len(workers) > 0 and (timeout is None or counter < timeout):
-            for worker in workers[:]:
-                worker.join(timeout is not None and 0.1 or None)
-                if not worker.is_alive():
-                    workers.remove(worker)
-            counter += timeout is not None and (len(workers)) / 10.0 or 0
-
-        return workers
+            self.pool = join_workers(self.pool)
 
     def task_done(self, task, results):
         task._set(results)
@@ -346,9 +348,10 @@ class Pool(object):
     def __init__(self, workers=1, task_limit=0, queue=None, queueargs=None,
                  initializer=None, initargs=None):
         self._counter = count()
-        self._pool_manager = PoolManager(queue, queueargs,
-                                         initializer, initargs,
-                                         workers, task_limit)
+        self._context = PoolContext(queue, queueargs,
+                                    initializer, initargs,
+                                    workers, task_limit)
+        self._managers = None
 
     def __enter__(self):
         return self
@@ -359,37 +362,54 @@ class Pool(object):
 
     @property
     def initializer(self):
-        return self._pool_manager.initializer
+        return self._context.initializer
 
     @initializer.setter
     def initializer(self, value):
-        self._pool_manager.initializer = value
+        self._context.initializer = value
 
     @property
     def initargs(self):
-        return self._pool_manager.initargs
+        return self._context.initargs
 
     @initargs.setter
     def initargs(self, value):
-        self._pool_manager.initargs = value
+        self._context.initargs = value
 
     @property
     def active(self):
-        return self._pool_manager.state == RUNNING and True or False
+        return self._context.state == RUNNING and True or False
+
+    def _start(self):
+        """Start the Pool managers."""
+        self._managers = (task_scheduler(self._context),
+                          task_manager(self._context),
+                          message_manager(self._context),
+                          worker_manager(self._context))
+        self._context.state = RUNNING
 
     def close(self):
         """Closes the pool waiting for all tasks to be completed."""
-        self._pool_manager.state = CLOSED
-        self._pool_manager.queue.join()
+        self._context.state = CLOSED
+        self._context.queue.join()
         self.stop()
 
     def stop(self):
         """Stops the pool without performing any pending task."""
-        self._pool_manager.stop()
+        self._context.state = STOPPED
+
+        # send stop sentinels
+        self._context.queue.put(None)
+        self._context.result_queue.put(None)
+
+        for manager in self._managers:
+            manager.join()
+
+        self._context.stop()
 
     def kill(self):
         """Kills the pool forcing all workers to terminate immediately."""
-        self._pool_manager.kill()
+        self._context.kill()
 
     def join(self, timeout=0):
         """Joins the pool waiting until all workers exited.
@@ -398,7 +418,7 @@ class Pool(object):
         it block until all workers exited or raise TimeoutError.
 
         """
-        self._pool_manager.join(timeout)
+        self._context.join(timeout)
 
     def schedule(self, function, args=(), kwargs={}, identifier=None,
                  callback=None, timeout=0):
@@ -417,9 +437,9 @@ class Pool(object):
         A *Task* object is returned.
 
         """
-        if self._pool_manager.state == CREATED:
-            self._pool_manager.start()
-        elif self._pool_manager.state != RUNNING:
+        if self._context.state == CREATED:
+            self._start()
+        elif self._context.state != RUNNING:
             raise RuntimeError('The Pool is not running')
 
         if not isinstance(function, Callable):
@@ -429,6 +449,6 @@ class Pool(object):
 
         task = Task(next(self._counter), function, args, kwargs,
                     callback, timeout, identifier)
-        self._pool_manager.queue.put(task)
+        self._context.queue.put(task)
 
         return task

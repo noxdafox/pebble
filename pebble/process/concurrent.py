@@ -13,25 +13,33 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with Pebble.  If not, see <http://www.gnu.org/licenses/>.
 
+import os
 
 from functools import wraps
-from threading import Thread
+from multiprocessing import Process
 from types import FunctionType, MethodType
+
+from .generic import dump_function
 
 
 def wrapped(function, name, daemon, *args, **kwargs):
-    """Starts decorated function within a thread."""
-    thread = Thread(target=function, name=name, args=args, kwargs=kwargs)
-    thread.daemon = daemon
-    thread.start()
+    """Starts decorated function within a process."""
+    if os.name == 'nt':
+        func, args = dump_function(function, args)
+    else:
+        func = function
 
-    return thread
+    process = Process(target=func, name=name, args=args, kwargs=kwargs)
+    process.daemon = daemon
+    process.start()
+
+    return process
 
 
-def worker(*args, **kwargs):
-    """Runs the decorated *function* in a separate thread.
+def concurrent(*args, **kwargs):
+    """Runs the decorated *function* in a separate process.
 
-    Returns the *Thread* object.
+    Returns the *Process* object.
 
     """
     name = None

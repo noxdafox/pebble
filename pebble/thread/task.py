@@ -19,7 +19,7 @@ from collections import Callable
 from functools import update_wrapper
 from traceback import print_exc, format_exc
 
-from .worker import worker as thread_worker
+from .concurrent import concurrent
 from ..pebble import Task
 
 
@@ -45,7 +45,7 @@ def task(*args, **kwargs):
         raise ValueError("Decorator accepts only keyword arguments.")
 
 
-@thread_worker(daemon=True)
+@concurrent(daemon=True)
 def task_worker(task):
     """Runs the actual function in separate thread."""
     error = None

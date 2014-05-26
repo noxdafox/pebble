@@ -28,8 +28,8 @@ except:  # Python 3
     from queue import Empty
     from pickle import PicklingError
 
-from .worker import worker as process_worker
-from ..thread import worker as thread_worker
+from .concurrent import concurrent as process_worker
+from ..thread import concurrent as thread_worker
 from ..pebble import Task, TimeoutError, TaskCancelled
 from .generic import SimpleQueue, dump_function
 

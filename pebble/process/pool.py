@@ -33,8 +33,8 @@ except:  # Python 3
     from pickle import PicklingError
 
 from .generic import channels, lock
-from .worker import worker as process_worker
-from ..thread import worker as thread_worker
+from .concurrent import concurrent as process_worker
+from ..thread import concurrent as thread_worker
 from ..pebble import Task, TimeoutError, TaskCancelled
 from ..pebble import STOPPED, RUNNING, CLOSED, CREATED, ERROR
 

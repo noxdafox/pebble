@@ -1,4 +1,4 @@
-__all__ = ['worker', 'task']
+__all__ = ['concurrent', 'task']
 
-from .worker import worker
+from .concurrent import concurrent
 from .task import task

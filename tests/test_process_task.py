@@ -5,7 +5,7 @@ import threading
 from pebble import process, TaskCancelled, TimeoutError
 
 
-event = None
+event = threading.Event()
 initarg = 0
 results = 0
 exception = None
@@ -19,28 +19,49 @@ def callback(task):
         results = task.get()
     except Exception as error:
         exception = error
+    finally:
+        event.set()
 
-    event.set()
 
-
-@process.task(callback=callback)
+@process.task
 def function(argument, keyword_argument=0):
     """A docstring."""
     return argument + keyword_argument
 
 
-@process.task(callback=callback)
+@process.task
 def error_function():
     raise Exception("BOOM!")
 
 
-@process.task(callback=callback)
+@process.task
 def long_function():
     time.sleep(1)
 
 
-@process.task(callback=callback, timeout=0.2)
+@process.task(timeout=0.2)
 def timeout_function():
+    time.sleep(1)
+
+
+@process.task(callback=callback)
+def function_callback(argument, keyword_argument=0):
+    """A docstring."""
+    return argument + keyword_argument
+
+
+@process.task(callback=callback)
+def error_function_callback():
+    raise Exception("BOOM!")
+
+
+@process.task(callback=callback)
+def long_function_callback():
+    time.sleep(1)
+
+
+@process.task(callback=callback, timeout=0.2)
+def timeout_function_callback():
     time.sleep(1)
 
 
@@ -67,12 +88,10 @@ class TestProcessTaskObj(object):
 
 class TestProcessTask(unittest.TestCase):
     def setUp(self):
-        global event
         global results
         global exception
         results = 0
         exception = None
-        event = threading.Event()
         event.clear()
         self.results = 0
         self.taskobj = TestProcessTaskObj()
@@ -116,7 +135,7 @@ class TestProcessTask(unittest.TestCase):
 
     def test_function_results_callback(self):
         """Process Task results are forwarded to the callback."""
-        function(1, 1)
+        function_callback(1, 1)
         event.wait()
         self.assertEqual(results, 2)
 
@@ -127,7 +146,7 @@ class TestProcessTask(unittest.TestCase):
 
     def test_error_function_callback(self):
         """Process Task errors are forwarded to callback."""
-        error_function()
+        error_function_callback()
         event.wait()
         self.assertTrue(isinstance(exception, Exception))
 
@@ -139,7 +158,7 @@ class TestProcessTask(unittest.TestCase):
 
     def test_cancel_function_callback(self):
         """Process Task TaskCancelled is forwarded to callback."""
-        task = long_function()
+        task = long_function_callback()
         task.cancel()
         event.wait()
         self.assertTrue(isinstance(exception, TaskCancelled))
@@ -159,6 +178,6 @@ class TestProcessTask(unittest.TestCase):
 
     def test_timeout_function_callback(self):
         """Process Task TimeoutError is forwarded to callback."""
-        timeout_function()
+        timeout_function_callback()
         event.wait()
         self.assertTrue(isinstance(exception, TimeoutError))

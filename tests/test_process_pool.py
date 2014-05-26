@@ -24,9 +24,22 @@ def callback(task):
     event.set()
 
 
+def initializer(value):
+    global initarg
+    initarg = value
+
+
+def initializer_error():
+    raise Exception("BOOM!")
+
+
 def function(argument, keyword_argument=0):
     """A docstring."""
     return argument + keyword_argument
+
+
+def initializer_function():
+    return initarg
 
 
 def error_function():
@@ -65,6 +78,8 @@ def pid_function():
 
 class TestProcessPool(unittest.TestCase):
     def setUp(self):
+        global initarg
+        initarg = 0
         self.event = threading.Event()
         self.event.clear()
         self.results = None
@@ -127,7 +142,22 @@ class TestProcessPool(unittest.TestCase):
         self.event.wait()
         self.assertTrue(isinstance(self.exception, TimeoutError))
 
-    def test_process_pool_different_processs(self):
+    def test_process_pool_cancel(self):
+        """Process Pool task raises TaskCancelled if so."""
+        with process.Pool() as pool:
+            task = pool.schedule(long_function)
+            task.cancel()
+        self.assertRaises(TaskCancelled, task.get)
+
+    def test_process_pool_cancel_callback(self):
+        """Process Task TaskCancelled is forwarded to callback."""
+        with process.Pool() as pool:
+            task = pool.schedule(long_function, callback=self.callback)
+            task.cancel()
+        self.event.wait()
+        self.assertTrue(isinstance(self.exception, TaskCancelled))
+
+    def test_process_pool_different_process(self):
         """Process Pool multiple tasks are handled by different processes."""
         tasks = []
         with process.Pool(workers=2) as pool:
@@ -135,8 +165,62 @@ class TestProcessPool(unittest.TestCase):
                 tasks.append(pool.schedule(pid_function))
         self.assertEqual(len(set([t.get() for t in tasks])), 2)
 
+    def test_process_pool_task_limit(self):
+        """Process Pool task limit is honored."""
+        tasks = []
+        with process.Pool(task_limit=2) as pool:
+            for i in range(0, 4):
+                tasks.append(pool.schedule(pid_function))
+        self.assertEqual(len(set([t.get() for t in tasks])), 2)
+
+    def test_process_pool_stop_timeout(self):
+        """Process Pool workers are stopped if task timeout."""
+        with process.Pool() as pool:
+            task1 = pool.schedule(pid_function)
+            pool.schedule(long_function, timeout=0.1)
+            task2 = pool.schedule(pid_function)
+        self.assertNotEqual(task1.get(), task2.get())
+
+    def test_process_pool_stop_cancel(self):
+        """Process Pool workers are stopped if task cancelled."""
+        with process.Pool() as pool:
+            task1 = pool.schedule(pid_function)
+            task = pool.schedule(long_function)
+            task.cancel()
+            task2 = pool.schedule(pid_function)
+        self.assertNotEqual(task1.get(), task2.get())
+
     def test_process_pool_schedule_id(self):
         """Process Pool task ID is forwarded to it."""
         with process.Pool() as pool:
             task = pool.schedule(function, args=[1], identifier='foo')
         self.assertEqual(task.id, 'foo')
+
+    def test_process_pool_initializer(self):
+        """Process Pool initializer is correctly run."""
+        with process.Pool(initializer=initializer, initargs=[1]) as pool:
+            task = pool.schedule(initializer_function)
+        self.assertEqual(task.get(), 1)
+
+    def test_process_pool_initializer_error(self):
+        """ProcessPool an exception in a initializer is raised by get."""
+        with process.Pool(initializer=initializer_error) as pool:
+            task = pool.schedule(initializer_function)
+        self.assertRaises(Exception, task.get)
+
+    def test_process_pool_created(self):
+        """Process Pool is not active if nothing is scheduled."""
+        with process.Pool() as pool:
+            self.assertFalse(pool.active)
+
+    def test_process_pool_running(self):
+        """Process Pool is active if a task is scheduled."""
+        with process.Pool() as pool:
+            pool.schedule(function, args=[1])
+            self.assertTrue(pool.active)
+
+    def test_process_pool_stopped(self):
+        """Process Pool is not active once stopped."""
+        with process.Pool() as pool:
+            pool.schedule(function, args=[1])
+        self.assertFalse(pool.active)

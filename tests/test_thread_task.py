@@ -19,23 +19,39 @@ def callback(task):
         results = task.get()
     except Exception as error:
         exception = error
+    finally:
+        event.set()
 
-    event.set()
 
-
-@thread.task(callback=callback)
+@thread.task
 def function(argument, keyword_argument=0):
     """A docstring."""
     return argument + keyword_argument
 
 
-@thread.task(callback=callback)
+@thread.task
 def error_function():
     raise Exception("BOOM!")
 
 
-@thread.task(callback=callback)
+@thread.task
 def long_function():
+    time.sleep(1)
+
+
+@thread.task(callback=callback)
+def function_callback(argument, keyword_argument=0):
+    """A docstring."""
+    return argument + keyword_argument
+
+
+@thread.task(callback=callback)
+def error_function_callback():
+    raise Exception("BOOM!")
+
+
+@thread.task(callback=callback)
+def long_function_callback():
     time.sleep(1)
 
 
@@ -108,7 +124,7 @@ class TestThreadTask(unittest.TestCase):
 
     def test_function_results_callback(self):
         """Thread Task results are forwarded to the callback."""
-        function(1, 1)
+        function_callback(1, 1)
         event.wait()
         self.assertEqual(results, 2)
 
@@ -119,7 +135,7 @@ class TestThreadTask(unittest.TestCase):
 
     def test_error_function_callback(self):
         """Thread Task errors are forwarded to callback."""
-        error_function()
+        error_function_callback()
         event.wait()
         self.assertTrue(isinstance(exception, Exception))
 
@@ -131,7 +147,7 @@ class TestThreadTask(unittest.TestCase):
 
     def test_cancel_function_callback(self):
         """Thread Task TaskCancelled is forwarded to callback."""
-        task = long_function()
+        task = long_function_callback()
         task.cancel()
         event.wait()
         self.assertTrue(isinstance(exception, TaskCancelled))

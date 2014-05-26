@@ -41,7 +41,7 @@ class TestTask(unittest.TestCase):
         self.assertFalse(self.task.cancelled)
 
     def test_started(self):
-        """Task is started if timestamp is seself.task."""
+        """Task is started if timestamp is self.task."""
         self.task._timestamp = 42
         self.assertTrue(self.task.started)
 

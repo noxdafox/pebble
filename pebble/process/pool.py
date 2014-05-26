@@ -267,6 +267,13 @@ def worker_manager(context):
         sleep(0.2)
 
 
+class PoolTask(Task):
+    """Extends the *Task* object to support *process* decorator."""
+    def _cancel(self):
+        """Overrides the *Task* cancel method."""
+        self._cancelled = True
+
+
 class PoolContext(object):
     """Pool's Context.
 
@@ -348,12 +355,12 @@ class Pool(object):
 
     """
     def __init__(self, workers=1, task_limit=0, queue=None, queueargs=None,
-                 initializer=None, initargs=None):
+                 initializer=None, initargs=()):
         self._counter = count()
         self._context = PoolContext(queue, queueargs,
                                     initializer, initargs,
                                     workers, task_limit)
-        self._managers = None
+        self._managers = ()
 
     def __enter__(self):
         return self
@@ -430,8 +437,8 @@ class Pool(object):
         if not isinstance(function, Callable):
             raise ValueError('function must be callable')
 
-        task = Task(next(self._counter), function, args, kwargs,
-                    callback, timeout, identifier)
+        task = PoolTask(next(self._counter), function, args, kwargs,
+                        callback, timeout, identifier)
         self._context.queue.put(task)
 
         return task

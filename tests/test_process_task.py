@@ -5,7 +5,7 @@ import threading
 from pebble import process, TaskCancelled, TimeoutError
 
 
-event = threading.Event()
+event = None
 initarg = 0
 results = 0
 exception = None
@@ -67,10 +67,12 @@ class TestProcessTaskObj(object):
 
 class TestProcessTask(unittest.TestCase):
     def setUp(self):
+        global event
         global results
         global exception
         results = 0
         exception = None
+        event = threading.Event()
         event.clear()
         self.results = 0
         self.taskobj = TestProcessTaskObj()

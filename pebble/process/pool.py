@@ -429,8 +429,6 @@ class Pool(object):
 
         if not isinstance(function, Callable):
             raise ValueError('function must be callable')
-        if not isinstance(timeout, int):
-            raise ValueError('timeout must be integer')
 
         task = Task(next(self._counter), function, args, kwargs,
                     callback, timeout, identifier)

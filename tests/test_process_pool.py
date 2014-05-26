@@ -93,6 +93,40 @@ class TestProcessPool(unittest.TestCase):
                 tasks.append(pool.schedule(function, args=[1]))
         self.assertEqual(sum([t.get() for t in tasks]), 5)
 
+    def test_process_pool_callback(self):
+        """Process Pool results are forwarded to the callback."""
+        with process.Pool() as pool:
+            pool.schedule(function, args=[1], callback=self.callback,
+                          kwargs={'keyword_argument': 1})
+        self.event.wait()
+        self.assertEqual(self.results, 2)
+
+    def test_process_pool_error(self):
+        """Process Pool errors are raised by task get."""
+        with process.Pool() as pool:
+            task = pool.schedule(error_function)
+        self.assertRaises(Exception, task.get)
+
+    def test_process_pool_error_callback(self):
+        """Process Pool errors are forwarded to callback."""
+        with process.Pool() as pool:
+            pool.schedule(error_function, callback=self.callback)
+        self.event.wait()
+        self.assertTrue(isinstance(self.exception, Exception))
+
+    def test_process_pool_timeout(self):
+        """Process Pool task raises TimeoutError if so."""
+        with process.Pool() as pool:
+            task = pool.schedule(long_function, timeout=0.1)
+        self.assertRaises(TimeoutError, task.get)
+
+    def test_process_pool_timeout_callback(self):
+        """Process Task TimeoutError is forwarded to callback."""
+        with process.Pool() as pool:
+            pool.schedule(long_function, callback=self.callback, timeout=0.1)
+        self.event.wait()
+        self.assertTrue(isinstance(self.exception, TimeoutError))
+
     def test_process_pool_different_processs(self):
         """Process Pool multiple tasks are handled by different processes."""
         tasks = []

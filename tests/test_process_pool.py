@@ -150,7 +150,7 @@ class TestProcessPool(unittest.TestCase):
         self.assertRaises(TaskCancelled, task.get)
 
     def test_process_pool_cancel_callback(self):
-        """Process Task TaskCancelled is forwarded to callback."""
+        """Process Pool TaskCancelled is forwarded to callback."""
         with process.Pool() as pool:
             task = pool.schedule(long_function, callback=self.callback)
             task.cancel()
@@ -203,7 +203,7 @@ class TestProcessPool(unittest.TestCase):
         self.assertEqual(task.get(), 1)
 
     def test_process_pool_initializer_error(self):
-        """ProcessPool an exception in a initializer is raised by get."""
+        """Process Pool an exception in a initializer is raised by get."""
         with process.Pool(initializer=initializer_error) as pool:
             task = pool.schedule(initializer_function)
         self.assertRaises(Exception, task.get)
@@ -224,3 +224,81 @@ class TestProcessPool(unittest.TestCase):
         with process.Pool() as pool:
             pool.schedule(function, args=[1])
         self.assertFalse(pool.active)
+
+    def test_process_pool_close_tasks(self):
+        """Process Pool all tasks are performed on close."""
+        tasks = []
+        pool = process.Pool()
+        for index in range(10):
+            tasks.append(pool.schedule(function, args=[index]))
+        pool.close()
+        pool.join()
+        map(self.assertTrue, [t.ready for t in tasks])
+
+    def test_process_pool_close_stopped(self):
+        """Process Pool is stopped after close."""
+        pool = process.Pool()
+        pool.schedule(function, args=[1])
+        pool.close()
+        pool.join()
+        self.assertFalse(pool.active)
+
+    def test_process_pool_stop_tasks(self):
+        """Process Pool not all tasks are performed on stop."""
+        tasks = []
+        pool = process.Pool()
+        for index in range(10):
+            tasks.append(pool.schedule(function, args=[index]))
+        pool.stop()
+        pool.join()
+        self.assertTrue(len([t for t in tasks if not t.ready]) > 0)
+
+    def test_process_pool_stop_stopped(self):
+        """Process Pool is stopped after stop."""
+        pool = process.Pool()
+        pool.schedule(function, args=[1])
+        pool.stop()
+        pool.join()
+        self.assertFalse(pool.active)
+
+    def test_process_pool_kill_tasks(self):
+        """Process Pool not all tasks are performed on kill."""
+        tasks = []
+        pool = process.Pool()
+        for index in range(10):
+            tasks.append(pool.schedule(function, args=[index]))
+        pool.kill()
+        pool.join()
+        self.assertTrue(len([t for t in tasks if not t.ready]) > 0)
+
+    def test_process_pool_kill_stopped(self):
+        """Process Pool is killed after kill."""
+        pool = process.Pool()
+        pool.schedule(function, args=[1])
+        pool.kill()
+        pool.join()
+        self.assertFalse(pool.active)
+
+    def test_process_pool_join_workers(self):
+        """Process Pool no worker is running after join."""
+        pool = process.Pool(workers=4)
+        pool.schedule(function, args=[1])
+        pool.stop()
+        pool.join()
+        self.assertEqual(len(pool._context.pool), 0)
+
+    def test_process_pool_join_running(self):
+        """Process Pool RuntimeError is raised if active pool joined."""
+        with process.Pool() as pool:
+            pool.schedule(function, args=[1])
+            self.assertRaises(RuntimeError, pool.join)
+
+    def test_process_pool_join_tasks_timeout(self):
+        """Process Pool TimeoutError is raised if join on long tasks."""
+        pool = process.Pool()
+        for index in range(2):
+            pool.schedule(long_function)
+        pool.close()
+        self.assertRaises(TimeoutError, pool.join, 0.4)
+        pool.stop()
+        pool.join()

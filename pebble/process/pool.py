@@ -54,20 +54,6 @@ def stop_worker(worker):
         return
 
 
-def join_workers(workers, timeout=None):
-    """Join terminated workers."""
-    counter = 0
-
-    while len(workers) > 0 and (timeout is None or counter < timeout):
-        for identifier, worker in list(workers.items()):
-            worker.join(timeout is not None and 0.1 or None)
-            if not worker.is_alive():
-                workers.pop(identifier)
-        counter += timeout is not None and len(workers) / 10.0 or 0
-
-    return workers
-
-
 def get_task(channel, pid):
     """Gets new task for Pool Worker.
 
@@ -314,15 +300,18 @@ class PoolContext(object):
                 stop_worker(worker)
 
     def join(self, timeout):
-        if self.state == RUNNING:
-            raise RuntimeError('The Pool is still running')
+        """Joins pool's workers."""
+        while len(self.pool) > 0 and (timeout is None or timeout > 0):
+            for identifier, worker in list(self.pool.items()):
+                worker.join(timeout is not None and 0.1 or None)
+                if not worker.is_alive():
+                    self.pool.pop(identifier)
 
-        if timeout > 0:
-            self.pool = join_workers(self.pool, timeout)
-            if len(self.pool) > 0:
-                raise TimeoutError('Workers are still running')
-        else:
-            self.pool = join_workers(self.pool)
+            if timeout is not None:
+                timeout = timeout - (len(self.pool) / 10.0)
+
+        if len(self.pool) > 0:
+            raise TimeoutError('Workers are still running')
 
     def task_done(self, task, results):
         task._set(results)
@@ -382,10 +371,12 @@ class Pool(object):
         self._context.state = RUNNING
 
     def close(self):
-        """Closes the pool waiting for all tasks to be completed."""
+        """Closes the pool.
+
+        No new tasks will be accepted, enqueued ones will be performed.
+
+        """
         self._context.state = CLOSED
-        self._context.queue.join()
-        self.stop()
 
     def stop(self):
         """Stops the pool without performing any pending task."""
@@ -401,15 +392,30 @@ class Pool(object):
 
     def kill(self):
         """Kills the pool forcing all workers to terminate immediately."""
+        self._context.state = STOPPED
+
         self._context.kill()
 
-    def join(self, timeout=0):
+    def join(self, timeout=None):
         """Joins the pool waiting until all workers exited.
 
-        If *timeout* is greater than 0,
-        it block until all workers exited or raise TimeoutError.
+        If *timeout* is set, it block until all workers are done
+        or raise TimeoutError.
 
         """
+        if self._context.state == RUNNING:
+            raise RuntimeError('The Pool is still running')
+        elif self._context.state == CLOSED:
+            queue = self._context.queue
+
+            if timeout is not None:
+                while queue.unfinished_tasks > 0 and timeout > 0:
+                    sleep(0.1)
+                    timeout -= 0.1
+            else:
+                queue.join()
+            self.stop()
+
         self._context.join(timeout)
 
     def schedule(self, function, args=(), kwargs={}, identifier=None,

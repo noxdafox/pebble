@@ -53,54 +53,54 @@ class TestProcessConcurrent(unittest.TestCase):
     def test_defaults(self):
         """Process Concurrent default values are preserved."""
         queue = Queue()
-        thrd = function(queue, 1, 1)
-        thrd.join()
-        self.assertFalse(thrd.daemon)
+        proc = function(queue, 1, 1)
+        proc.join()
+        self.assertFalse(proc.daemon)
 
     def test_arguments(self):
         """Process Concurrent decorator arguments are forwarded."""
         queue = Queue()
-        thrd = function(queue, 1, 1)
-        thrd.join()
-        self.assertEqual(thrd.name, 'foo')
+        proc = function(queue, 1, 1)
+        proc.join()
+        self.assertEqual(proc.name, 'foo')
 
     def test_function_results(self):
         """Process Concurrent results are produced."""
         queue = Queue()
-        thrd = function(queue, 1, 1)
+        proc = function(queue, 1, 1)
         results = queue.get()
-        thrd.join()
+        proc.join()
         self.assertEqual(results, 2)
 
     def test_function_results_windows(self):
         """Process Concurrent results are produced in Windows."""
         os.name = 'nt'
         queue = Queue()
-        thrd = function(queue, 1, 1)
+        proc = function(queue, 1, 1)
         results = queue.get()
-        thrd.join()
+        proc.join()
         self.assertEqual(results, 2)
 
     def test_class_method(self):
         """Process Concurrent decorated classmethods."""
         queue = Queue()
-        thrd = TestProcessConcurrentObj.clsmethod(queue)
+        proc = TestProcessConcurrentObj.clsmethod(queue)
         results = queue.get()
-        thrd.join()
+        proc.join()
         self.assertEqual(results, 0)
 
     def test_instance_method(self):
         """Process Concurrent decorated instance methods."""
         queue = Queue()
-        thrd = self.concurrentobj.instmethod(queue)
+        proc = self.concurrentobj.instmethod(queue)
         results = queue.get()
-        thrd.join()
+        proc.join()
         self.assertEqual(results, 1)
 
     def test_static_method(self):
         """Process Concurrent decorated static methods."""
         queue = Queue()
-        thrd = self.concurrentobj.stcmethod(queue)
+        proc = self.concurrentobj.stcmethod(queue)
         results = queue.get()
-        thrd.join()
+        proc.join()
         self.assertEqual(results, 2)

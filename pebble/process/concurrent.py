@@ -45,8 +45,11 @@ def concurrent(*args, **kwargs):
     name = None
     daemon = False
 
-    # decorator without parameters
-    if len(args) > 0 and isinstance(args[0], (FunctionType, MethodType)):
+    # @concurrent
+    if len(args) > 0 and len(kwargs) == 0:
+        if not isinstance(args[0], (FunctionType, MethodType)):
+            raise ValueError("Decorated object must be function or method.")
+
         function = args[0]
 
         @wraps(function)
@@ -55,10 +58,16 @@ def concurrent(*args, **kwargs):
 
         return wrapper
 
-    # decorator with parameters
+    # concurrent(target=...) or @concurrent(name=...)
     elif len(kwargs) > 0:
-        name = kwargs.get('name', None)
-        daemon = kwargs.get('daemon', False)
+        name = kwargs.pop('name', None)
+        daemon = kwargs.pop('daemon', False)
+        target = kwargs.pop('target', None)
+        args = kwargs.pop('args', [])
+        kwargs = kwargs.pop('kwargs', {})
+
+        if target is not None:
+            return wrapped(target, name, daemon, *args, **kwargs)
 
         def wrap(function):
 

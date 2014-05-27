@@ -17,9 +17,8 @@ import os
 import sys
 
 from itertools import count
-from types import MethodType
-from collections import Callable
 from functools import update_wrapper
+from types import FunctionType, MethodType
 from traceback import print_exc, format_exc
 try:  # Python 2
     from Queue import Empty
@@ -34,6 +33,9 @@ from ..pebble import Task, TimeoutError, TaskCancelled
 from .generic import SimpleQueue, dump_function
 
 
+_task_counter = count()
+
+
 def task(*args, **kwargs):
     """Turns a *function* into a Process and runs its logic within.
 
@@ -46,13 +48,34 @@ def task(*args, **kwargs):
     def wrapper(function):
         return TaskDecoratorWrapper(function, timeout, callback)
 
-    if len(args) == 1 and not len(kwargs) and isinstance(args[0], Callable):
-        return TaskDecoratorWrapper(args[0], 0, None)
-    elif not len(args) and len(kwargs):
-        timeout = kwargs.get('timeout', 0)
-        callback = kwargs.get('callback')
+    # @task
+    if len(args) > 0 and len(kwargs) == 0:
+        if not isinstance(args[0], (FunctionType, MethodType)):
+            raise ValueError("Decorated object must be function or method.")
 
-        return wrapper
+        return TaskDecoratorWrapper(args[0], 0, None)
+
+    # task(target=...) or @task(name=...)
+    elif len(kwargs) > 0:
+        timeout = kwargs.pop('timeout', 0)
+        callback = kwargs.pop('callback', None)
+        target = kwargs.pop('target', None)
+        args = kwargs.pop('args', [])
+        kwargs = kwargs.pop('kwargs', {})
+
+        if target is not None:
+            queue = SimpleQueue()
+
+            task = ProcessTask(next(_task_counter),
+                               function=target, args=args, kwargs=kwargs,
+                               callback=callback, timeout=timeout,
+                               queue=queue)
+
+            task_manager(task)
+
+            return task
+        else:
+            return wrapper
     else:
         raise ValueError("Decorator accepts only keyword arguments.")
 

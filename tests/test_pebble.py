@@ -1,6 +1,75 @@
+import os
+import time
+import signal
 import unittest
+import threading
 
+from pebble import synchronized, sighandler
 from pebble import Task, TimeoutError, TaskCancelled
+
+
+results = 0
+lock = threading.Lock()
+
+
+@synchronized(lock)
+def function():
+    """A docstring."""
+    return lock.acquire(False)
+
+
+@sighandler(signal.SIGALRM)
+def signal_handler(signum, frame):
+    """A docstring."""
+    global results
+    results = 1
+
+
+@sighandler((signal.SIGFPE, signal.SIGIO))
+def signals_handler(signum, frame):
+    pass
+
+
+class TestSynchronizedDecorator(unittest.TestCase):
+    def test_wrapper_decorator_docstring(self):
+        """Synchronized docstring of the original function is preserved."""
+        self.assertEqual(function.__doc__, "A docstring.")
+
+    def test_syncronized_locked(self):
+        """Synchronized Lock is acquired
+        during execution of decorated function."""
+        self.assertFalse(function())
+
+    def test_syncronized_released(self):
+        """Synchronized Lock is acquired
+        during execution of decorated function."""
+        function()
+        self.assertTrue(lock.acquire(False))
+        lock.release()
+
+
+class TestSigHandler(unittest.TestCase):
+    def test_wrapper_decorator_docstring(self):
+        """Sighandler docstring of the original function is preserved."""
+        self.assertEqual(signal_handler.__doc__, "A docstring.")
+
+    def test_sighandler(self):
+        """Sighandler installs SIGALRM."""
+        self.assertEqual(signal.getsignal(signal.SIGALRM).__name__,
+                         signal_handler.__name__)
+
+    def test_sighandler_multiple(self):
+        """Sighandler installs SIGFPE and SIGIO."""
+        self.assertEqual(signal.getsignal(signal.SIGFPE).__name__,
+                         signals_handler.__name__)
+        self.assertEqual(signal.getsignal(signal.SIGIO).__name__,
+                         signals_handler.__name__)
+
+    def test_sigalarm_sighandler(self):
+        """Sighandler for SIGALARM works."""
+        os.kill(os.getpid(), signal.SIGALRM)
+        time.sleep(0.1)
+        self.assertEqual(results, 1)
 
 
 class TestTask(unittest.TestCase):
@@ -16,11 +85,6 @@ class TestTask(unittest.TestCase):
         """Task ID is forwarded to it."""
         t = Task(0, None, None, None, None, None, 'foo')
         self.assertEqual(t.id, 'foo')
-
-    def test_task_uuid(self):
-        """Task a UUID is assigned if None."""
-        t = Task(0, None, None, None, None, None, None)
-        self.assertEqual(t.id.version, 4)
 
     def test_ready(self):
         """Task is ready if results are seself.task."""

@@ -17,49 +17,58 @@ import os
 
 from functools import wraps
 from multiprocessing import Process
-from types import FunctionType, MethodType
 
 from .generic import dump_function
 
 
-def wrapped(function, name, daemon, *args, **kwargs):
-    """Starts decorated function within a process."""
-    if os.name == 'nt':
-        func, args = dump_function(function, args)
-    else:
-        func = function
-
-    process = Process(target=func, name=name, args=args, kwargs=kwargs)
+def spawn(function, name, daemon, args, kwargs):
+    """Launches the function within a process."""
+    process = Process(target=function, name=name, args=args, kwargs=kwargs)
     process.daemon = daemon
     process.start()
 
     return process
 
 
-def concurrent(*args, **kwargs):
-    """Runs the decorated *function* in a separate process.
+def wrapped(function, name, daemon, args, kwargs):
+    """Starts decorated function within a process."""
+    if os.name == 'nt':
+        function, args = dump_function(function, args)
 
-    Returns the *Process* object.
+    return spawn(function, name, daemon, args, kwargs)
+
+
+def concurrent(*args, **kwargs):
+    """Runs the given function in a concurrent process.
+
+    The concurrent function works as well as a decorator.
+
+    *target* is the desired function to be run
+    with the given *args* and *kwargs* parameters; if *daemon* is True,
+    the process will be stopped if the parent exits (default False).
+    *name* is a string, if assigned will be given to the process.
+
+    The concurrent function returns the Process object which is running
+    the *target* or decorated one.
+
+    .. note:
+       The decorator accepts the keywords *daemon* and *name* only.
+       If *target* keyword is not specified, the function will act as
+       a decorator.
 
     """
     name = None
     daemon = False
 
-    # @concurrent
-    if len(args) > 0 and len(kwargs) == 0:
-        if not isinstance(args[0], (FunctionType, MethodType)):
-            raise ValueError("Decorated object must be function or method.")
-
+    if len(args) > 0 and len(kwargs) == 0:  # @concurrent
         function = args[0]
 
         @wraps(function)
         def wrapper(*args, **kwargs):
-            return wrapped(function, name, daemon, *args, **kwargs)
+            return wrapped(function, name, daemon, args, kwargs)
 
         return wrapper
-
-    # concurrent(target=...) or @concurrent(name=...)
-    elif len(kwargs) > 0:
+    elif len(kwargs) > 0 and len(args) == 0:  # concurrent() or @concurrent()
         name = kwargs.pop('name', None)
         daemon = kwargs.pop('daemon', False)
         target = kwargs.pop('target', None)
@@ -67,17 +76,16 @@ def concurrent(*args, **kwargs):
         kwargs = kwargs.pop('kwargs', {})
 
         if target is not None:
-            return wrapped(target, name, daemon, *args, **kwargs)
+            return spawn(target, name, daemon, args, kwargs)
 
         def wrap(function):
 
             @wraps(function)
             def wrapper(*args, **kwargs):
-                return wrapped(function, name, daemon, *args, **kwargs)
+                return wrapped(function, name, daemon, args, kwargs)
 
             return wrapper
 
         return wrap
-
     else:
         raise ValueError("Decorator accepts only keyword arguments.")

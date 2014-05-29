@@ -7,8 +7,12 @@ except:  # Python 3
 from pebble import thread
 
 
+def undecorated(queue, argument, keyword_argument=0):
+    queue.put(argument + keyword_argument)
+
+
 @thread.concurrent(name='foo')
-def function(queue, argument, keyword_argument=0):
+def decorated(queue, argument, keyword_argument=0):
     """A docstring."""
     queue.put(argument + keyword_argument)
 
@@ -40,12 +44,17 @@ class TestThreadConcurrent(unittest.TestCase):
 
     def test_docstring(self):
         """Thread Concurrent docstring is preserved."""
-        self.assertEqual(function.__doc__, "A docstring.")
+        self.assertEqual(decorated.__doc__, "A docstring.")
+
+    def test_wrong_parameters(self):
+        """Thread Concurrent raises ValueError if wrong params."""
+        self.assertRaises(ValueError, thread.concurrent, undecorated,
+                          args=[1])
 
     def test_thread_wrong_decoration(self):
         """Thread Concurrent raises ValueError if given wrong params."""
         try:
-            @thread.concurrent(5)
+            @thread.concurrent(5, name='foo')
             def wrong():
                 return
         except Exception as error:
@@ -54,21 +63,30 @@ class TestThreadConcurrent(unittest.TestCase):
     def test_defaults(self):
         """Thread Concurrent default values are preserved."""
         queue = Queue()
-        thrd = function(queue, 1, 1)
+        thrd = decorated(queue, 1, 1)
         thrd.join()
         self.assertFalse(thrd.daemon)
 
     def test_arguments(self):
         """Thread Concurrent decorator arguments are forwarded."""
         queue = Queue()
-        thrd = function(queue, 1, 1)
+        thrd = decorated(queue, 1, 1)
         thrd.join()
         self.assertEqual(thrd.name, 'foo')
 
-    def test_function_results(self):
+    def test_undecorated_results(self):
+        """Thread Concurrent undecorated results are produced."""
+        queue = Queue()
+        proc = thread.concurrent(target=decorated, args=[queue, 1],
+                                 kwargs={'keyword_argument': 1})
+        results = queue.get()
+        proc.join()
+        self.assertEqual(results, 2)
+
+    def test_decorated_results(self):
         """Thread Concurrent results are produced."""
         queue = Queue()
-        thrd = function(queue, 1, 1)
+        thrd = decorated(queue, 1, 1)
         results = queue.get()
         thrd.join()
         self.assertEqual(results, 2)

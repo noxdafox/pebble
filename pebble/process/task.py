@@ -16,9 +16,8 @@
 import os
 import sys
 
+from functools import wraps
 from itertools import count
-from functools import update_wrapper
-from types import FunctionType, MethodType
 from traceback import print_exc, format_exc
 try:  # Python 2
     from Queue import Empty
@@ -27,36 +26,66 @@ except:  # Python 3
     from queue import Empty
     from pickle import PicklingError
 
-from .concurrent import concurrent as process_worker
-from ..thread import concurrent as thread_worker
-from ..pebble import Task, TimeoutError, TaskCancelled
 from .generic import SimpleQueue, dump_function
+from ..thread import concurrent as thread_worker
+from .concurrent import concurrent as process_worker
+from ..pebble import Task, TimeoutError, TaskCancelled
 
 
 _task_counter = count()
 
 
+def spawn(function, timeout, callback, args, kwargs):
+    """Launches the function within a process."""
+    queue = SimpleQueue()
+    task = ProcessTask(next(_task_counter),
+                       function=function, args=args, kwargs=kwargs,
+                       callback=callback, timeout=timeout, queue=queue)
+    task_manager(task)
+
+    return task
+
+
+def wrapped(function, timeout, callback, args, kwargs):
+    """Starts decorated function within a process."""
+    if os.name == 'nt':
+        function, args = dump_function(function, args)
+
+    return spawn(function, timeout, callback, args, kwargs)
+
+
 def task(*args, **kwargs):
-    """Turns a *function* into a Process and runs its logic within.
+    """Runs the given function in a concurrent process,
+    taking care of the results and error management.
 
-    A decorated *function* will return a *Task* object once is called.
+    The task function works as well as a decorator.
 
-    If *callback* is a callable, it will be called once the task has ended
-    with the task identifier and the *function* return values.
+    *target* is the desired function to be run
+    with the given *args* and *kwargs* parameters; if *timeout* is set,
+    the process will be stopped once expired returning TimeoutError as results.
+    If a *callback* is passed, it will be run after the job has finished with
+    the returned *Task* as parameter.
+
+    The task function returns a *Task* object.
+
+    .. note:
+       The decorator accepts the keywords *timeout* and *callback* only.
+       If *target* keyword is not specified, the function will act as
+       a decorator.
 
     """
-    def wrapper(function):
-        return TaskDecoratorWrapper(function, timeout, callback)
+    timeout = 0
+    callback = None
 
-    # @task
-    if len(args) > 0 and len(kwargs) == 0:
-        if not isinstance(args[0], (FunctionType, MethodType)):
-            raise ValueError("Decorated object must be function or method.")
+    if len(args) > 0 and len(kwargs) == 0:  # @task
+        function = args[0]
 
-        return TaskDecoratorWrapper(args[0], 0, None)
+        @wraps(function)
+        def wrapper(*args, **kwargs):
+            return wrapped(function, timeout, callback, args, kwargs)
 
-    # task(target=...) or @task(name=...)
-    elif len(kwargs) > 0:
+        return wrapper
+    elif len(kwargs) > 0 and len(args) == 0:  # task() or @task()
         timeout = kwargs.pop('timeout', 0)
         callback = kwargs.pop('callback', None)
         target = kwargs.pop('target', None)
@@ -64,18 +93,17 @@ def task(*args, **kwargs):
         kwargs = kwargs.pop('kwargs', {})
 
         if target is not None:
-            queue = SimpleQueue()
+            return spawn(target, timeout, callback, args, kwargs)
 
-            task = ProcessTask(next(_task_counter),
-                               function=target, args=args, kwargs=kwargs,
-                               callback=callback, timeout=timeout,
-                               queue=queue)
+        def wrap(function):
 
-            task_manager(task)
+            @wraps(function)
+            def wrapper(*args, **kwargs):
+                return wrapped(function, timeout, callback, args, kwargs)
 
-            return task
-        else:
             return wrapper
+
+        return wrap
     else:
         raise ValueError("Decorator accepts only keyword arguments.")
 
@@ -112,13 +140,9 @@ def task_manager(task):
     collects results, runs the callback and cleans up the process.
 
     """
-    args = task._args
     queue = task._queue
     function = task._function
     timeout = task.timeout > 0 and task.timeout or None
-
-    if os.name == 'nt':
-        function, args = dump_function(function, args)
 
     process = task_worker(queue, function, task._args, task._kwargs)
 
@@ -153,33 +177,3 @@ class ProcessTask(Task):
         to the *process* decorator handler."""
         self._cancelled = True
         self._queue.put(TaskCancelled('Task Cancelled'))
-
-
-class TaskDecoratorWrapper(object):
-    """Used by *task* decorator."""
-    def __init__(self, function, timeout, callback):
-        self._counter = count()
-        self._function = function
-        self._ismethod = False
-        self.timeout = timeout
-        self.callback = callback
-        update_wrapper(self, function)
-
-    def __get__(self, instance, owner=None):
-        """Turns the decorator into a descriptor
-        in order to use it with methods."""
-        if instance is None:
-            return self
-        return MethodType(self, instance)
-
-    def __call__(self, *args, **kwargs):
-        queue = SimpleQueue()
-
-        task = ProcessTask(next(self._counter),
-                           function=self._function, args=args, kwargs=kwargs,
-                           callback=self.callback, timeout=self.timeout,
-                           queue=queue)
-
-        task_manager(task)
-
-        return task

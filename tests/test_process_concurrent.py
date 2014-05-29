@@ -5,8 +5,12 @@ from multiprocessing import Queue
 from pebble import process
 
 
+def undecorated(queue, argument, keyword_argument=0):
+    queue.put(argument + keyword_argument)
+
+
 @process.concurrent(name='foo')
-def function(queue, argument, keyword_argument=0):
+def decorated(queue, argument, keyword_argument=0):
     """A docstring."""
     queue.put(argument + keyword_argument)
 
@@ -39,44 +43,58 @@ class TestProcessConcurrent(unittest.TestCase):
 
     def test_docstring(self):
         """Process Concurrent docstring is preserved."""
-        self.assertEqual(function.__doc__, "A docstring.")
+        self.assertEqual(decorated.__doc__, "A docstring.")
 
-    def test_process_wrong_decoration(self):
-        """Process Concurrent raises ValueError if given wrong params."""
+    def test_wrong_parameters(self):
+        """Process Concurrent raises ValueError if wrong params."""
+        self.assertRaises(ValueError, process.concurrent, undecorated,
+                          args=[1])
+
+    def test_wrong_decoration(self):
+        """Process Concurrent decorator raises ValueError if wrong params."""
         try:
-            @process.concurrent(5)
+            @process.concurrent(5, name='foo')
             def wrong():
                 return
         except Exception as error:
             self.assertTrue(isinstance(error, ValueError))
 
+    def test_undecorated_results(self):
+        """Process Concurrent undecorated results are produced."""
+        queue = Queue()
+        proc = process.concurrent(target=decorated, args=[queue, 1],
+                                  kwargs={'keyword_argument': 1})
+        results = queue.get()
+        proc.join()
+        self.assertEqual(results, 2)
+
     def test_defaults(self):
         """Process Concurrent default values are preserved."""
         queue = Queue()
-        proc = function(queue, 1, 1)
+        proc = decorated(queue, 1, 1)
         proc.join()
         self.assertFalse(proc.daemon)
 
     def test_arguments(self):
         """Process Concurrent decorator arguments are forwarded."""
         queue = Queue()
-        proc = function(queue, 1, 1)
+        proc = decorated(queue, 1, 1)
         proc.join()
         self.assertEqual(proc.name, 'foo')
 
-    def test_function_results(self):
+    def test_decorated_results(self):
         """Process Concurrent results are produced."""
         queue = Queue()
-        proc = function(queue, 1, 1)
+        proc = decorated(queue, 1, 1)
         results = queue.get()
         proc.join()
         self.assertEqual(results, 2)
 
-    def test_function_results_windows(self):
+    def test_decorated_results_windows(self):
         """Process Concurrent results are produced in Windows."""
         os.name = 'nt'
         queue = Queue()
-        proc = function(queue, 1, 1)
+        proc = decorated(queue, 1, 1)
         results = queue.get()
         proc.join()
         self.assertEqual(results, 2)

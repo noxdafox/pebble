@@ -20,7 +20,6 @@ import sys
 from inspect import isclass
 from itertools import count
 from time import sleep, time
-from collections import Callable
 from signal import SIG_IGN, SIGINT, signal
 if os.name in ('posix', 'os2'):
     from signal import SIGKILL
@@ -75,14 +74,6 @@ def get_task(channel, pid):
     return number, function, args, kwargs
 
 
-def put_results(channel, number, results):
-    """Sends results back to Pool."""
-    try:
-        channel.send((RES, number, results))
-    except PicklingError as error:
-        channel.send((RES, number, error))
-
-
 def task_state(task, pool, timestamp):
     """Inspects the task state.
 
@@ -135,7 +126,10 @@ def pool_worker(channel, initializer, initargs, limit):
                 error = err
                 error.traceback = format_exc()
 
-        put_results(channel, number, error is not None and error or value)
+        try:
+            channel.send((RES, number, error is not None and error or value))
+        except PicklingError as error:
+            channel.send((RES, number, error))
 
         error = None
         value = None
@@ -429,8 +423,7 @@ class Pool(object):
         *timeout* is an integer, if expires the task will be terminated
         and *Task.get()* will raise *TimeoutError*.
 
-        The *identifier* will be forwarded to the *Task*, if None a random
-        UUID will be provided.
+        The *identifier* value will be forwarded to the *Task.id* attribute.
 
         A *Task* object is returned.
 
@@ -439,9 +432,6 @@ class Pool(object):
             self._start()
         elif self._context.state != RUNNING:
             raise RuntimeError('The Pool is not running')
-
-        if not isinstance(function, Callable):
-            raise ValueError('function must be callable')
 
         task = PoolTask(next(self._counter), function, args, kwargs,
                         callback, timeout, identifier)

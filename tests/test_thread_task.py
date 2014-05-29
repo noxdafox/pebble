@@ -23,35 +23,40 @@ def callback(task):
         event.set()
 
 
-@thread.task
-def function(argument, keyword_argument=0):
+def undecorated(argument, keyword_argument=0):
     """A docstring."""
     return argument + keyword_argument
 
 
 @thread.task
-def error_function():
+def decorated(argument, keyword_argument=0):
+    """A docstring."""
+    return argument + keyword_argument
+
+
+@thread.task
+def error_decorated():
     raise Exception("BOOM!")
 
 
 @thread.task
-def long_function():
+def long_decorated():
     time.sleep(1)
 
 
 @thread.task(callback=callback)
-def function_callback(argument, keyword_argument=0):
+def decorated_callback(argument, keyword_argument=0):
     """A docstring."""
     return argument + keyword_argument
 
 
 @thread.task(callback=callback)
-def error_function_callback():
+def error_decorated_callback():
     raise Exception("BOOM!")
 
 
 @thread.task(callback=callback)
-def long_function_callback():
+def long_decorated_callback():
     time.sleep(1)
 
 
@@ -91,12 +96,17 @@ class TestThreadTask(unittest.TestCase):
 
     def test_docstring(self):
         """Thread Task docstring is preserved."""
-        self.assertEqual(function.__doc__, "A docstring.")
+        self.assertEqual(decorated.__doc__, "A docstring.")
+
+    def test_wrong_parameters(self):
+        """Thread Task raises ValueError if wrong params."""
+        self.assertRaises(ValueError, thread.task, undecorated,
+                          args=[1])
 
     def test_thread_wrong_decoration(self):
         """Thread Task raises ValueError if given wrong params."""
         try:
-            @thread.task(5)
+            @thread.task(5, name='foo')
             def wrong():
                 return
         except Exception as error:
@@ -117,45 +127,51 @@ class TestThreadTask(unittest.TestCase):
         task = self.taskobj.stcmethod()
         self.assertEqual(task.get(), 2)
 
-    def test_function_results(self):
-        """Thread Task results are produced."""
-        task = function(1, 1)
+    def test_undecorated_results(self):
+        """Thread Task undecorated results are produced."""
+        task = thread.task(target=undecorated, args=[1],
+                           kwargs={'keyword_argument': 1})
         self.assertEqual(task.get(), 2)
 
-    def test_function_results_callback(self):
+    def test_decorated_results(self):
+        """Thread Task results are produced."""
+        task = decorated(1, 1)
+        self.assertEqual(task.get(), 2)
+
+    def test_decorated_results_callback(self):
         """Thread Task results are forwarded to the callback."""
-        function_callback(1, 1)
+        decorated_callback(1, 1)
         event.wait()
         self.assertEqual(results, 2)
 
-    def test_error_function(self):
+    def test_error_decorated(self):
         """Thread Task errors are raised by task get."""
-        task = error_function()
+        task = error_decorated()
         self.assertRaises(Exception, task.get)
 
-    def test_error_function_callback(self):
+    def test_error_decorated_callback(self):
         """Thread Task errors are forwarded to callback."""
-        error_function_callback()
+        error_decorated_callback()
         event.wait()
         self.assertTrue(isinstance(exception, Exception))
 
-    def test_cancel_function(self):
+    def test_cancel_decorated(self):
         """Thread Task task raises TaskCancelled if so."""
-        task = long_function()
+        task = long_decorated()
         task.cancel()
         self.assertRaises(TaskCancelled, task.get)
 
-    def test_cancel_function_callback(self):
+    def test_cancel_decorated_callback(self):
         """Thread Task TaskCancelled is forwarded to callback."""
-        task = long_function_callback()
+        task = long_decorated_callback()
         task.cancel()
         event.wait()
         self.assertTrue(isinstance(exception, TaskCancelled))
 
-    def test_dynamic_callback(self):
-        """Thread Task callback can be set dynamically."""
-        function.callback = self.callback
-        function(1, 1)
+    def test_undecorated_callback(self):
+        """Thread Task undecorated results are forwarded to the callback."""
+        task = thread.task(target=undecorated, args=[1],
+                           kwargs={'keyword_argument': 1},
+                           callback=self.callback)
         event.wait()
-        function.callback = callback
-        self.assertEqual(self.results, 2)
+        self.assertEqual(task.get(), 2)

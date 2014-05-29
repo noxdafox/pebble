@@ -8,6 +8,6 @@ __all__ = ['synchronized',
            'TaskCancelled']
 
 from .pebble import PebbleError, TaskCancelled, TimeoutError, Task
+from .pebble import synchronized, sighandler
 from .pools.process import ProcessPool
 from .pools.thread import ThreadPool
-from .decorators.generic import synchronized, sighandler

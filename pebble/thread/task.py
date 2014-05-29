@@ -14,33 +14,72 @@
 # along with Pebble.  If not, see <http://www.gnu.org/licenses/>.
 
 from itertools import count
-from types import MethodType
-from collections import Callable
-from functools import update_wrapper
+from functools import wraps
 from traceback import print_exc, format_exc
 
 from .concurrent import concurrent
 from ..pebble import Task
 
 
+_task_counter = count()
+
+
+def spawn(function, callback, args, kwargs):
+    """Launches the function within a process."""
+    task = Task(next(_task_counter), callback=callback,
+                function=function, args=args, kwargs=kwargs)
+    task_worker(task)
+
+    return task
+
+
 def task(*args, **kwargs):
-    """Turns a *function* into a Process and runs its logic within.
+    """Runs the given function in a concurrent thread,
+    taking care of the results and error management.
 
-    A decorated *function* will return a *Task* object once is called.
+    The task function works as well as a decorator.
 
-    If *callback* is a callable, it will be called once the task has ended
-    with the task identifier and the *function* return values.
+    *target* is the desired function to be run
+    with the given *args* and *kwargs* parameters.
+    If a *callback* is passed, it will be run after the job has finished with
+    the returned *Task* as parameter.
+
+    The task function returns a *Task* object.
+
+    .. note:
+       The decorator accepts the *callback* keyword only.
+       If *target* keyword is not specified, the function will act as
+       a decorator.
 
     """
-    def wrapper(function):
-        return TaskDecoratorWrapper(function, callback)
+    callback = None
 
-    if len(args) == 1 and not len(kwargs) and isinstance(args[0], Callable):
-        return TaskDecoratorWrapper(args[0], None)
-    elif not len(args) and len(kwargs):
-        callback = kwargs.get('callback')
+    if len(args) > 0 and len(kwargs) == 0:  # @task
+        function = args[0]
+
+        @wraps(function)
+        def wrapper(*args, **kwargs):
+            return spawn(function, callback, args, kwargs)
 
         return wrapper
+    elif len(kwargs) > 0 and len(args) == 0:  # task() or @task()
+        callback = kwargs.pop('callback', None)
+        target = kwargs.pop('target', None)
+        args = kwargs.pop('args', [])
+        kwargs = kwargs.pop('kwargs', {})
+
+        if target is not None:
+            return spawn(target, callback, args, kwargs)
+
+        def wrap(function):
+
+            @wraps(function)
+            def wrapper(*args, **kwargs):
+                return spawn(function, callback, args, kwargs)
+
+            return wrapper
+
+        return wrap
     else:
         raise ValueError("Decorator accepts only keyword arguments.")
 
@@ -66,28 +105,3 @@ def task_worker(task):
                 task._callback(task)
             except Exception:
                 print_exc()
-
-
-class TaskDecoratorWrapper(object):
-    """Used by *task* decorator."""
-    def __init__(self, function, callback):
-        self._counter = count()
-        self._function = function
-        self._ismethod = False
-        self.callback = callback
-        update_wrapper(self, function)
-
-    def __get__(self, instance, owner=None):
-        """Turns the decorator into a descriptor
-        in order to use it with methods."""
-        if instance is None:
-            return self
-        return MethodType(self, instance)
-
-    def __call__(self, *args, **kwargs):
-        task = Task(next(self._counter), callback=self.callback,
-                    function=self._function, args=args, kwargs=kwargs)
-
-        task_worker(task)
-
-        return task

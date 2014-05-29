@@ -16,7 +16,9 @@
 """Container for generic objects."""
 
 
-from uuid import uuid4
+import signal
+
+from functools import wraps
 from threading import Condition, Lock
 
 
@@ -50,13 +52,56 @@ class TimeoutError(PebbleError):
 
 
 # --------------------------------------------------------------------------- #
+#                                 Decorators                                  #
+# --------------------------------------------------------------------------- #
+def synchronized(lock):
+    """Locks the execution of decorated function on given *lock*.
+
+    Works with both threading and multiprocessing Lock.
+
+    """
+    def wrap(function):
+        @wraps(function)
+        def wrapper(*args, **kwargs):
+            with lock:
+                return function(*args, **kwargs)
+
+        return wrapper
+
+    return wrap
+
+
+def sighandler(signals):
+    """Sets the decorated function as signal handler of given *signals*.
+
+    *signals* can be either a single signal or a list/tuple
+    of multiple ones.
+
+    """
+    def wrap(function):
+        if isinstance(signals, (list, tuple)):
+            for signum in signals:
+                signal.signal(signum, function)
+        else:
+            signal.signal(signals, function)
+
+        @wraps(function)
+        def wrapper(*args, **kwargs):
+            return function(*args, **kwargs)
+
+        return wrapper
+
+    return wrap
+
+
+# --------------------------------------------------------------------------- #
 #                               Common Objects                                #
 # --------------------------------------------------------------------------- #
 class Task(object):
     """Handler to the ongoing task."""
     def __init__(self, task_nr, function=None, args=None, kwargs=None,
                  callback=None, timeout=0, identifier=None):
-        self.id = identifier is not None and identifier or uuid4()
+        self.id = identifier
         self.timeout = timeout
         self._function = function
         self._args = args

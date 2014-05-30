@@ -8,7 +8,7 @@ __all__ = ['process',
            'TaskCancelled']
 
 
-import thread
-import process
+from . import thread
+from . import process
 from .pebble import synchronized, sighandler
 from .pebble import PebbleError, TaskCancelled, TimeoutError, Task

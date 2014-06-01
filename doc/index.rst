@@ -6,7 +6,7 @@
 Welcome to Pebble's documentation!
 ==================================
 
-Modern languages should natively support concurrency, threading and synchronization primitives. Their usage should be the most intuitive possible, yet allowing all the possible flexibility.
+Modern languages should natively support concurrency, threading and synchronization primitives. Their usage should be the most intuitive possible, yet allowing all the required flexibility.
 
 Pebble aims to help managing threads and processes in an easier way; it wraps Python's standard libray threading and multiprocessing objects.
 
@@ -69,6 +69,10 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
       *callback* must be callable, if passed, it will be called once the task has ended with the *Task* object as parameter.
       *timeout* is an integer, if greater than zero, once expired will force the timed out task to be interrupted and the worker will be restarted; *Task.get()* will raise *TimeoutError*, callbacks will be executed.
       If *identifier* is not None, it will be assigned as the *Task.id* value.
+
+      .. note::
+
+         Exceptions raised within callbacks will stop the Pool but won't crash the application.
 
    .. function:: close()
 
@@ -149,6 +153,10 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
       *callback* must be callable, if passed, it will be called once the task has ended with the *Task* object as parameter.
       If *identifier* is not None, it will be assigned as the *Task.id* value.
 
+      .. note::
+
+         Exceptions raised within callbacks will stop the Pool but won't crash the application.
+
    .. function:: close()
 
       No more job will be allowed into the Pool, queued jobs will be consumed.
@@ -158,11 +166,6 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
 
       The ongoing jobs will be performed, all the enqueued ones dropped; this is a fast way to terminate the Pool.
       To ensure the Pool to be released call *ThreadPool.join()* after stopping the Pool.
-
-   .. function:: kill()
-
-      All workers will be killed forcing the pool to terminate.
-      To ensure the Pool to be released call *ThreadPool.join()* after killing the Pool.
 
    .. function:: join(timeout=None)
 
@@ -260,11 +263,24 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
       *cancel()* should not be called on *Tasks* which logic is using shared resources as *Pipes*, *Locks* or *Files*.
 
 
+General notes
+-------------
+
+Callbacks
++++++++++
+
+Callbacks are run in separate threads, therefore any shared state must be protected accordingly.
+
+Processes
++++++++++
+
+The Python's multiprocessing guidelines apply as well for all functionalities within the *process* namespace.
+
 Examples
 --------
 
 Use of concurrent
-=================
++++++++++++++++++
 
 The concurrent function is a simple convenience method for spawning Processes and Threads, the following code snippets are all equivalent.
 
@@ -335,7 +351,7 @@ Producer and consumer example.
 
 
 Task functions
-==============
+++++++++++++++
 
 The task functions represent what use to be the thread and process decorators in Pebble2.
 

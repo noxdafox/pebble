@@ -16,16 +16,25 @@
 import os
 from contextlib import contextmanager
 
-from multiprocessing import Pipe, Lock, RLock
-try:  # Python 2
-    from Queue import Empty
-except:  # Python 3
-    from queue import Empty
+from multiprocessing import Pipe, RLock
+if os.name in ('posix', 'os2'):
+    from signal import SIGKILL
 
 from ..pebble import TimeoutError
 
 
 _registered_functions = {}
+
+
+def stop_worker(worker):
+    """Does its best to stop the worker."""
+    try:
+        worker.terminate()
+        worker.join()
+        if worker.is_alive() and os.name != 'nt':
+            os.kill(worker.pid, SIGKILL)
+    except Exception:
+        return
 
 
 def trampoline(identifier, *args, **kwargs):
@@ -45,49 +54,6 @@ def dump_function(function, args):
     args = [identifier] + list(args)
 
     return trampoline, args
-
-
-class SimpleQueue(object):
-    def __init__(self):
-        self._reader, self._writer = Pipe(duplex=False)
-        self._rlock = Lock()
-        self._wlock = os.name != 'nt' and Lock() or None
-        self.get = self._make_get_method()
-        self.put = self._make_put_method()
-
-    def empty(self):
-        return not self._reader.poll()
-
-    def __getstate__(self):
-        return (self._reader, self._writer,
-                self._rlock, self._wlock, self._empty)
-
-    def __setstate__(self, state):
-        (self._reader, self._writer,
-         self._rlock, self._wlock, self._empty) = state
-
-        self.get = self._make_get_method()
-        self.put = self._make_put_method()
-
-    def _make_get_method(self):
-        def get(timeout=None):
-            with self._rlock:
-                if self._reader.poll(timeout):
-                    return self._reader.recv()
-                else:
-                    raise Empty
-
-        return get
-
-    def _make_put_method(self):
-        def put(obj, timeout=None):
-            if self._wlock is not None:
-                with self._wlock:
-                    return self._writer.send(obj)
-            else:
-                return self._writer.send(obj)
-
-        return put
 
 
 # --------------------------------------------------------------------------- #

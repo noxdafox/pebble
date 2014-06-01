@@ -51,6 +51,13 @@ class TimeoutError(PebbleError):
         self.timeout = value
 
 
+class ProcessExpired(PebbleError):
+    """Raised when process dies unexpectedly."""
+    def __init__(self, msg, code=0):
+        super(ProcessExpired, self).__init__(msg)
+        self.exitcode = code
+
+
 # --------------------------------------------------------------------------- #
 #                                 Decorators                                  #
 # --------------------------------------------------------------------------- #

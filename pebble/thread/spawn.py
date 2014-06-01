@@ -13,42 +13,31 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with Pebble.  If not, see <http://www.gnu.org/licenses/>.
 
-import os
 
 from functools import wraps
-from multiprocessing import Process
-
-from .generic import dump_function
+from threading import Thread
 
 
 def launch(function, name, daemon, args, kwargs):
-    """Launches the function within a process."""
-    process = Process(target=function, name=name, args=args, kwargs=kwargs)
-    process.daemon = daemon
-    process.start()
+    """Launches the function within a thread."""
+    thread = Thread(target=function, name=name, args=args, kwargs=kwargs)
+    thread.daemon = daemon
+    thread.start()
 
-    return process
-
-
-def wrapped(function, name, daemon, args, kwargs):
-    """Starts decorated function within a process."""
-    if os.name == 'nt':
-        function, args = dump_function(function, args)
-
-    return launch(function, name, daemon, args, kwargs)
+    return thread
 
 
 def spawn(*args, **kwargs):
-    """Spawns a new process and runs a function within it.
+    """Spawns a new thread and runs a function within it.
 
-    The *spawn* function works as well as a decorator.
+    The concurrent function works as well as a decorator.
 
     *target* is the desired function to be run
     with the given *args* and *kwargs* parameters; if *daemon* is True,
-    the process will be stopped if the parent exits (default False).
-    *name* is a string, if assigned will be given to the process.
+    the thread will be stopped if the parent exits (default False).
+    *name* is a string, if assigned will be given to the thread.
 
-    The *spawn* function returns the Process object which is running
+    The *spawn* function returns the Thread object which is running
     the *target* or decorated one.
 
     .. note:
@@ -65,7 +54,7 @@ def spawn(*args, **kwargs):
 
         @wraps(function)
         def wrapper(*args, **kwargs):
-            return wrapped(function, name, daemon, args, kwargs)
+            return launch(function, name, daemon, args, kwargs)
 
         return wrapper
     elif len(kwargs) > 0 and len(args) == 0:  # concurrent() or @concurrent()
@@ -82,7 +71,7 @@ def spawn(*args, **kwargs):
 
             @wraps(function)
             def wrapper(*args, **kwargs):
-                return wrapped(function, name, daemon, args, kwargs)
+                return launch(function, name, daemon, args, kwargs)
 
             return wrapper
 

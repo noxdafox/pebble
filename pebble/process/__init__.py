@@ -1,5 +1,5 @@
-__all__ = ['concurrent', 'task', 'Pool']
+__all__ = ['concurrent', 'spawn', 'Pool']
 
-from .concurrent import concurrent
-from .task import task
 from .pool import Pool
+from .spawn import spawn
+from .concurrent import concurrent

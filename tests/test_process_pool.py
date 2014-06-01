@@ -24,6 +24,10 @@ def callback(task):
     event.set()
 
 
+def error_callback(task):
+    raise Exception("BOOM!")
+
+
 def initializer(value):
     global initarg
     initarg = value
@@ -302,3 +306,11 @@ class TestProcessPool(unittest.TestCase):
         self.assertRaises(TimeoutError, pool.join, 0.4)
         pool.stop()
         pool.join()
+
+    def test_process_pool_callback_error(self):
+        """Process Pool stop if error in callback."""
+        with process.Pool() as pool:
+            pool.schedule(function, args=[1], callback=error_callback,
+                          kwargs={'keyword_argument': 1})
+        time.sleep(0.1)
+        self.assertRaises(RuntimeError, pool.schedule, function, args=[1])

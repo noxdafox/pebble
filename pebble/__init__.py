@@ -5,10 +5,11 @@ __all__ = ['process',
            'Task',
            'PebbleError',
            'TimeoutError',
-           'TaskCancelled']
+           'TaskCancelled',
+           'ProcessExpired']
 
 
 from . import thread
 from . import process
-from .pebble import synchronized, sighandler
-from .pebble import PebbleError, TaskCancelled, TimeoutError, Task
+from .pebble import synchronized, sighandler, Task
+from .pebble import PebbleError, TaskCancelled, TimeoutError, ProcessExpired

@@ -13,68 +13,98 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with Pebble.  If not, see <http://www.gnu.org/licenses/>.
 
-
+from itertools import count
 from functools import wraps
-from threading import Thread
+from traceback import print_exc, format_exc
+
+from .spawn import spawn
+from ..pebble import Task
 
 
-def spawn(function, name, daemon, args, kwargs):
-    """Launches the function within a thread."""
-    thread = Thread(target=function, name=name, args=args, kwargs=kwargs)
-    thread.daemon = daemon
-    thread.start()
+_task_counter = count()
 
-    return thread
+
+def launch(function, callback, identifier, args, kwargs):
+    """Launches the function within a process."""
+    task = Task(next(_task_counter), callback=callback,
+                function=function, args=args, kwargs=kwargs,
+                identifier=identifier)
+    task_worker(task)
+
+    return task
 
 
 def concurrent(*args, **kwargs):
-    """Runs the given function in a concurrent thread.
+    """Runs the given function in a concurrent thread,
+    taking care of the results and error management.
 
-    The concurrent function works as well as a decorator.
+    The *concurrent* function works as well as a decorator.
 
     *target* is the desired function to be run
-    with the given *args* and *kwargs* parameters; if *daemon* is True,
-    the thread will be stopped if the parent exits (default False).
-    *name* is a string, if assigned will be given to the thread.
+    with the given *args* and *kwargs* parameters.
+    If a *callback* is passed, it will be run after the job has finished with
+    the returned *Task* as parameter.
 
-    The concurrent function returns the Thread object which is running
-    the *target* or decorated one.
+    The *concurrent* function returns a *Task* object.
 
     .. note:
-       The decorator accepts the keywords *daemon* and *name* only.
+       The decorator accepts the *callback* keyword only.
        If *target* keyword is not specified, the function will act as
        a decorator.
 
     """
-    name = None
-    daemon = False
+    callback = None
+    identifier = None
 
-    if len(args) > 0 and len(kwargs) == 0:  # @concurrent
+    if len(args) > 0 and len(kwargs) == 0:  # @task
         function = args[0]
 
         @wraps(function)
         def wrapper(*args, **kwargs):
-            return spawn(function, name, daemon, args, kwargs)
+            return launch(function, callback, identifier, args, kwargs)
 
         return wrapper
-    elif len(kwargs) > 0 and len(args) == 0:  # concurrent() or @concurrent()
-        name = kwargs.pop('name', None)
-        daemon = kwargs.pop('daemon', False)
+    elif len(kwargs) > 0 and len(args) == 0:  # task() or @task()
+        callback = kwargs.pop('callback', None)
+        identifier = kwargs.pop('identifier', None)
         target = kwargs.pop('target', None)
         args = kwargs.pop('args', [])
         kwargs = kwargs.pop('kwargs', {})
 
         if target is not None:
-            return spawn(target, name, daemon, args, kwargs)
+            return launch(target, callback, identifier, args, kwargs)
 
         def wrap(function):
 
             @wraps(function)
             def wrapper(*args, **kwargs):
-                return spawn(function, name, daemon, args, kwargs)
+                return launch(function, callback, identifier, args, kwargs)
 
             return wrapper
 
         return wrap
     else:
         raise ValueError("Decorator accepts only keyword arguments.")
+
+
+@spawn(daemon=True)
+def task_worker(task):
+    """Runs the actual function in separate thread."""
+    error = None
+    results = None
+    function = task._function
+    args = task._args
+    kwargs = task._kwargs
+
+    try:
+        results = function(*args, **kwargs)
+    except Exception as err:
+        error = err
+        error.traceback = format_exc()
+    finally:
+        task._set(error is not None and error or results)
+        if task._callback is not None:
+            try:
+                task._callback(task)
+            except Exception:
+                print_exc()

@@ -21,36 +21,23 @@ from inspect import isclass
 from itertools import count
 from time import sleep, time
 from signal import SIG_IGN, SIGINT, signal
-if os.name in ('posix', 'os2'):
-    from signal import SIGKILL
 from traceback import format_exc, print_exc
 try:  # Python 2
-    from Queue import Queue
+    from Queue import Queue, Empty
     from cPickle import PicklingError
 except:  # Python 3
-    from queue import Queue
+    from queue import Queue, Empty
     from pickle import PicklingError
 
-from .generic import channels, lock
-from .concurrent import concurrent as process_worker
-from ..thread import concurrent as thread_worker
+from .generic import channels, lock, stop_worker
+from .spawn import spawn as spawn_process
+from ..thread import spawn as spawn_thread
 from ..pebble import Task, TimeoutError, TaskCancelled
 from ..pebble import STOPPED, RUNNING, CLOSED, CREATED, ERROR
 
 
 ACK = 0  # task aknowledged by worker
 RES = 1  # task results from worker
-
-
-def stop_worker(worker):
-    """Does its best to stop the worker."""
-    try:
-        worker.terminate()
-        worker.join()
-        if worker.is_alive() and os.name != 'nt':
-            os.kill(worker.pid, SIGKILL)
-    except Exception:
-        return
 
 
 def get_task(channel, pid):
@@ -100,7 +87,7 @@ def task_state(task, pool, timestamp):
     return error, results
 
 
-@process_worker(name='pool_worker', daemon=True)
+@spawn_process(name='pool_worker', daemon=True)
 def pool_worker(channel, initializer, initargs, limit):
     """Runs the actual function in separate process."""
     error = None
@@ -137,7 +124,7 @@ def pool_worker(channel, initializer, initargs, limit):
     sys.exit(0)
 
 
-@thread_worker(name='task_scheduler', daemon=True)
+@spawn_thread(name='task_scheduler', daemon=True)
 def task_scheduler(context):
     """Schedules enqueued tasks to the workers."""
     queue = context.queue
@@ -145,7 +132,10 @@ def task_scheduler(context):
     put = lambda o: context.pool_channel.send(o)
 
     while context.state not in (ERROR, STOPPED):
-        task = queue.get()
+        try:
+            task = queue.get(0.6)
+        except Empty:
+            continue
 
         if task is not None:
             number = task.number
@@ -156,7 +146,7 @@ def task_scheduler(context):
             return
 
 
-@thread_worker(name='task_manager', daemon=True)
+@spawn_thread(name='task_manager', daemon=True)
 def task_manager(context):
     """Manages running tasks.
 
@@ -197,18 +187,18 @@ def task_manager(context):
         sleep(0.2)
 
 
-@thread_worker(name='message_manager', daemon=True)
+@spawn_thread(name='message_manager', daemon=True)
 def message_manager(context):
     """Gather messages from workers,
     sets tasks status and runs callbacks.
 
     """
     tasks = context.tasks
-    get = lambda: context.pool_channel.recv()
+    get = lambda t: context.pool_channel.recv(timeout=t)
 
     while context.state not in (ERROR, STOPPED):
         try:
-            message, number, data = get()
+            message, number, data = get(0.6)
 
             if message is ACK:
                 task = tasks[number]
@@ -217,13 +207,13 @@ def message_manager(context):
             elif message is RES:
                 task = tasks.pop(number)
                 context.task_done(task, data)
-        except KeyError:  # task was cancelled
-            continue
+        except (TimeoutError, KeyError):
+            continue  # nothing on channel or task cancelled
         except TypeError:  # stop sentinel
             return
 
 
-@thread_worker(name='worker_manager', daemon=True)
+@spawn_thread(name='worker_manager', daemon=True)
 def worker_manager(context):
     """Collects expired workers and spawns new ones."""
     pool = context.pool

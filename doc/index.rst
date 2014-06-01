@@ -14,33 +14,33 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
 :mod:`process`
 -----------------
 
-.. function:: concurrent(target=None, args=(), kwargs={}, name=None, daemon=False)
+.. function:: spawn(target=None, args=(), kwargs={}, name=None, daemon=False)
 
    Spawns a concurrent process and runs a function within it.
 
-   The concurrent function works as well as a decorator.
+   The *spawn* function works as well as a decorator.
 
    *target* is the desired function to be run with the given *args* and *kwargs* parameters; if *daemon* is True, the process will be stopped if the parent exits (default False).
    *name* is a string, if assigned will be forwarded to the process object.
 
-   The concurrent function returns the Process object which is running the *target* or decorated one.
+   The *spawn* function returns the Process object which is running the *target* or decorated one.
 
    .. note::
 
        The decorator accepts the keywords *daemon* and *name* only.
        If *target* keyword is not specified, the function will act as a decorator.
 
-.. function:: task(target=None, args=(), kwargs={}, callback=None, identifier=None, timeout=None)
+.. function:: concurrent(target=None, args=(), kwargs={}, callback=None, identifier=None, timeout=None)
 
    Runs the given function in a concurrent process, taking care of the results and error management.
 
-   The task function works as well as a decorator.
+   The *concurrent* function works as well as a decorator.
 
    *target* is the desired function to be run with the given *args* and *kwargs* parameters; if *timeout* is set, the process will be stopped once expired returning TimeoutError as results.
    If a *callback* is passed, it will be executed after the job has finished with the returned *Task* as parameter.
    If *identifier* is not None, it will be assigned as the *Task.id* value.
 
-   The task function returns a *Task* object.
+   The *concurrent* function returns a *Task* object.
 
    .. note::
 
@@ -98,33 +98,33 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
 :mod:`thread`
 -----------------
 
-.. function:: concurrent(target=None, args=(), kwargs={}, name=None, daemon=False)
+.. function:: spawn(target=None, args=(), kwargs={}, name=None, daemon=False)
 
    Spawns a concurrent thread and runs a function within it.
 
-   The concurrent function works as well as a decorator.
+   The *spawn* function works as well as a decorator.
 
    *target* is the desired function to be run with the given *args* and *kwargs* parameters; if *daemon* is True, the thread will be stopped if the parent exits (default False).
    *name* is a string, if assigned will be forwarded to the thread object.
 
-   The concurrent function returns the Thread object which is running the *target* or decorated one.
+   The *spawn* function returns the Thread object which is running the *target* or decorated one.
 
    .. note::
 
        The decorator accepts the keywords *daemon* and *name* only.
        If *target* keyword is not specified, the function will act as a decorator.
 
-.. function:: task(target=None, args=(), kwargs={}, callback=None, identifier=None)
+.. function:: concurrent(target=None, args=(), kwargs={}, callback=None, identifier=None)
 
    Runs the given function in a concurrent thread, taking care of the results and error management.
 
-   The task function works as well as a decorator.
+   The *concurrent* function works as well as a decorator.
 
    *target* is the desired function to be run with the given *args* and *kwargs* parameters; if *timeout* is set, the thread will be stopped once expired returning TimeoutError as results.
    If a *callback* is passed, it will be executed after the job has finished with the returned *Task* as parameter.
    If *identifier* is not None, it will be assigned as the *Task.id* value.
 
-   The task function returns a *Task* object.
+   The *concurrent* function returns a *Task* object.
 
    .. note::
 
@@ -188,26 +188,6 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
 
    *signals* can either be a single signal or a list/tuple of signals.
 
-   For example the syntax ::
-
-     import signal
-     from pebble import sighandler
-
-     @sighandler((signal.SIGINT, signal.SIGTERM))
-     def signal_handler(signum, frame):
-         print("Termination request received!")
-
-   Is equivalent to ::
-
-     import signal
-
-     def signal_handler(signum, frame):
-         print("Termination request received!")
-
-     signal.signal(signal.SIGINT, signal_handler)
-     signal.signal(signal.TERM, signal_handler)
-
-
 .. exception:: TimeoutError
 
    Raised when *Task.get()* *timeout* expires.
@@ -215,6 +195,14 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
 .. exception:: TaskCancelled
 
    Raised by *Task.get()* functions if *Task.cancel()* has been called.
+
+.. exception:: ProcessExpired
+
+   Raised by *Task.get()* functions if the related process died unexpectedly during the *Task* execution.
+
+   .. data:: exitcode
+
+      Integer representing the process' exit code.
 
 .. class:: Task
 
@@ -269,7 +257,7 @@ General notes
 Callbacks
 +++++++++
 
-Callbacks are run in separate threads, therefore any shared state must be protected accordingly.
+Callbacks are run in the parent process in separate threads, therefore any shared state must be protected accordingly.
 
 Processes
 +++++++++
@@ -279,10 +267,10 @@ The Python's multiprocessing guidelines apply as well for all functionalities wi
 Examples
 --------
 
-Use of concurrent
+Use of spawn
 +++++++++++++++++
 
-The concurrent function is a simple convenience method for spawning Processes and Threads, the following code snippets are all equivalent.
+The spawn function is a simple convenience method for spawning Processes and Threads, the following code snippets are all equivalent.
 
 ::
 
@@ -302,19 +290,17 @@ The concurrent function is a simple convenience method for spawning Processes an
      def function(arg, keyarg=0):
          print arg + keyarg
 
-     proc = thread.concurrent(target=function, args=[1], kwargs={'keyarg': 1}, daemon=True)
+     proc = thread.spawn(target=function, args=[1], kwargs={'keyarg': 1}, daemon=True)
 
 ::
 
      from pebble import thread
 
-     @thread.concurrent(daemon=True)
+     @thread.spawn(daemon=True)
      def function(arg, keyarg=0):
          print arg + keyarg
 
      proc = function(1, keyarg=1)
-
-The latter example allows build up concurrent logic in a more neat way.
 
 Producer and consumer example.
 
@@ -323,7 +309,7 @@ Producer and consumer example.
      from pebble import thread
      from queue import Queue
 
-     @thread.concurrent
+     @thread.spawn
      def producer(queue):
          for product in range(10):
              print("I'm the producer, I produced: %d" % product)
@@ -331,7 +317,7 @@ Producer and consumer example.
          print("I'm the producer and I'm leaving.")
          queue.put(None)
 
-     @thread.concurrent
+     @thread.spawn
      def consumer(queue):
          while True:
              product = queue.get()
@@ -350,23 +336,23 @@ Producer and consumer example.
      prod.join()
 
 
-Task functions
-++++++++++++++
+Concurrent functions
+++++++++++++++++++++
 
-The task functions represent what use to be the thread and process decorators in Pebble2.
+The concurrent functions represent what used to be the thread and process decorators in Pebble2.
 
 ::
 
      from pebble import process
 
-     @process.task
+     @process.concurrent
      def function(arg, keyarg=0):
          return arg + keyarg
 
      task = function(1, keyarg=1)
      print(task.get())
 
-Quite often developers need to integrate in their projects third party code which appears to be unstable, to leak memory or to hang. The task function allows to easily take advantage of the isolation offered by processes without the need of handling any multiprocessing primitive.
+Quite often developers need to integrate in their projects third party code which appears to be unstable, to leak memory or to hang. The concurrent function allows to easily take advantage of the isolation offered by processes without the need of handling any multiprocessing primitive.
 
 ::
 
@@ -374,15 +360,40 @@ Quite often developers need to integrate in their projects third party code whic
 
     from third_party_lib import unstable_function
 
-    task = process.task(target=unstable_function, args=[1, 2], timeout=5)
+    task = process.concurrent(target=unstable_function, args=[1, 2], timeout=5)
 
     try:
         results = task.get()
     except TimeoutError:
         print("unstable_function took more than 5 seconds to complete")
+    except ProcessExpired as error:
+        print("%s. Exit code: %d" % (error, error.exitcode))
     except Exception as error:
         print("unstable_function raised %s" % error)
         print(error.traceback)  # Python's traceback of remote process
+
+Sighandler decorator
+++++++++++++++++++++
+
+The syntax ::
+
+    import signal
+    from pebble import sighandler
+
+    @sighandler((signal.SIGINT, signal.SIGTERM))
+    def signal_handler(signum, frame):
+        print("Termination request received!")
+
+Is equivalent to ::
+
+    import signal
+
+    def signal_handler(signum, frame):
+        print("Termination request received!")
+
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.TERM, signal_handler)
+
 
 .. toctree::
    :maxdepth: 2

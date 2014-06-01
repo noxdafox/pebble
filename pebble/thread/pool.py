@@ -24,12 +24,12 @@ try:  # Python 2
 except:  # Python 3
     from queue import Queue
 
-from .concurrent import concurrent
+from .spawn import spawn
 from ..pebble import Task, TimeoutError
 from ..pebble import STOPPED, RUNNING, CLOSED, CREATED, ERROR
 
 
-@concurrent(name='pool_worker', daemon=True)
+@spawn(name='pool_worker', daemon=True)
 def pool_worker(context):
     """Runs the actual function in separate process."""
     error = None
@@ -68,7 +68,7 @@ def pool_worker(context):
     context.worker_event.set()
 
 
-@concurrent(name='worker_manager', daemon=True)
+@spawn(name='worker_manager', daemon=True)
 def worker_manager(context):
     """Collects expired workers and spawns new ones."""
     pool = context.pool
@@ -77,7 +77,7 @@ def worker_manager(context):
     event.set()
 
     while context.state not in (ERROR, STOPPED):
-        event.wait()
+        event.wait(0.6)
         event.clear()
 
         expired = [w for w in pool if not w.is_alive()]

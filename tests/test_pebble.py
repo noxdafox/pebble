@@ -55,7 +55,8 @@ class TestSynchronizedDecorator(unittest.TestCase):
 class TestSigHandler(unittest.TestCase):
     def test_wrapper_decorator_docstring(self):
         """Sighandler docstring of the original function is preserved."""
-        self.assertEqual(signal_handler.__doc__, "A docstring.")
+        if os.name != 'nt':
+            self.assertEqual(signal_handler.__doc__, "A docstring.")
 
     def test_sighandler(self):
         """Sighandler installs SIGALRM."""

@@ -1,3 +1,4 @@
+import os
 import unittest
 from multiprocessing import Queue
 
@@ -106,8 +107,9 @@ class TestProcessSpawn(unittest.TestCase):
 
     def test_static_method(self):
         """Process Spawn decorated static methods."""
-        queue = Queue()
-        proc = self.spawnobj.stcmethod(queue)
-        results = queue.get()
-        proc.join()
-        self.assertEqual(results, 2)
+        if os.name != 'nt':
+            queue = Queue()
+            proc = self.spawnobj.stcmethod(queue)
+            results = queue.get()
+            proc.join()
+            self.assertEqual(results, 2)

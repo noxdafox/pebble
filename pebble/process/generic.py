@@ -110,12 +110,12 @@ class WorkerChannel(PoolChannel):
         self.send = self._make_send_method()
 
     def __getstate__(self):
-        return (self._reader, self._writer,
-                self._rlock, self._wlock, self._empty)
+        return (self.reader, self.writer,
+                self.rlock, self.wlock)
 
     def __setstate__(self, state):
-        (self._reader, self._writer,
-         self._rlock, self._wlock, self._empty) = state
+        (self.reader, self.writer,
+         self.rlock, self.wlock) = state
 
         self.recv = self._make_recv_method()
         self.send = self._make_send_method()

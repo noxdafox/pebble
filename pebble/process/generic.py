@@ -39,13 +39,20 @@ def stop_worker(worker):
 
 
 def trampoline(name, module, *args, **kwargs):
-    """Trampoline function for decorators."""
+    """Trampoline function for decorators.
+
+    Lookups the function between the registered ones;
+    if not found, forces its registering and then executes it.
+
+    """
     try:
         function = _registered_functions[name]
     except KeyError:  # force function registering
         __import__(module)
         mod = sys.modules[module]
         getattr(mod, name)
+    finally:
+        function = _registered_functions[name]
 
     return function(*args, **kwargs)
 
@@ -59,7 +66,7 @@ def dump_function(function, args):
 
 def register_function(function):
     global _registered_functions
-    print "REGISTERING %s" % function.__name__
+
     _registered_functions[function.__name__] = function
 
 

@@ -18,7 +18,7 @@ import os
 from functools import wraps
 from multiprocessing import Process
 
-from .generic import dump_function
+from .generic import dump_function, register_function
 
 
 def launch(function, name, daemon, args, kwargs):
@@ -62,6 +62,8 @@ def spawn(*args, **kwargs):
 
     if len(args) > 0 and len(kwargs) == 0:  # @concurrent
         function = args[0]
+        if os.name == 'nt':
+            register_function(function)
 
         @wraps(function)
         def wrapper(*args, **kwargs):
@@ -79,6 +81,8 @@ def spawn(*args, **kwargs):
             return launch(target, name, daemon, args, kwargs)
 
         def wrap(function):
+            if os.name == 'nt':
+                register_function(function)
 
             @wraps(function)
             def wrapper(*args, **kwargs):

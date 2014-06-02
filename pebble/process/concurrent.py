@@ -24,10 +24,10 @@ try:  # Python 2
 except:  # Python 3
     from pickle import PicklingError
 
-from .generic import dump_function, stop_worker
-from ..thread import spawn as spawn_thread
 from .spawn import spawn as spawn_process
+from ..thread import spawn as spawn_thread
 from ..pebble import Task, TimeoutError, ProcessExpired
+from .generic import dump_function, stop_worker, register_function
 
 
 _task_counter = count()
@@ -81,6 +81,8 @@ def concurrent(*args, **kwargs):
 
     if len(args) > 0 and len(kwargs) == 0:  # @task
         function = args[0]
+        if os.name == 'nt':
+            register_function(function)
 
         @wraps(function)
         def wrapper(*args, **kwargs):
@@ -101,6 +103,8 @@ def concurrent(*args, **kwargs):
                           args, kwargs)
 
         def wrap(function):
+            if os.name == 'nt':
+                register_function(function)
 
             @wraps(function)
             def wrapper(*args, **kwargs):

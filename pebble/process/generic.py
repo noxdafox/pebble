@@ -37,23 +37,24 @@ def stop_worker(worker):
         return
 
 
-def trampoline(identifier, *args, **kwargs):
+def trampoline(name, *args, **kwargs):
     """Trampoline function for decorators."""
-    function = _registered_functions[identifier]
+    function = _registered_functions[name]
 
     return function(*args, **kwargs)
 
 
 def dump_function(function, args):
     """Dumps a decorated function."""
-    global _registered_functions
-
-    identifier = id(function)
-    if identifier not in _registered_functions:
-        _registered_functions[identifier] = function
-    args = [identifier] + list(args)
+    args = [function.__name__] + list(args)
 
     return trampoline, args
+
+
+def register_function(function):
+    global _registered_functions
+
+    _registered_functions[function.__name__] = function
 
 
 # --------------------------------------------------------------------------- #

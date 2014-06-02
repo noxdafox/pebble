@@ -212,6 +212,6 @@ class TestProcessConcurrent(unittest.TestCase):
         self.assertEqual(task.id, 'foo')
 
     def test_decorated_dead_process(self):
-        """Process concurrent ProcessExpired is raised if process dies."""
+        """Process Concurrent ProcessExpired is raised if process dies."""
         task = critical_decorated()
         self.assertRaises(ProcessExpired, task.get)

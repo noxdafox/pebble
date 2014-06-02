@@ -140,7 +140,7 @@ class TestProcessPool(unittest.TestCase):
         self.assertRaises(TimeoutError, task.get)
 
     def test_process_pool_timeout_callback(self):
-        """Process Task TimeoutError is forwarded to callback."""
+        """Process Pool TimeoutError is forwarded to callback."""
         with process.Pool() as pool:
             pool.schedule(long_function, callback=self.callback, timeout=0.1)
         self.event.wait()

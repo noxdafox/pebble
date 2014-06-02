@@ -1,4 +1,3 @@
-import os
 import unittest
 from multiprocessing import Queue
 
@@ -38,7 +37,6 @@ class TestProcessSpawnObj(object):
 
 class TestProcessSpawn(unittest.TestCase):
     def setUp(self):
-        os.name = 'posix'
         self.spawnobj = TestProcessSpawnObj()
 
     def test_docstring(self):
@@ -84,15 +82,6 @@ class TestProcessSpawn(unittest.TestCase):
 
     def test_decorated_results(self):
         """Process Spawn results are produced."""
-        queue = Queue()
-        proc = decorated(queue, 1, 1)
-        results = queue.get()
-        proc.join()
-        self.assertEqual(results, 2)
-
-    def test_decorated_results_windows(self):
-        """Process Spawn results are produced in Windows."""
-        os.name = 'nt'
         queue = Queue()
         proc = decorated(queue, 1, 1)
         results = queue.get()

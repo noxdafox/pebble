@@ -228,7 +228,6 @@ def worker_manager(context):
     while context.state not in (ERROR, STOPPED):
         expired = [w for w in pool.values() if not w.is_alive()]
 
-
         for worker in expired:
             worker.join()
             del pool[worker.pid]

@@ -37,23 +37,33 @@ def stop_worker(worker):
         return
 
 
-def trampoline(name, *args, **kwargs):
+def trampoline(function, *args, **kwargs):
     """Trampoline function for decorators."""
-    function = _registered_functions[name]
+    name = function.__name__
+    try:
+        function = _registered_functions[name]
+    except KeyError:
+        try:
+            function(*args, **kwargs)
+        except Exception:
+            pass
+        finally:
+            function = _registered_functions[name]
 
     return function(*args, **kwargs)
 
 
 def dump_function(function, args):
     """Dumps a decorated function."""
-    args = [function.__name__] + list(args)
+    function = _registered_functions[function.__name__]
+    args = [function] + list(args)
 
     return trampoline, args
 
 
 def register_function(function):
     global _registered_functions
-
+    print "REGISTERING %s" % function.__name__
     _registered_functions[function.__name__] = function
 
 

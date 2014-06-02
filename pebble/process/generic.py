@@ -14,6 +14,7 @@
 # along with Pebble.  If not, see <http://www.gnu.org/licenses/>.
 
 import os
+import sys
 from contextlib import contextmanager
 
 from multiprocessing import Pipe, RLock
@@ -37,26 +38,21 @@ def stop_worker(worker):
         return
 
 
-def trampoline(function, *args, **kwargs):
+def trampoline(name, module, *args, **kwargs):
     """Trampoline function for decorators."""
-    name = function.__name__
     try:
         function = _registered_functions[name]
-    except KeyError:
-        try:
-            function(*args, **kwargs)
-        except Exception:
-            pass
-        finally:
-            function = _registered_functions[name]
+    except KeyError:  # force function registering
+        __import__(module)
+        mod = sys.modules[module]
+        getattr(mod, name)
 
     return function(*args, **kwargs)
 
 
 def dump_function(function, args):
     """Dumps a decorated function."""
-    function = _registered_functions[function.__name__]
-    args = [function] + list(args)
+    args = [function.__name__, function.__module__] + list(args)
 
     return trampoline, args
 

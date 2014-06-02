@@ -1,3 +1,4 @@
+import os
 import unittest
 try:  # Python 2
     from Queue import Queue
@@ -109,8 +110,9 @@ class TestThreadSpawn(unittest.TestCase):
 
     def test_static_method(self):
         """Thread Spawn decorated static methods."""
-        queue = Queue()
-        thrd = self.spawnobj.stcmethod(queue)
-        results = queue.get()
-        thrd.join()
-        self.assertEqual(results, 2)
+        if os.name != 'nt':
+            queue = Queue()
+            thrd = self.spawnobj.stcmethod(queue)
+            results = queue.get()
+            thrd.join()
+            self.assertEqual(results, 2)

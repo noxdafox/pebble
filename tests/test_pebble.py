@@ -18,15 +18,19 @@ def function():
     return lock.acquire(False)
 
 
-@sighandler(signal.SIGALRM)
-def signal_handler(signum, frame):
-    """A docstring."""
-    global results
-    results = 1
+try:
+    from signal import SIGALRM, SIGFPE, SIGIO
 
+    @sighandler(SIGALRM)
+    def signal_handler(signum, frame):
+        """A docstring."""
+        global results
+        results = 1
 
-@sighandler((signal.SIGFPE, signal.SIGIO))
-def signals_handler(signum, frame):
+    @sighandler((SIGFPE, SIGIO))
+    def signals_handler(signum, frame):
+        pass
+except ImportError:
     pass
 
 
@@ -55,21 +59,24 @@ class TestSigHandler(unittest.TestCase):
 
     def test_sighandler(self):
         """Sighandler installs SIGALRM."""
-        self.assertEqual(signal.getsignal(signal.SIGALRM).__name__,
-                         signal_handler.__name__)
+        if os.name != 'nt':
+            self.assertEqual(signal.getsignal(signal.SIGALRM).__name__,
+                             signal_handler.__name__)
 
     def test_sighandler_multiple(self):
         """Sighandler installs SIGFPE and SIGIO."""
-        self.assertEqual(signal.getsignal(signal.SIGFPE).__name__,
-                         signals_handler.__name__)
-        self.assertEqual(signal.getsignal(signal.SIGIO).__name__,
-                         signals_handler.__name__)
+        if os.name != 'nt':
+            self.assertEqual(signal.getsignal(signal.SIGFPE).__name__,
+                             signals_handler.__name__)
+            self.assertEqual(signal.getsignal(signal.SIGIO).__name__,
+                             signals_handler.__name__)
 
     def test_sigalarm_sighandler(self):
         """Sighandler for SIGALARM works."""
-        os.kill(os.getpid(), signal.SIGALRM)
-        time.sleep(0.1)
-        self.assertEqual(results, 1)
+        if os.name != 'nt':
+            os.kill(os.getpid(), signal.SIGALRM)
+            time.sleep(0.1)
+            self.assertEqual(results, 1)
 
 
 class TestTask(unittest.TestCase):

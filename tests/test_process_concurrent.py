@@ -141,8 +141,9 @@ class TestProcessConcurrent(unittest.TestCase):
 
     def test_static_method(self):
         """Process Concurrent decorated static methods."""
-        task = self.concurrentobj.stcmethod()
-        self.assertEqual(task.get(), 2)
+        if os.name != 'nt':
+            task = self.concurrentobj.stcmethod()
+            self.assertEqual(task.get(), 2)
 
     def test_undecorated_results(self):
         """Process Concurrent undecorated results are produced."""

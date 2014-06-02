@@ -57,6 +57,8 @@ def get_task(channel, pid):
                 channel.send((ACK, number, pid))
         except TimeoutError:  # race condition between workers
             continue
+        except (OSError, IOError):
+            sys.exit(0)
 
     return number, function, args, kwargs
 
@@ -225,6 +227,7 @@ def worker_manager(context):
 
     while context.state not in (ERROR, STOPPED):
         expired = [w for w in pool.values() if not w.is_alive()]
+
 
         for worker in expired:
             worker.join()

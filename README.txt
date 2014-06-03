@@ -24,6 +24,7 @@ Spawn a function within a thread::
         thrd = thread.spawn(target=function, args=[1], kwargs={'bar':2})
         thrd.join()
 
+
 Most of the functions work as well as decorators::
 
     from pebble import process
@@ -36,6 +37,8 @@ Most of the functions work as well as decorators::
 
     if __name__ == "__main__":
         proc = function(1, bar=2)
+        proc.join()
+
 
 Run a job in a separate process and wait for its results::
 
@@ -43,15 +46,16 @@ Run a job in a separate process and wait for its results::
 
 
     @process.concurrent
-    def job(foo, bar=0):
+    def function(foo, bar=0):
         return foo + bar
 
 
     if __name__ == "__main__":
-        task = job(1, bar=2)
-        results = task.get()  # blocks until results are not ready
+        task = function(1, bar=2)
+        results = task.get()  # blocks until results are ready
 
-Pools allow to execute several tasks without the need of spawning a new worker for each task::
+
+Pools allow to execute several tasks without the need of spawning a new worker for each one of them::
 
     from threading import current_thread
     from pebble import thread
@@ -72,6 +76,7 @@ Pools allow to execute several tasks without the need of spawning a new worker f
         with thread.Pool(workers=5) as pool:
             for i in range(0, 10):
                 pool.schedule(do_job, args=(i, ), callback=task_done)
+
 
 Check the documentation for more examples.
 

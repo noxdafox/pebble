@@ -19,6 +19,7 @@
 import signal
 
 from functools import wraps
+from types import MethodType
 from threading import Condition, Lock
 
 
@@ -99,6 +100,85 @@ def sighandler(signals):
         return wrapper
 
     return wrap
+
+
+# --------------------------------------------------------------------------- #
+#                               Common Functions                              #
+# --------------------------------------------------------------------------- #
+def new(self, *args):
+    self._old(*args)
+    with self._external_lock:
+        self._external_lock.notify_all()
+
+
+def waitfortasks(tasks, timeout=None):
+    block = Condition(Lock())
+    ready = lambda: [t for t in tasks if t.ready]
+
+    for task in tasks:
+        task._external_lock = block
+        task._old = task._set
+        task._set = MethodType(new, task)
+
+    with block:
+        if len(ready()) == 0:
+            block.wait(timeout)
+
+    for task in tasks:
+        task._set = task._old
+        delattr(task, '_old')
+        delattr(task, '_external_lock')
+
+    return ready()
+
+
+def waitforthreads(threads, timeout=None):
+    block = Condition(Lock())
+    ready = lambda: [t for t in threads if not t.is_alive()]
+
+    for thread in threads:
+        thread._external_lock = block
+        if hasattr(thread, '_stop'):
+            thread._old = thread._stop
+            thread._stop = MethodType(new, thread)
+        else:
+            thread._old = thread._Thread__stop
+            thread._Thread__stop = MethodType(new, thread)
+
+    with block:
+        if len(ready()) == 0:
+            block.wait(timeout)
+
+    for thread in threads:
+        if hasattr(thread, '_stop'):
+            thread._stop = thread._old
+        else:
+            thread._Thread__stop = thread._old
+        delattr(thread, '_old')
+        delattr(thread, '_external_lock')
+
+    return ready()
+
+
+def waitforqueues(queues, timeout=None):
+    block = Condition(Lock())
+    ready = lambda: [q for q in queues if not q.empty()]
+
+    for queue in queues:
+        queue._external_lock = block
+        queue._old = queue.put
+        queue.put = MethodType(new, queue)
+
+    with block:
+        if len(ready()) == 0:
+            block.wait(timeout)
+
+    for queue in queues:
+        queue.put = queue._old
+        delattr(queue, '_old')
+        delattr(queue, '_external_lock')
+
+    return ready()
 
 
 # --------------------------------------------------------------------------- #

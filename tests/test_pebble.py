@@ -4,7 +4,8 @@ import signal
 import unittest
 import threading
 
-from pebble import synchronized, sighandler
+from pebble import synchronized, sighandler, thread
+from pebble import waitfortasks, waitforthreads, waitforqueues
 from pebble import Task, TimeoutError, TaskCancelled
 
 
@@ -32,6 +33,18 @@ try:
         pass
 except ImportError:
     pass
+
+
+@thread.spawn
+def thread_function(value):
+    time.sleep(value)
+    return value
+
+
+@thread.concurrent
+def concurrent_function(value):
+    time.sleep(value)
+    return value
 
 
 class TestSynchronizedDecorator(unittest.TestCase):
@@ -78,6 +91,67 @@ class TestSigHandler(unittest.TestCase):
             os.kill(os.getpid(), signal.SIGALRM)
             time.sleep(0.1)
             self.assertEqual(results, 1)
+
+
+class TestWaitForTasks(unittest.TestCase):
+    def setUp(self):
+        pass
+
+    def test_waitfortasks_single(self):
+        """Waitfortasks waits for a single task."""
+        task = concurrent_function(0.01)
+        self.assertEqual(waitfortasks([task])[0], task)
+
+    def test_waitfortasks_multiple(self):
+        """Waitfortasks waits for multiple tasks."""
+        tasks = []
+        for _ in range(5):
+            tasks.append(concurrent_function(0.01))
+        time.sleep(0.1)
+        self.assertEqual(waitfortasks(tasks), tasks)
+
+    def test_waitfortasks_timeout(self):
+        """Waitfortasks returns empty list if timeout."""
+        task = concurrent_function(0.1)
+        self.assertEqual(waitfortasks([task], timeout=0.01), [])
+
+    def test_waitfortasks_restore(self):
+        """Waitfortasks Task object is restored to original one."""
+        task = concurrent_function(0.01)
+        expected = sorted(dir(task))
+        waitfortasks([task])
+        self.assertEqual(sorted(dir(task)), expected)
+
+
+class TestWaitForThreads(unittest.TestCase):
+    def setUp(self):
+        pass
+
+    def test_waitforthreads_single(self):
+        """Waitforthreads waits for a single thread."""
+        thread = thread_function(0.01)
+        self.assertEqual(waitforthreads([thread])[0], thread)
+
+    def test_waitforthreads_multiple(self):
+        """Waitforthreads waits for multiple threads."""
+        threads = []
+        for _ in range(5):
+            threads.append(thread_function(0.01))
+        time.sleep(0.1)
+        self.assertEqual(waitforthreads(threads), threads)
+
+    def test_waitforthreads_timeout(self):
+        """Waitforthreads returns empty list if timeout."""
+        thread = thread_function(0.1)
+        self.assertEqual(waitforthreads([thread], timeout=0.01), [])
+
+    def test_waitforthreads_restore(self):
+        """Waitforthreads Thread object is restored to original one."""
+        thread = thread_function(0)
+        time.sleep(0.01)
+        expected = sorted(dir(thread))
+        waitforthreads([thread])
+        self.assertEqual(sorted(dir(thread)), expected)
 
 
 class TestTask(unittest.TestCase):

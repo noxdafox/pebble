@@ -112,38 +112,66 @@ def new(self, *args):
 
 
 def waitfortasks(tasks, timeout=None):
+    """Waits for one or more *Tasks* to be ready
+    or until timeout expires.
+
+    *tasks* is a list containing one or more *pebble.Task* objects.
+    If *timeout* is not None the function will block
+    for the specified amount of seconds.
+
+    The function returns a list containing the ready *Tasks*.
+
+    """
     block = Condition(Lock())
     ready = lambda: [t for t in tasks if t.ready]
 
     for task in tasks:
         task._external_lock = block
-        task._old = task._set
-        task._set = MethodType(new, task)
+        with task._task_ready:
+            task._old = task._set
+            task._set = MethodType(new, task)
 
     with block:
         if len(ready()) == 0:
             block.wait(timeout)
 
     for task in tasks:
-        task._set = task._old
-        delattr(task, '_old')
-        delattr(task, '_external_lock')
+        with task._task_ready:
+            task._set = task._old
+            delattr(task, '_old')
+            delattr(task, '_external_lock')
 
     return ready()
 
 
 def waitforthreads(threads, timeout=None):
+    """Waits for one or more *Threads* to be ready
+    or until timeout expires.
+
+    .. note::
+
+       Expired *Threads* are not joined by *waitforthreads*.
+
+    *threads* is a list containing one or more *threading.Thread* objects.
+    If *timeout* is not None the function will block
+    for the specified amount of seconds.
+
+    The function returns a list containing the ready *Threads*.
+
+    """
     block = Condition(Lock())
     ready = lambda: [t for t in threads if not t.is_alive()]
 
     for thread in threads:
         thread._external_lock = block
         if hasattr(thread, '_stop'):
-            thread._old = thread._stop
-            thread._stop = MethodType(new, thread)
+            with thread._block:
+                thread._old = thread._stop
+                thread._stop = MethodType(new, thread)
         else:
-            thread._old = thread._Thread__stop
-            thread._Thread__stop = MethodType(new, thread)
+            with thread._Thread__block:
+                thread._old = thread._Thread__stop
+                thread._Thread__stop = MethodType(new, thread)
 
     with block:
         if len(ready()) == 0:
@@ -151,9 +179,11 @@ def waitforthreads(threads, timeout=None):
 
     for thread in threads:
         if hasattr(thread, '_stop'):
-            thread._stop = thread._old
+            with thread._block:
+                thread._stop = thread._old
         else:
-            thread._Thread__stop = thread._old
+            with thread._Thread__block:
+                thread._Thread__stop = thread._old
         delattr(thread, '_old')
         delattr(thread, '_external_lock')
 
@@ -161,6 +191,16 @@ def waitforthreads(threads, timeout=None):
 
 
 def waitforqueues(queues, timeout=None):
+    """Waits for one or more *Queues* to be ready
+    or until timeout expires.
+
+    *queues* is a list containing one or more *Queue.Queue* objects.
+    If *timeout* is not None the function will block
+    for the specified amount of seconds.
+
+    The function returns a list containing the ready *Queues*.
+
+    """
     block = Condition(Lock())
     ready = lambda: [q for q in queues if not q.empty()]
 

@@ -3,6 +3,10 @@ import time
 import signal
 import unittest
 import threading
+try:  # Python 2
+    from Queue import Queue
+except:  # Python 3
+    from queue import Queue
 
 from pebble import synchronized, sighandler, thread
 from pebble import waitfortasks, waitforthreads, waitforqueues
@@ -38,6 +42,13 @@ except ImportError:
 @thread.spawn
 def thread_function(value):
     time.sleep(value)
+    return value
+
+
+@thread.spawn
+def queue_function(queues, index, value):
+    time.sleep(value)
+    queues[index].put(value)
     return value
 
 
@@ -152,6 +163,36 @@ class TestWaitForThreads(unittest.TestCase):
         expected = sorted(dir(thread))
         waitforthreads([thread])
         self.assertEqual(sorted(dir(thread)), expected)
+
+
+class TestWaitForQueues(unittest.TestCase):
+    def setUp(self):
+        self.queues = (Queue(), Queue(), Queue())
+
+    def test_waitforqueues_single(self):
+        """Waitforqueues waits for a single queue."""
+        queue_function(self.queues, 0, 0.01)
+        self.assertEqual(waitforqueues(self.queues)[0], self.queues[0])
+
+    def test_waitforqueues_multiple(self):
+        """Waitforqueues waits for multiple queues."""
+        for index in range(3):
+            queue_function(self.queues, index, 0.01)
+        time.sleep(0.1)
+        self.assertEqual(waitforqueues(self.queues), list(self.queues))
+
+    def test_waitforqueues_timeout(self):
+        """Waitforqueues returns empty list if timeout."""
+        queue_function(self.queues, 0, 0.01)
+        self.assertEqual(waitforqueues(self.queues, timeout=0.01), [])
+
+    def test_waitforqueues_restore(self):
+        """Waitforqueues Queue object is restored to original one."""
+        queue_function(self.queues, 0, 0.01)
+        time.sleep(0.01)
+        expected = sorted(dir(self.queues[0]))
+        waitforqueues(self.queues)
+        self.assertEqual(sorted(dir(self.queues[0])), expected)
 
 
 class TestTask(unittest.TestCase):

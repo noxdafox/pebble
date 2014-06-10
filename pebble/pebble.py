@@ -112,8 +112,7 @@ def new(self, *args):
 
 
 def waitfortasks(tasks, timeout=None):
-    """Waits for one or more *Tasks* to be ready
-    or until timeout expires.
+    """Waits for one or more *Task* to be ready or until timeout expires.
 
     *tasks* is a list containing one or more *pebble.Task* objects.
     If *timeout* is not None the function will block
@@ -145,8 +144,7 @@ def waitfortasks(tasks, timeout=None):
 
 
 def waitforthreads(threads, timeout=None):
-    """Waits for one or more *Threads* to be ready
-    or until timeout expires.
+    """Waits for one or more *Thread* to exit or until timeout expires.
 
     .. note::
 
@@ -191,7 +189,7 @@ def waitforthreads(threads, timeout=None):
 
 
 def waitforqueues(queues, timeout=None):
-    """Waits for one or more *Queues* to be ready
+    """Waits for one or more *Queue* to be ready
     or until timeout expires.
 
     *queues* is a list containing one or more *Queue.Queue* objects.

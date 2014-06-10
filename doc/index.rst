@@ -188,6 +188,37 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
 
    *signals* can either be a single signal or a list/tuple of signals.
 
+.. function:: waitfortasks(tasks, timeout=None)
+
+   Waits for one or more *Task* to be ready or until timeout expires.
+
+   *tasks* is a list containing one or more *pebble.Task* objects.
+   If *timeout* is not None the function will block for the specified amount of seconds returning an empty list if no *Task* is ready.
+
+   The function returns a list containing the ready *Tasks*.
+
+.. function:: waitforthreads(threads, timeout=None):
+
+   Waits for one or more *Thread* to exit or until timeout expires.
+
+   .. note::
+
+      Expired *Threads* are not joined by *waitforthreads*.
+
+   *threads* is a list containing one or more *threading.Thread* objects.
+   If *timeout* is not None the function will block for the specified amount of seconds returning an empty list if no *Thread* is ready.
+
+   The function returns a list containing the ready *Threads*.
+
+.. function:: waitforqueues(queues, timeout=None):
+
+   Waits for one or more *Queue* to be ready or until timeout expires.
+
+   *queues* is a list containing one or more *Queue.Queue* objects.
+   If *timeout* is not None the function will block for the specified amount of seconds returning an empty list if no *Queue* is ready.
+
+   The function returns a list containing the ready *Queues*.
+
 .. exception:: TimeoutError
 
    Raised when *Task.get()* *timeout* expires.
@@ -279,9 +310,9 @@ The spawn function is a simple convenience method for spawning Processes and Thr
      def function(arg, keyarg=0):
          print arg + keyarg
 
-     proc = Thread(target=function, args=[1], kwargs={'keyarg': 1})
-     proc.daemon = True
-     proc.start
+     thrd = Thread(target=function, args=[1], kwargs={'keyarg': 1})
+     thrd.daemon = True
+     thrd.start()
 
 ::
 
@@ -290,7 +321,7 @@ The spawn function is a simple convenience method for spawning Processes and Thr
      def function(arg, keyarg=0):
          print arg + keyarg
 
-     proc = thread.spawn(target=function, args=[1], kwargs={'keyarg': 1}, daemon=True)
+     thrd = thread.spawn(target=function, args=[1], kwargs={'keyarg': 1}, daemon=True)
 
 ::
 
@@ -300,7 +331,7 @@ The spawn function is a simple convenience method for spawning Processes and Thr
      def function(arg, keyarg=0):
          print arg + keyarg
 
-     proc = function(1, keyarg=1)
+     thrd = function(1, keyarg=1)
 
 Producer and consumer example.
 

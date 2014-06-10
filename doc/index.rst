@@ -190,29 +190,29 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
 
 .. function:: waitfortasks(tasks, timeout=None)
 
-   Waits for one or more *Task* to be ready or until timeout expires.
+   Waits for one or more *Task* to be ready or until *timeout* expires.
 
    *tasks* is a list containing one or more *pebble.Task* objects.
    If *timeout* is not None the function will block for the specified amount of seconds returning an empty list if no *Task* is ready.
 
    The function returns a list containing the ready *Tasks*.
 
-.. function:: waitforthreads(threads, timeout=None):
+.. function:: waitforthreads(threads, timeout=None)
 
-   Waits for one or more *Thread* to exit or until timeout expires.
-
-   .. note::
-
-      Expired *Threads* are not joined by *waitforthreads*.
+   Waits for one or more *Thread* to exit or until *timeout* expires.
 
    *threads* is a list containing one or more *threading.Thread* objects.
    If *timeout* is not None the function will block for the specified amount of seconds returning an empty list if no *Thread* is ready.
 
    The function returns a list containing the ready *Threads*.
 
-.. function:: waitforqueues(queues, timeout=None):
+   .. note::
 
-   Waits for one or more *Queue* to be ready or until timeout expires.
+      Expired *Threads* are not joined by *waitforthreads*.
+
+.. function:: waitforqueues(queues, timeout=None)
+
+   Waits for one or more *Queue* to be ready or until *timeout* expires.
 
    *queues* is a list containing one or more *Queue.Queue* objects.
    If *timeout* is not None the function will block for the specified amount of seconds returning an empty list if no *Queue* is ready.

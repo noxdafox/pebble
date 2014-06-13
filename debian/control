@@ -1,4 +1,5 @@
 Source: pebble
+Maintainer: Matteo Cafasso <noxdafox@gmail.com>
 Section: python
 X-Python-Version: >= 2.6
 X-Python3-Version: >= 3.2

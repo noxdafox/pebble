@@ -1,6 +1,198 @@
+import os
+import time
+import signal
 import unittest
+import threading
+try:  # Python 2
+    from Queue import Queue
+except:  # Python 3
+    from queue import Queue
 
+from pebble import synchronized, sighandler, thread
+from pebble import waitfortasks, waitforthreads, waitforqueues
 from pebble import Task, TimeoutError, TaskCancelled
+
+
+results = 0
+lock = threading.Lock()
+
+
+@synchronized(lock)
+def function():
+    """A docstring."""
+    return lock.acquire(False)
+
+
+try:
+    from signal import SIGALRM, SIGFPE, SIGIO
+
+    @sighandler(SIGALRM)
+    def signal_handler(signum, frame):
+        """A docstring."""
+        global results
+        results = 1
+
+    @sighandler((SIGFPE, SIGIO))
+    def signals_handler(signum, frame):
+        pass
+except ImportError:
+    pass
+
+
+@thread.spawn
+def thread_function(value):
+    time.sleep(value)
+    return value
+
+
+@thread.spawn
+def queue_function(queues, index, value):
+    time.sleep(value)
+    queues[index].put(value)
+    return value
+
+
+@thread.concurrent
+def concurrent_function(value):
+    time.sleep(value)
+    return value
+
+
+class TestSynchronizedDecorator(unittest.TestCase):
+    def test_wrapper_decorator_docstring(self):
+        """Synchronized docstring of the original function is preserved."""
+        self.assertEqual(function.__doc__, "A docstring.")
+
+    def test_syncronized_locked(self):
+        """Synchronized Lock is acquired
+        during execution of decorated function."""
+        self.assertFalse(function())
+
+    def test_syncronized_released(self):
+        """Synchronized Lock is acquired
+        during execution of decorated function."""
+        function()
+        self.assertTrue(lock.acquire(False))
+        lock.release()
+
+
+class TestSigHandler(unittest.TestCase):
+    def test_wrapper_decorator_docstring(self):
+        """Sighandler docstring of the original function is preserved."""
+        if os.name != 'nt':
+            self.assertEqual(signal_handler.__doc__, "A docstring.")
+
+    def test_sighandler(self):
+        """Sighandler installs SIGALRM."""
+        if os.name != 'nt':
+            self.assertEqual(signal.getsignal(signal.SIGALRM).__name__,
+                             signal_handler.__name__)
+
+    def test_sighandler_multiple(self):
+        """Sighandler installs SIGFPE and SIGIO."""
+        if os.name != 'nt':
+            self.assertEqual(signal.getsignal(signal.SIGFPE).__name__,
+                             signals_handler.__name__)
+            self.assertEqual(signal.getsignal(signal.SIGIO).__name__,
+                             signals_handler.__name__)
+
+    def test_sigalarm_sighandler(self):
+        """Sighandler for SIGALARM works."""
+        if os.name != 'nt':
+            os.kill(os.getpid(), signal.SIGALRM)
+            time.sleep(0.1)
+            self.assertEqual(results, 1)
+
+
+class TestWaitForTasks(unittest.TestCase):
+    def setUp(self):
+        pass
+
+    def test_waitfortasks_single(self):
+        """Waitfortasks waits for a single task."""
+        task = concurrent_function(0.01)
+        self.assertEqual(waitfortasks([task])[0], task)
+
+    def test_waitfortasks_multiple(self):
+        """Waitfortasks waits for multiple tasks."""
+        tasks = []
+        for _ in range(5):
+            tasks.append(concurrent_function(0.01))
+        time.sleep(0.1)
+        self.assertEqual(waitfortasks(tasks), tasks)
+
+    def test_waitfortasks_timeout(self):
+        """Waitfortasks returns empty list if timeout."""
+        task = concurrent_function(0.1)
+        self.assertEqual(waitfortasks([task], timeout=0.01), [])
+
+    def test_waitfortasks_restore(self):
+        """Waitfortasks Task object is restored to original one."""
+        task = concurrent_function(0.01)
+        expected = sorted(dir(task))
+        waitfortasks([task])
+        self.assertEqual(sorted(dir(task)), expected)
+
+
+class TestWaitForThreads(unittest.TestCase):
+    def setUp(self):
+        pass
+
+    def test_waitforthreads_single(self):
+        """Waitforthreads waits for a single thread."""
+        thread = thread_function(0.01)
+        self.assertEqual(waitforthreads([thread])[0], thread)
+
+    def test_waitforthreads_multiple(self):
+        """Waitforthreads waits for multiple threads."""
+        threads = []
+        for _ in range(5):
+            threads.append(thread_function(0.01))
+        time.sleep(0.1)
+        self.assertEqual(waitforthreads(threads), threads)
+
+    def test_waitforthreads_timeout(self):
+        """Waitforthreads returns empty list if timeout."""
+        thread = thread_function(0.1)
+        self.assertEqual(waitforthreads([thread], timeout=0.01), [])
+
+    def test_waitforthreads_restore(self):
+        """Waitforthreads Thread object is restored to original one."""
+        thread = thread_function(0)
+        time.sleep(0.01)
+        expected = sorted(dir(thread))
+        waitforthreads([thread])
+        self.assertEqual(sorted(dir(thread)), expected)
+
+
+class TestWaitForQueues(unittest.TestCase):
+    def setUp(self):
+        self.queues = (Queue(), Queue(), Queue())
+
+    def test_waitforqueues_single(self):
+        """Waitforqueues waits for a single queue."""
+        queue_function(self.queues, 0, 0.01)
+        self.assertEqual(waitforqueues(self.queues)[0], self.queues[0])
+
+    def test_waitforqueues_multiple(self):
+        """Waitforqueues waits for multiple queues."""
+        for index in range(3):
+            queue_function(self.queues, index, 0.01)
+        time.sleep(0.1)
+        self.assertEqual(waitforqueues(self.queues), list(self.queues))
+
+    def test_waitforqueues_timeout(self):
+        """Waitforqueues returns empty list if timeout."""
+        queue_function(self.queues, 0, 0.01)
+        self.assertEqual(waitforqueues(self.queues, timeout=0.01), [])
+
+    def test_waitforqueues_restore(self):
+        """Waitforqueues Queue object is restored to original one."""
+        queue_function(self.queues, 0, 0.01)
+        time.sleep(0.01)
+        expected = sorted(dir(self.queues[0]))
+        waitforqueues(self.queues)
+        self.assertEqual(sorted(dir(self.queues[0])), expected)
 
 
 class TestTask(unittest.TestCase):
@@ -16,11 +208,6 @@ class TestTask(unittest.TestCase):
         """Task ID is forwarded to it."""
         t = Task(0, None, None, None, None, None, 'foo')
         self.assertEqual(t.id, 'foo')
-
-    def test_task_uuid(self):
-        """Task a UUID is assigned if None."""
-        t = Task(0, None, None, None, None, None, None)
-        self.assertEqual(t.id.version, 4)
 
     def test_ready(self):
         """Task is ready if results are seself.task."""
@@ -41,7 +228,7 @@ class TestTask(unittest.TestCase):
         self.assertFalse(self.task.cancelled)
 
     def test_started(self):
-        """Task is started if timestamp is seself.task."""
+        """Task is started if timestamp is self.task."""
         self.task._timestamp = 42
         self.assertTrue(self.task.started)
 

@@ -16,57 +16,218 @@
 """Container for generic objects."""
 
 
-from uuid import uuid4
-from inspect import isclass
-from itertools import count
-from threading import Thread, Condition, Lock, Event
-try:  # Python 2
-    from Queue import Queue
-except:  # Python 3
-    from queue import Queue
+import signal
+
+from functools import wraps
+from types import MethodType
+from threading import Condition, Lock
 
 
 # Pool states
 STOPPED = 0
 RUNNING = 1
-CLOSING = 2
+CLOSED = 2
 CREATED = 3
+EXPIRED = 4
+ERROR = 5
 
 
+# --------------------------------------------------------------------------- #
+#                                 Exceptions                                  #
+# --------------------------------------------------------------------------- #
 class PebbleError(Exception):
     """Pebble base exception."""
     pass
 
 
-class TimeoutError(PebbleError):
-    """Raised when Task.get() timeout expires."""
-    def __init__(self, msg):
-        self.msg = msg
-
-    def __repr__(self):
-        return "%s %s" % (self.__class__, self.msg)
-
-    def __str__(self):
-        return str(self.msg)
-
-
 class TaskCancelled(PebbleError):
     """Raised if get is called on a cancelled task."""
-    def __init__(self, msg):
-        self.msg = msg
-
-    def __repr__(self):
-        return "%s %s" % (self.__class__, self.msg)
-
-    def __str__(self):
-        return str(self.msg)
+    pass
 
 
+class TimeoutError(PebbleError):
+    """Raised when a timeout expires."""
+    def __init__(self, msg, value=0):
+        super(TimeoutError, self).__init__(msg)
+        self.timeout = value
+
+
+class ProcessExpired(PebbleError):
+    """Raised when process dies unexpectedly."""
+    def __init__(self, msg, code=0):
+        super(ProcessExpired, self).__init__(msg)
+        self.exitcode = code
+
+
+# --------------------------------------------------------------------------- #
+#                                 Decorators                                  #
+# --------------------------------------------------------------------------- #
+def synchronized(lock):
+    """Locks the execution of decorated function on given *lock*.
+
+    Works with both threading and multiprocessing Lock.
+
+    """
+    def wrap(function):
+        @wraps(function)
+        def wrapper(*args, **kwargs):
+            with lock:
+                return function(*args, **kwargs)
+
+        return wrapper
+
+    return wrap
+
+
+def sighandler(signals):
+    """Sets the decorated function as signal handler of given *signals*.
+
+    *signals* can be either a single signal or a list/tuple
+    of multiple ones.
+
+    """
+    def wrap(function):
+        if isinstance(signals, (list, tuple)):
+            for signum in signals:
+                signal.signal(signum, function)
+        else:
+            signal.signal(signals, function)
+
+        @wraps(function)
+        def wrapper(*args, **kwargs):
+            return function(*args, **kwargs)
+
+        return wrapper
+
+    return wrap
+
+
+# --------------------------------------------------------------------------- #
+#                               Common Functions                              #
+# --------------------------------------------------------------------------- #
+def new(self, *args):
+    self._old(*args)
+    with self._external_lock:
+        self._external_lock.notify_all()
+
+
+def waitfortasks(tasks, timeout=None):
+    """Waits for one or more *Task* to be ready or until *timeout* expires.
+
+    *tasks* is a list containing one or more *pebble.Task* objects.
+    If *timeout* is not None the function will block
+    for the specified amount of seconds.
+
+    The function returns a list containing the ready *Tasks*.
+
+    """
+    block = Condition(Lock())
+    ready = lambda: [t for t in tasks if t.ready]
+
+    for task in tasks:
+        task._external_lock = block
+        with task._task_ready:
+            task._old = task._set
+            task._set = MethodType(new, task)
+
+    with block:
+        if len(ready()) == 0:
+            block.wait(timeout)
+
+    for task in tasks:
+        with task._task_ready:
+            task._set = task._old
+            delattr(task, '_old')
+            delattr(task, '_external_lock')
+
+    return ready()
+
+
+def waitforthreads(threads, timeout=None):
+    """Waits for one or more *Thread* to exit or until *timeout* expires.
+
+    .. note::
+
+       Expired *Threads* are not joined by *waitforthreads*.
+
+    *threads* is a list containing one or more *threading.Thread* objects.
+    If *timeout* is not None the function will block
+    for the specified amount of seconds.
+
+    The function returns a list containing the ready *Threads*.
+
+    """
+    block = Condition(Lock())
+    ready = lambda: [t for t in threads if not t.is_alive()]
+
+    for thread in threads:
+        thread._external_lock = block
+        if hasattr(thread, '_stop'):
+            with thread._block:
+                thread._old = thread._stop
+                thread._stop = MethodType(new, thread)
+        else:
+            with thread._Thread__block:
+                thread._old = thread._Thread__stop
+                thread._Thread__stop = MethodType(new, thread)
+
+    with block:
+        if len(ready()) == 0:
+            block.wait(timeout)
+
+    for thread in threads:
+        if hasattr(thread, '_stop'):
+            with thread._block:
+                thread._stop = thread._old
+        else:
+            with thread._Thread__block:
+                thread._Thread__stop = thread._old
+        delattr(thread, '_old')
+        delattr(thread, '_external_lock')
+
+    return ready()
+
+
+def waitforqueues(queues, timeout=None):
+    """Waits for one or more *Queue* to be ready or until *timeout* expires.
+
+    *queues* is a list containing one or more *Queue.Queue* objects.
+    If *timeout* is not None the function will block
+    for the specified amount of seconds.
+
+    The function returns a list containing the ready *Queues*.
+
+    """
+    block = Condition(Lock())
+    ready = lambda: [q for q in queues if not q.empty()]
+
+    for queue in queues:
+        queue._external_lock = block
+        with queue.mutex:
+            queue._old = queue.put
+            queue.put = MethodType(new, queue)
+
+    with block:
+        if len(ready()) == 0:
+            block.wait(timeout)
+
+    for queue in queues:
+        with queue.mutex:
+            queue.put = queue._old
+        delattr(queue, '_old')
+        delattr(queue, '_external_lock')
+
+    return ready()
+
+
+# --------------------------------------------------------------------------- #
+#                               Common Objects                                #
+# --------------------------------------------------------------------------- #
 class Task(object):
     """Handler to the ongoing task."""
-    def __init__(self, task_nr, function, args, kwargs,
-                 callback, timeout, identifier):
-        self.id = identifier is not None and identifier or uuid4()
+    def __init__(self, task_nr, function=None, args=None, kwargs=None,
+                 callback=None, timeout=0, identifier=None):
+        self.id = identifier
         self.timeout = timeout
         self._function = function
         self._args = args
@@ -161,66 +322,3 @@ class Task(object):
                 self._ready = True
                 self._results = results
                 self._task_ready.notify_all()
-
-
-class PoolContext(object):
-    """Container for the Pool state.
-
-    Wraps all the variables needed to represent a Pool.
-
-    """
-    def __init__(self, workers, limit, queue, queueargs,
-                 initializer, initargs):
-        self.state = CREATED
-        self.workers = workers
-        self.pool = []
-        self.limit = limit
-        self.task_counter = count()
-        self.workers_event = Event()
-        self.initializer = initializer
-        self.initargs = initargs
-        if queue is not None:
-            if isclass(queue):
-                self.queue = queue(*queueargs)
-            else:
-                raise ValueError("Queue must be Class")
-        else:
-            self.queue = Queue()
-
-    @property
-    def counter(self):
-        """Tasks counter."""
-        return next(self.task_counter)
-
-
-class PoolManager(Thread):
-    """Pool management routine.
-
-    Respawns missing workers.
-    Collects expired ones and cleans them up.
-
-    """
-    def __init__(self, context):
-        Thread.__init__(self)
-        self.daemon = True
-        self.context = context
-
-    def wait_for_worker(self, timeout):
-        """Waits for expired workers and restarts them."""
-        self.context.workers_event.wait(timeout)
-        self.context.workers_event.clear()
-
-        return [w for w in self.context.pool if w.expired]
-
-    def cleanup_workers(self, expired):
-        raise NotImplementedError('Not implemented')
-
-    def spawn_workers(self):
-        """Spawns missing Workers."""
-        raise NotImplementedError('Not implemented')
-
-    def run(self):
-        while self.context.state != STOPPED:
-            self.spawn_workers()
-            expired_workers = self.wait_for_worker(0.8)
-            self.cleanup_workers(expired_workers)

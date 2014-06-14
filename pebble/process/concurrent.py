@@ -163,8 +163,12 @@ def task_manager(task, reader):
     except (IOError, OSError, EOFError):
         results = ProcessExpired('Abnormal termination')
 
-    worker.terminate()
-    worker.join()
+    try:
+        worker.terminate()
+    except:
+        pass
+    finally:
+        worker.join()
     if isinstance(results, ProcessExpired):
         results.exitcode = worker.exitcode
 

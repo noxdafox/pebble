@@ -157,12 +157,18 @@ class TestWaitForThreads(unittest.TestCase):
         self.assertEqual(waitforthreads([thread], timeout=0.01), [])
 
     def test_waitforthreads_restore(self):
-        """Waitforthreads Thread object is restored to original one."""
+        """Waitforthreads get_ident is restored to original one."""
+        if hasattr(threading, 'get_ident'):
+            expected = threading.get_ident
+        else:
+            expected = threading._get_ident
         thread = thread_function(0)
         time.sleep(0.01)
-        expected = sorted(dir(thread))
         waitforthreads([thread])
-        self.assertEqual(sorted(dir(thread)), expected)
+        if hasattr(threading, 'get_ident'):
+            self.assertEqual(threading.get_ident, expected)
+        else:
+            self.assertEqual(threading._get_ident, expected)
 
 
 class TestWaitForQueues(unittest.TestCase):
@@ -183,7 +189,7 @@ class TestWaitForQueues(unittest.TestCase):
 
     def test_waitforqueues_timeout(self):
         """Waitforqueues returns empty list if timeout."""
-        queue_function(self.queues, 0, 0.01)
+        queue_function(self.queues, 0, 0.1)
         self.assertEqual(waitforqueues(self.queues, timeout=0.01), [])
 
     def test_waitforqueues_restore(self):

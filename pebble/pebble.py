@@ -17,10 +17,10 @@
 
 
 import signal
+import threading
 
 from functools import wraps
 from types import MethodType
-from threading import Condition, Lock
 
 
 # Pool states
@@ -121,7 +121,7 @@ def waitfortasks(tasks, timeout=None):
     The function returns a list containing the ready *Tasks*.
 
     """
-    block = Condition(Lock())
+    block = threading.Condition(threading.Lock())
     ready = lambda: [t for t in tasks if t.ready]
 
     for task in tasks:
@@ -157,33 +157,30 @@ def waitforthreads(threads, timeout=None):
     The function returns a list containing the ready *Threads*.
 
     """
-    block = Condition(Lock())
+    block = threading.Condition(threading.Lock())
     ready = lambda: [t for t in threads if not t.is_alive()]
 
-    for thread in threads:
-        thread._external_lock = block
-        if hasattr(thread, '_stop'):
-            with thread._block:
-                thread._old = thread._stop
-                thread._stop = MethodType(new, thread)
-        else:
-            with thread._Thread__block:
-                thread._old = thread._Thread__stop
-                thread._Thread__stop = MethodType(new, thread)
+    def new(*args):
+        old(*args)
+        with block:
+            block.notify_all()
+
+    if hasattr(threading, 'get_ident'):
+        old = threading.get_ident
+        threading.get_ident = new
+    else:
+        old = threading._get_ident
+        threading._get_ident = new
 
     with block:
-        if len(ready()) == 0:
-            block.wait(timeout)
+        while len(ready()) == 0:
+            if not block.wait(timeout):
+                break
 
-    for thread in threads:
-        if hasattr(thread, '_stop'):
-            with thread._block:
-                thread._stop = thread._old
-        else:
-            with thread._Thread__block:
-                thread._Thread__stop = thread._old
-        delattr(thread, '_old')
-        delattr(thread, '_external_lock')
+    if hasattr(threading, 'get_ident'):
+        threading.get_ident = old
+    else:
+        threading._get_ident = old
 
     return ready()
 
@@ -198,7 +195,7 @@ def waitforqueues(queues, timeout=None):
     The function returns a list containing the ready *Queues*.
 
     """
-    block = Condition(Lock())
+    block = threading.Condition(threading.Lock())
     ready = lambda: [q for q in queues if not q.empty()]
 
     for queue in queues:
@@ -236,7 +233,7 @@ class Task(object):
         self._ready = False
         self._cancelled = False
         self._results = None
-        self._task_ready = Condition(Lock())
+        self._task_ready = threading.Condition(threading.Lock())
         self._timestamp = 0
         self._callback = callback
 

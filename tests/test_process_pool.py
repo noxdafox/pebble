@@ -314,3 +314,15 @@ class TestProcessPool(unittest.TestCase):
                           kwargs={'keyword_argument': 1})
         time.sleep(0.1)
         self.assertRaises(RuntimeError, pool.schedule, function, args=[1])
+
+    def test_process_pool_exception_isolated(self):
+        """Process Pool an Exception does not affect other tasks."""
+        with process.Pool() as pool:
+            task = pool.schedule(error_function)
+            try:
+                task.get()
+            except:
+                pass
+            task = pool.schedule(function, args=[1],
+                                 kwargs={'keyword_argument': 1})
+        self.assertEqual(task.get(), 2)

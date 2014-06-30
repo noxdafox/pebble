@@ -64,6 +64,8 @@ def pool_worker(context):
                 error.traceback = format_exc()
 
         task_done(task, error is not None and error or value)
+        error = None
+        value = None
 
     context.worker_event.set()
 

@@ -1,5 +1,6 @@
 import os
 import time
+import signal
 import unittest
 import threading
 
@@ -76,6 +77,12 @@ def timeout_decorated_callback():
     time.sleep(1)
 
 
+@process.concurrent(timeout=0.2)
+def sigterm_decorated():
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    time.sleep(100)
+
+
 class TestProcessConcurrentObj(object):
     a = 0
 
@@ -139,11 +146,11 @@ class TestProcessConcurrent(unittest.TestCase):
         task = self.concurrentobj.instmethod()
         self.assertEqual(task.get(), 1)
 
+    @unittest.skipIf(os.name == 'nt', "Test won't run on Windows.")
     def test_static_method(self):
-        """Process Concurrent decorated static methods."""
-        if os.name != 'nt':
-            task = self.concurrentobj.stcmethod()
-            self.assertEqual(task.get(), 2)
+        """Process Concurrent decorated static methods (Unix only)."""
+        task = self.concurrentobj.stcmethod()
+        self.assertEqual(task.get(), 2)
 
     def test_undecorated_results(self):
         """Process Concurrent undecorated results are produced."""
@@ -216,3 +223,9 @@ class TestProcessConcurrent(unittest.TestCase):
         """Process Concurrent ProcessExpired is raised if process dies."""
         task = critical_decorated()
         self.assertRaises(ProcessExpired, task.get)
+
+    @unittest.skipIf(os.name == 'nt', "Test won't run on Windows.")
+    def test_decorated_pool_ignoring_sigterm(self):
+        """Process Concurrent ignored SIGTERM signal are handled on Unix."""
+        task = sigterm_decorated()
+        self.assertRaises(TimeoutError, task.get)

@@ -1,5 +1,6 @@
 import os
 import time
+import signal
 import unittest
 import threading
 
@@ -57,6 +58,11 @@ def long_function():
 def pid_function():
     time.sleep(0.1)
     return os.getpid()
+
+
+def sigterm_function():
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    time.sleep(100)
 
 
 # class TestProcessTaskObj(object):
@@ -326,3 +332,10 @@ class TestProcessPool(unittest.TestCase):
             task = pool.schedule(function, args=[1],
                                  kwargs={'keyword_argument': 1})
         self.assertEqual(task.get(), 2)
+
+    @unittest.skipIf(os.name == 'nt', "Test won't run on Windows'.")
+    def test_process_pool_ignoring_sigterm(self):
+        """Process Pool ignored SIGTERM signal are handled on Unix."""
+        with process.Pool() as pool:
+            task = pool.schedule(sigterm_function, timeout=0.2)
+            self.assertRaises(TimeoutError, task.get)

@@ -204,8 +204,8 @@ def message_manager(context):
 
             if message is ACK:
                 task = tasks[number]
-                task._timestamp = time()
                 task._pid = data
+                task._timestamp = time()
             elif message is RES:
                 task = tasks.pop(number)
                 context.task_done(task, data)

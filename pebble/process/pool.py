@@ -247,11 +247,7 @@ class PoolTask(Task):
 
 
 class Context(PoolContext):
-    """Pool's Context.
-
-    Wraps the Pool's state.
-
-    """
+    """Pool's Context."""
     def __init__(self, queue, queueargs, initializer, initargs,
                  workers, limit):
         super(Context, self).__init__(queue, queueargs,

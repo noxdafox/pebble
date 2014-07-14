@@ -7,6 +7,7 @@ __all__ = ['process',
            'sighandler',
            'Task',
            'PebbleError',
+           'PoolError',
            'TimeoutError',
            'TaskCancelled',
            'ProcessExpired']
@@ -16,4 +17,5 @@ from . import thread
 from . import process
 from .pebble import synchronized, sighandler, waitfortasks, waitforthreads
 from .pebble import waitforqueues, Task
-from .pebble import PebbleError, TaskCancelled, TimeoutError, ProcessExpired
+from .pebble import PebbleError, PoolError, TaskCancelled
+from .pebble import TimeoutError, ProcessExpired

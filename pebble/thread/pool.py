@@ -89,11 +89,7 @@ def worker_manager(context):
 
 
 class Context(PoolContext):
-    """Pool's Context.
-
-    Wraps the Pool's state.
-
-    """
+    """Pool's Context."""
     def __init__(self, queue, queueargs, initializer, initargs,
                  workers, limit):
         super(Context, self).__init__(queue, queueargs,
@@ -131,7 +127,7 @@ class Pool(BasePool):
 
     def _start(self):
         """Start the Pool managers."""
-        self._worker_manager = worker_manager(self._context)
+        self._managers = [worker_manager(self._context)]
         self._context.state = RUNNING
 
     def stop(self):

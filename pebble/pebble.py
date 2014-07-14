@@ -401,7 +401,6 @@ class BasePool(object):
 
     @property
     def active(self):
-        self._state()
         return self._context.state == RUNNING and True or False
 
     def _state(self):

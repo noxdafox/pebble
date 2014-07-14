@@ -2,7 +2,8 @@ import time
 import unittest
 import threading
 
-from pebble import thread, TaskCancelled, TimeoutError
+from pebble import thread
+from pebble import PoolError, TaskCancelled, TimeoutError
 
 
 event = threading.Event()
@@ -264,7 +265,7 @@ class TestThreadPool(unittest.TestCase):
             pool.schedule(function, args=[1], callback=error_callback,
                           kwargs={'keyword_argument': 1})
         time.sleep(0.1)
-        self.assertRaises(RuntimeError, pool.schedule, function, args=[1])
+        self.assertRaises(PoolError, pool.schedule, function, args=[1])
 
     def test_thread_pool_exception_isolated(self):
         """Thread Pool an Exception does not affect other tasks."""

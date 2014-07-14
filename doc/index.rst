@@ -221,11 +221,16 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
 
 .. exception:: TimeoutError
 
-   Raised when *Task.get()* *timeout* expires.
+   Raised when a given timeout expires.
 
 .. exception:: TaskCancelled
 
    Raised by *Task.get()* functions if *Task.cancel()* has been called.
+
+.. exception:: PoolError
+
+   Raised if a condition lead to an instability of the Pool.
+   This can be caused by, for example, an unmanaged exception raised in the *callback* functions.
 
 .. exception:: ProcessExpired
 

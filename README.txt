@@ -15,44 +15,35 @@ Spawn a function within a thread::
 
     from pebble import thread
 
-
     def function(foo, bar=0):
     	print foo + bar
 
-
-    if __name__ == "__main__":
-        thrd = thread.spawn(target=function, args=[1], kwargs={'bar':2})
-        thrd.join()
+    thrd = thread.spawn(target=function, args=[1], kwargs={'bar':2})
+    thrd.join()
 
 
 Most of the functions work as well as decorators::
 
     from pebble import process
 
-
     @process.spawn(daemon=True)
     def function(foo, bar=0):
     	print(foo + bar)
 
-
-    if __name__ == "__main__":
-        proc = function(1, bar=2)
-        proc.join()
+    proc = function(1, bar=2)
+    proc.join()
 
 
 Run a job in a separate process and wait for its results::
 
     from pebble import process
 
-
     @process.concurrent
     def function(foo, bar=0):
         return foo + bar
 
-
-    if __name__ == "__main__":
-        task = function(1, bar=2)
-        results = task.get()  # blocks until results are ready
+    task = function(1, bar=2)
+    results = task.get()  # blocks until results are ready
 
 
 Pools allow to execute several tasks without the need of spawning a new worker for each one of them::
@@ -60,27 +51,22 @@ Pools allow to execute several tasks without the need of spawning a new worker f
     from threading import current_thread
     from pebble import thread
 
-
     def task_done(task):
         results, thread_id = task.get()
     	print "Task %s returned %d from thread %s" % (task.id,
                                                       results,
                                                       thread_id)
 
-
     def do_job(foo, bar=0):
     	return foo + bar, current_thread().ident
 
-
-    if __name__ == "__main__":
-        with thread.Pool(workers=5) as pool:
-            for i in range(0, 10):
-                pool.schedule(do_job, args=(i, ), callback=task_done)
+    with thread.Pool(workers=5) as pool:
+        for i in range(0, 10):
+            pool.schedule(do_job, args=(i, ), callback=task_done)
 
 
 Check the documentation for more examples.
 
 TODO:
 
-  * taskselect, queueselect, threadselect, procselect: wait for multiple Tasks, Queues, Threads and Processes
-  * channels for message driven synchronization
+  * waitforprocesses, waitforprocessqueues: wait for multiple Processes and multiprocessing.Queues

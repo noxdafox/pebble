@@ -17,23 +17,23 @@
 import os
 import sys
 
-from inspect import isclass
 from itertools import count
 from time import sleep, time
 from signal import SIG_IGN, SIGINT, signal
-from traceback import format_exc, print_exc
+from traceback import format_exc
 try:  # Python 2
-    from Queue import Queue, Empty
+    from Queue import Empty
     from cPickle import PicklingError
 except:  # Python 3
-    from queue import Queue, Empty
+    from queue import Empty
     from pickle import PicklingError
 
 from .generic import channels, lock, stop_worker
 from .spawn import spawn as spawn_process
 from ..thread import spawn as spawn_thread
+from ..pebble import BasePool, PoolContext
+from ..pebble import STOPPED, RUNNING, ERROR
 from ..pebble import Task, TimeoutError, TaskCancelled
-from ..pebble import STOPPED, RUNNING, CLOSED, CREATED, ERROR
 
 
 ACK = 0  # task aknowledged by worker
@@ -246,7 +246,7 @@ class PoolTask(Task):
         self._cancelled = True
 
 
-class PoolContext(object):
+class Context(PoolContext):
     """Pool's Context.
 
     Wraps the Pool's state.
@@ -254,21 +254,9 @@ class PoolContext(object):
     """
     def __init__(self, queue, queueargs, initializer, initargs,
                  workers, limit):
-        self.state = CREATED
-        self.pool = {}  # {pid: process}
-        self.tasks = {}  # {task_number: task_obj}
-        self.managers = None
-        self.initializer = initializer
-        self.initargs = initargs
-        self.worker_number = workers
-        self.worker_limit = limit
-        if queue is not None:
-            if isclass(queue):
-                self.queue = queue(*queueargs)
-            else:
-                raise ValueError("Queue must be Class")
-        else:
-            self.queue = Queue()
+        super(Context, self).__init__(queue, queueargs,
+                                      initializer, initargs,
+                                      workers, limit)
         self.pool_channel, self.worker_channel = channels()
 
     def stop(self):
@@ -285,34 +273,8 @@ class PoolContext(object):
             for worker in self.pool.values():
                 stop_worker(worker)
 
-    def join(self, timeout):
-        """Joins pool's workers."""
-        while len(self.pool) > 0 and (timeout is None or timeout > 0):
-            for identifier, worker in list(self.pool.items()):
-                worker.join(timeout is not None and 0.1 or None)
-                if not worker.is_alive():
-                    self.pool.pop(identifier)
 
-            if timeout is not None:
-                timeout = timeout - (len(self.pool) / 10.0)
-
-        if len(self.pool) > 0:
-            raise TimeoutError('Workers are still running')
-
-    def task_done(self, task, results):
-        task._set(results)
-
-        if task._callback is not None:
-            try:
-                task._callback(task)
-            except Exception:
-                print_exc()
-                self.state = ERROR
-
-        self.queue.task_done()
-
-
-class Pool(object):
+class Pool(BasePool):
     """A ProcessPool allows to schedule jobs into a Pool of Processes
     which will perform them concurrently.
 
@@ -331,22 +293,9 @@ class Pool(object):
     """
     def __init__(self, workers=1, task_limit=0, queue=None, queueargs=None,
                  initializer=None, initargs=()):
-        self._counter = count()
-        self._context = PoolContext(queue, queueargs,
-                                    initializer, initargs,
-                                    workers, task_limit)
-        self._managers = ()
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args):
-        self.close()
-        self.join()
-
-    @property
-    def active(self):
-        return self._context.state == RUNNING and True or False
+        super(Pool, self).__init__()
+        self._context = Context(queue, queueargs, initializer, initargs,
+                                workers, task_limit)
 
     def _start(self):
         """Start the Pool managers."""
@@ -355,14 +304,6 @@ class Pool(object):
                           message_manager(self._context),
                           worker_manager(self._context))
         self._context.state = RUNNING
-
-    def close(self):
-        """Closes the pool.
-
-        No new tasks will be accepted, enqueued ones will be performed.
-
-        """
-        self._context.state = CLOSED
 
     def stop(self):
         """Stops the pool without performing any pending task."""
@@ -382,28 +323,6 @@ class Pool(object):
 
         self._context.kill()
 
-    def join(self, timeout=None):
-        """Joins the pool waiting until all workers exited.
-
-        If *timeout* is set, it block until all workers are done
-        or raise TimeoutError.
-
-        """
-        if self._context.state == RUNNING:
-            raise RuntimeError('The Pool is still running')
-        elif self._context.state == CLOSED:
-            queue = self._context.queue
-
-            if timeout is not None:
-                while queue.unfinished_tasks > 0 and timeout > 0:
-                    sleep(0.1)
-                    timeout -= 0.1
-            else:
-                queue.join()
-            self.stop()
-
-        self._context.join(timeout)
-
     def schedule(self, function, args=(), kwargs={}, identifier=None,
                  callback=None, timeout=0):
         """Schedules *function* into the Pool, passing *args* and *kwargs*
@@ -420,13 +339,9 @@ class Pool(object):
         A *Task* object is returned.
 
         """
-        if self._context.state == CREATED:
-            self._start()
-        elif self._context.state != RUNNING:
-            raise RuntimeError('The Pool is not running')
-
         task = PoolTask(next(self._counter), function, args, kwargs,
                         callback, timeout, identifier)
-        self._context.queue.put(task)
+
+        self._schedule(task)
 
         return task

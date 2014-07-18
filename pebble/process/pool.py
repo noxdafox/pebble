@@ -20,7 +20,7 @@ import sys
 from itertools import count
 from time import sleep, time
 from signal import SIG_IGN, SIGINT, signal
-from traceback import format_exc
+from traceback import format_exc, print_exc
 try:  # Python 2
     from Queue import Empty
     from cPickle import PicklingError
@@ -90,7 +90,8 @@ def task_state(task, pool, timestamp):
 
 
 @spawn_process(name='pool_worker', daemon=True)
-def pool_worker(channel, initializer, initargs, limit):
+def pool_worker(channel, limit,
+                initializer, initargs, deinitializer, deinitargs):
     """Runs the actual function in separate process."""
     error = None
     value = None
@@ -123,7 +124,11 @@ def pool_worker(channel, initializer, initargs, limit):
         error = None
         value = None
 
-    sys.exit(0)
+    if deinitializer is not None:
+        try:
+            deinitializer(*deinitargs)
+        except Exception:
+            print_exc()
 
 
 @spawn_thread(name='task_scheduler', daemon=True)
@@ -222,6 +227,8 @@ def worker_manager(context):
     limit = context.worker_limit
     initializer = context.initializer
     initargs = context.initargs
+    deinitializer = context.deinitializer
+    deinitargs = context.deinitargs
     workers = context.worker_number
     channel = context.worker_channel
 
@@ -233,7 +240,9 @@ def worker_manager(context):
             del pool[worker.pid]
 
         for _ in range(workers - len(pool)):
-            worker = pool_worker(channel, initializer, initargs, limit)
+            worker = pool_worker(channel, limit,
+                                 initializer, initargs,
+                                 deinitializer, deinitargs)
             pool[worker.pid] = worker
 
         sleep(0.2)
@@ -249,10 +258,10 @@ class PoolTask(Task):
 class Context(PoolContext):
     """Pool's Context."""
     def __init__(self, queue, queueargs, initializer, initargs,
-                 workers, limit):
-        super(Context, self).__init__(queue, queueargs,
-                                      initializer, initargs,
-                                      workers, limit)
+                 deinitializer, deinitargs, workers, limit):
+        super(Context, self).__init__(
+            queue, queueargs, initializer, initargs,
+            deinitializer, deinitargs, workers, limit)
         self.pool_channel, self.worker_channel = channels()
 
     def stop(self):
@@ -288,9 +297,11 @@ class Pool(BasePool):
 
     """
     def __init__(self, workers=1, task_limit=0, queue=None, queueargs=None,
-                 initializer=None, initargs=()):
+                 initializer=None, initargs=(),
+                 deinitializer=None, deinitargs=()):
         super(Pool, self).__init__()
         self._context = Context(queue, queueargs, initializer, initargs,
+                                deinitializer, deinitargs,
                                 workers, task_limit)
 
     def _start(self):

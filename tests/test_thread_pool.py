@@ -8,6 +8,7 @@ from pebble import PoolError, TaskCancelled, TimeoutError
 
 event = threading.Event()
 initarg = 0
+deinitarg = 0
 results = 0
 exception = None
 
@@ -34,6 +35,15 @@ def initializer(value):
 
 
 def initializer_error():
+    raise Exception("BOOM!")
+
+
+def deinitializer(value):
+    global deinitarg
+    deinitarg = value
+
+
+def deinitializer_error():
     raise Exception("BOOM!")
 
 
@@ -181,6 +191,21 @@ class TestThreadPool(unittest.TestCase):
         with thread.Pool(initializer=initializer_error) as pool:
             task = pool.schedule(initializer_function)
         self.assertRaises(Exception, task.get)
+
+    def test_thread_pool_deinitializer(self):
+        """Thread Pool deinitializer is correctly run."""
+        with thread.Pool(task_limit=1,
+                         deinitializer=deinitializer,
+                         deinitargs=[1]) as pool:
+            pool.schedule(function, args=[1])
+        self.assertEqual(deinitarg, 1)
+
+    def test_thread_pool_deinitializer_error(self):
+        """Thread Pool an exception in deinitializer doesn't stop the pool."""
+        with thread.Pool(task_limit=1,
+                         deinitializer=deinitializer_error) as pool:
+            task = pool.schedule(function, args=[1])
+        self.assertEqual(task.get(), 1)
 
     def test_thread_pool_created(self):
         """Thread Pool is not active if nothing is scheduled."""

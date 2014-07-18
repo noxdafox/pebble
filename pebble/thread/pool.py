@@ -14,10 +14,10 @@
 # along with Pebble.  If not, see <http://www.gnu.org/licenses/>.
 
 
+from time import time
 from itertools import count
 from threading import Event
-from time import time
-from traceback import format_exc
+from traceback import format_exc, print_exc
 
 from .spawn import spawn
 from ..pebble import STOPPED, RUNNING, ERROR
@@ -62,6 +62,12 @@ def pool_worker(context):
         error = None
         value = None
 
+    if context.deinitializer is not None:
+        try:
+            context.deinitializer(*context.deinitargs)
+        except Exception:
+            print_exc()
+
     context.worker_event.set()
 
 
@@ -91,10 +97,10 @@ def worker_manager(context):
 class Context(PoolContext):
     """Pool's Context."""
     def __init__(self, queue, queueargs, initializer, initargs,
-                 workers, limit):
-        super(Context, self).__init__(queue, queueargs,
-                                      initializer, initargs,
-                                      workers, limit)
+                 deinitializer, deinitargs, workers, limit):
+        super(Context, self).__init__(
+            queue, queueargs, initializer, initargs,
+            deinitializer, deinitargs, workers, limit)
         self.worker_event = Event()
 
     def stop(self):
@@ -120,9 +126,11 @@ class Pool(BasePool):
 
     """
     def __init__(self, workers=1, task_limit=0, queue=None, queueargs=None,
-                 initializer=None, initargs=()):
+                 initializer=None, initargs=(),
+                 deinitializer=None, deinitargs=()):
         super(Pool, self).__init__()
         self._context = Context(queue, queueargs, initializer, initargs,
+                                deinitializer, deinitargs,
                                 workers, task_limit)
 
     def _start(self):

@@ -302,10 +302,16 @@ class Task(object):
         once the timeout expires.
 
         """
+        if self._ready:
+            if (isinstance(self._results, BaseException)):
+                raise self._results
+            else:
+                return self._results
+
         with self._task_ready:
-            if not self._ready:  # block if not ready
+            if not self._ready:
                 self._task_ready.wait(timeout)
-            if self._ready:  # return results
+            if self._ready:
                 if (isinstance(self._results, BaseException)):
                     raise self._results
                 else:
@@ -318,7 +324,8 @@ class Task(object):
     def cancel(self):
         """Cancels the Task."""
         with self._task_ready:
-            self._cancel()
+            if not self._ready:
+                self._cancel()
 
     def _cancel(self):
         """Cancels the Task."""
@@ -342,13 +349,15 @@ class PoolContext(object):
 
     """
     def __init__(self, queue, queueargs, initializer, initargs,
-                 workers, limit):
+                 deinitializer, deinitargs, workers, limit):
         self.state = CREATED
         self.pool = {}  # {tid/pid: Thread/Process}
         self.tasks = {}  # {Task.number: Task}
         self.managers = None  # threads managing the Pool
         self.initializer = initializer
         self.initargs = initargs
+        self.deinitializer = deinitializer
+        self.deinitargs = deinitargs
         self.worker_number = workers
         self.worker_limit = limit
         if queue is not None:

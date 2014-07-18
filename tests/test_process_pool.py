@@ -4,6 +4,8 @@ import signal
 import unittest
 import threading
 
+from multiprocessing import Pipe
+
 from pebble import process
 from pebble import TaskCancelled, TimeoutError, PoolError
 
@@ -36,6 +38,14 @@ def initializer(value):
 
 
 def initializer_error():
+    raise Exception("BOOM!")
+
+
+def deinitializer(pipe, value):
+    pipe.send(value)
+
+
+def deinitializer_error():
     raise Exception("BOOM!")
 
 
@@ -214,10 +224,26 @@ class TestProcessPool(unittest.TestCase):
         self.assertEqual(task.get(), 1)
 
     def test_process_pool_initializer_error(self):
-        """Process Pool an exception in a initializer is raised by get."""
+        """Process Pool an exception in initializer is raised by get."""
         with process.Pool(initializer=initializer_error) as pool:
             task = pool.schedule(initializer_function)
         self.assertRaises(Exception, task.get)
+
+    def test_process_pool_deinitializer(self):
+        """Process Pool deinitializer is correctly run."""
+        r, w = Pipe()
+        with process.Pool(task_limit=1,
+                          deinitializer=deinitializer,
+                          deinitargs=[w, 1]) as pool:
+            pool.schedule(function, args=[1])
+        self.assertEqual(r.recv(), 1)
+
+    def test_process_pool_deinitializer_error(self):
+        """Process Pool an exception in deinitializer doesn't stop the pool."""
+        with process.Pool(task_limit=1,
+                          deinitializer=deinitializer_error) as pool:
+            task = pool.schedule(function, args=[1])
+        self.assertEqual(task.get(), 1)
 
     def test_process_pool_created(self):
         """Process Pool is not active if nothing is scheduled."""

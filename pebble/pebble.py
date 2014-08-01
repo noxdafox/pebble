@@ -76,6 +76,18 @@ class ProcessExpired(PebbleError):
 # --------------------------------------------------------------------------- #
 #                                 Decorators                                  #
 # --------------------------------------------------------------------------- #
+def coroutine(function):
+    """Coroutine decorator, turns a function into a coroutine starting it."""
+    @wraps(function)
+    def wrapper(*args, **kwargs):
+        crtn = function(*args, **kwargs)
+        next(crtn)
+
+        return crtn
+
+    return wrapper
+
+
 def synchronized(lock):
     """Locks the execution of decorated function on given *lock*.
 
@@ -145,7 +157,7 @@ def waitfortasks(tasks, timeout=None):
             task._set = MethodType(new, task)
 
     with block:
-        if len(ready()) == 0:
+        if not ready():
             block.wait(timeout)
 
     for task in tasks:
@@ -187,7 +199,7 @@ def waitforthreads(threads, timeout=None):
         threading._get_ident = new
 
     with block:
-        while len(ready()) == 0:
+        while not ready():
             if not block.wait(timeout):
                 break
 
@@ -219,7 +231,7 @@ def waitforqueues(queues, timeout=None):
             queue.put = MethodType(new, queue)
 
     with block:
-        if len(ready()) == 0:
+        if not ready():
             block.wait(timeout)
 
     for queue in queues:
@@ -302,12 +314,6 @@ class Task(object):
         once the timeout expires.
 
         """
-        if self._ready:
-            if (isinstance(self._results, BaseException)):
-                raise self._results
-            else:
-                return self._results
-
         with self._task_ready:
             if not self._ready:
                 self._task_ready.wait(timeout)
@@ -351,8 +357,7 @@ class PoolContext(object):
     def __init__(self, queue, queueargs, initializer, initargs,
                  deinitializer, deinitargs, workers, limit):
         self.state = CREATED
-        self.pool = {}  # {tid/pid: Thread/Process}
-        self.tasks = {}  # {Task.number: Task}
+        self.pool = []
         self.managers = None  # threads managing the Pool
         self.initializer = initializer
         self.initargs = initargs
@@ -370,16 +375,16 @@ class PoolContext(object):
 
     def join(self, timeout):
         """Joins pool's workers."""
-        while len(self.pool) > 0 and (timeout is None or timeout > 0):
-            for identifier, worker in list(self.pool.items()):
+        while self.pool and (timeout is None or timeout > 0):
+            for worker in self.pool:
                 worker.join(timeout is not None and 0.1 or None)
                 if not worker.is_alive():
-                    self.pool.pop(identifier)
+                    self.pool.remove(worker)
 
             if timeout is not None:
                 timeout = timeout - (len(self.pool) / 10.0)
 
-        if len(self.pool) > 0:
+        if self.pool:
             raise TimeoutError('Workers are still running')
 
     def task_done(self, task, results):

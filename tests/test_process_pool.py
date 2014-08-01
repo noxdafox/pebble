@@ -209,6 +209,7 @@ class TestProcessPool(unittest.TestCase):
             task = pool.schedule(long_function)
             task.cancel()
             task2 = pool.schedule(pid_function)
+            time.sleep(1)
         self.assertNotEqual(task1.get(), task2.get())
 
     def test_process_pool_schedule_id(self):
@@ -236,6 +237,7 @@ class TestProcessPool(unittest.TestCase):
                           deinitializer=deinitializer,
                           deinitargs=[w, 1]) as pool:
             pool.schedule(function, args=[1])
+        self.assertTrue(r.poll(0.1))
         self.assertEqual(r.recv(), 1)
 
     def test_process_pool_deinitializer_error(self):

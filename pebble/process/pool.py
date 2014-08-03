@@ -14,6 +14,7 @@
 # along with Pebble.  If not, see <http://www.gnu.org/licenses/>.
 
 
+import os
 from select import select
 from itertools import count
 from time import sleep, time
@@ -60,34 +61,51 @@ def problematic(worker):
         return False
 
 
+def ready(workers, interval):
+    """Collects workers ready to send/receive."""
+    readers = [w.reader for w in workers if not w.expired]
+    writers = [w.writer for w in workers if not w.closed]
+
+    if os.name == 'nt':
+        rd = [r for r in readers if r.poll(0)]
+        wt = writers  # no way to know ready writers in Windows
+    else:
+        rd, wt, _ = select(readers, writers, [], interval)
+
+    return ([w for w in workers if w.reader in rd],
+            [w for w in workers if w.writer in wt])
+
+
 @spawn_thread(name='pool_manager', daemon=True)
 def pool_manager(context):
+    """Pool manager Thread, event loop."""
     pool = context.pool
     queue = context.queue
-    scheduler = task_scheduler(context)
-    finalizer = results_manager(context)
-    inspector = task_manager(context)
-    workersmanager = workers_manager(context)
 
-    while context.state not in (ERROR, STOPPED):
-        readers = [w.reader for w in pool if not w.expired]
-        writers = [w.writer for w in pool if not w.closed]
-        readready, writeready, _ = select(readers, writers, [], 0.2)
+    try:
+        scheduler = task_scheduler(context)
+        finalizer = results_manager(context)
+        inspector = task_manager(context)
+        workersmanager = workers_manager(context)
 
-        if not readready and writeready and queue.empty():
-            sleep(0.1)  # delay if idle
+        while context.state not in (ERROR, STOPPED):
+            readers, writers = ready(pool, 0.2)
 
-        try:
-            scheduler.send([w for w in pool if w.writer in writeready])
-            finalizer.send([w for w in pool if w.reader in readready])
+            # sleep if Pool is idling
+            if not readers and writers and queue.empty():
+                sleep(0.1)
+
+            scheduler.send(writers)
+            finalizer.send(readers)
             inspector.send([w for w in pool if problematic(w)])
             workersmanager.send([w for w in pool if w.expired])
-        except StopIteration:
-            context.state = STOPPED if context.state == STOPPED else ERROR
+    except StopIteration:
+        context.state = STOPPED if context.state == STOPPED else ERROR
 
 
 @coroutine
 def task_scheduler(context):
+    """Schedules Tasks to Workers."""
     queue = context.queue
 
     while context.state not in (ERROR, STOPPED):
@@ -106,6 +124,7 @@ def task_scheduler(context):
 
 @coroutine
 def results_manager(context):
+    """Fetches results from Workers."""
     done = context.task_done
 
     while context.state not in (ERROR, STOPPED):
@@ -117,9 +136,9 @@ def results_manager(context):
                 tasks.append(worker.receive())
             except (EOFError, IOError, OSError):
                 worker.reader.close()
-                if worker.exitcode != 0 and worker.exitcode != -15:
-                    tasks.append(worker.cancel(),
-                                 ProcessExpired('Abnormal termination'))
+                if worker.exitcode and not worker.closed:
+                    tasks.append((worker.cancel(),
+                                 ProcessExpired('Abnormal termination')))
 
         for task, results in tasks:
             done(task, results)
@@ -127,6 +146,7 @@ def results_manager(context):
 
 @coroutine
 def task_manager(context):
+    """Manages problematic Tasks."""
     done = context.task_done
 
     while context.state not in (ERROR, STOPPED):
@@ -146,6 +166,7 @@ def task_manager(context):
 
 @coroutine
 def workers_manager(context):
+    """Manages expired Workers."""
     pool = context.pool
     queue = context.queue
     limit = context.worker_limit
@@ -214,6 +235,7 @@ def pool_worker(tasks, results, limit,
 
 
 class Worker(object):
+    """Wraps the Worker process within a Class."""
     def __init__(self, limit, initializer, initargs,
                  deinitializer, deinitargs):
         self.limit = limit
@@ -252,9 +274,11 @@ class Worker(object):
         return self.process.exitcode
 
     def is_alive(self):
+        """Checks if process is alive."""
         return self.process.is_alive()
 
     def start(self):
+        """Starts the Worker's process."""
         self.process = pool_worker(self.task_reader, self.result_writer,
                                    self.limit, self.initializer, self.initargs,
                                    self.deinitializer, self.deinitargs)
@@ -262,12 +286,13 @@ class Worker(object):
         self.result_writer.close()
 
     def stop(self):
-        """Does its best to stop the worker."""
+        """Does its best to stop the Worker."""
         stop_worker(self.process)
         self.task_writer.close()
         self.result_reader.close()
 
     def join(self, timeout=None):
+        """Joins the Worker's process."""
         self.process.join(timeout=timeout)
 
     def cancel(self):
@@ -310,7 +335,7 @@ class Worker(object):
 
 
 class PoolTask(Task):
-    """Extends the *Task* object to support *process* decorator."""
+    """Extends the *Task* object to support *process* *Pool*."""
     def _cancel(self):
         """Overrides the *Task* cancel method."""
         self._cancelled = True
@@ -326,13 +351,6 @@ class Context(PoolContext):
 
     def stop(self):
         """Stop the workers."""
-        for worker in self.pool:
-            stop_worker(worker.process)
-
-    def kill(self):
-        """Forces all workers to stop."""
-        self.stop()
-
         for worker in self.pool:
             stop_worker(worker.process)
 
@@ -363,24 +381,14 @@ class Pool(BasePool):
                                 workers, task_limit)
 
     def _start(self):
-        """Start the Pool managers."""
-        self._managers = [pool_manager(self._context)]
+        """Starts the Pool manager."""
+        self._manager = pool_manager(self._context)
         self._context.state = RUNNING
-
-    def stop(self):
-        """Stops the pool without performing any pending task."""
-        self._context.state = STOPPED
-
-        for manager in self._managers:
-            manager.join()
-
-        self._context.stop()
 
     def kill(self):
         """Kills the pool forcing all workers to terminate immediately."""
         self._context.state = STOPPED
-
-        self._context.kill()
+        self._context.stop()
 
     def schedule(self, function, args=(), kwargs={}, identifier=None,
                  callback=None, timeout=0):

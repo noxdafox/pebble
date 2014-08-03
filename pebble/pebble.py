@@ -404,7 +404,7 @@ class BasePool(object):
     def __init__(self):
         self._counter = count()
         self._context = None
-        self._managers = ()
+        self._manager = None
 
     def __enter__(self):
         return self
@@ -422,9 +422,8 @@ class BasePool(object):
         if self._context.state == CREATED:
             self._start()
         else:
-            for manager in self._managers:
-                if not manager.is_alive():
-                    self._context.state = ERROR
+            if not self._manager.is_alive():
+                self._context.state = ERROR
 
     def _schedule(self, task):
         """Schedules *Task* into the Pool."""
@@ -446,6 +445,13 @@ class BasePool(object):
 
         """
         self._context.state = CLOSED
+
+    def stop(self):
+        """Stops the pool without performing any pending task."""
+        self._context.state = STOPPED
+        if self._manager is not None:
+            self._manager.join()
+        self._context.stop()
 
     def join(self, timeout=None):
         """Joins the pool waiting until all workers exited.

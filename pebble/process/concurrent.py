@@ -163,7 +163,10 @@ def task_manager(task, reader):
     except (IOError, OSError, EOFError):
         results = ProcessExpired('Abnormal termination')
 
-    stop_worker(worker)
+    try:
+        stop_worker(worker)
+    except RuntimeError:
+        pass
     worker.join()
     if isinstance(results, ProcessExpired):
         results.exitcode = worker.exitcode
@@ -190,4 +193,7 @@ class ProcessTask(Task):
         """Overrides the *Task* cancel method in order to signal it
         to the *process* decorator handler."""
         super(ProcessTask, self)._cancel()
-        stop_worker(self._worker)
+        try:
+            stop_worker(self._worker)
+        except RuntimeError:
+            pass

@@ -6,7 +6,7 @@ import threading
 
 from multiprocessing import Pipe
 
-from pebble import process
+from pebble import process, ProcessExpired
 from pebble import TaskCancelled, TimeoutError, PoolError
 
 
@@ -74,6 +74,11 @@ def pid_function():
 def sigterm_function():
     signal.signal(signal.SIGTERM, signal.SIG_IGN)
     time.sleep(100)
+
+
+def critical_function():
+    os._exit(123)
+
 
 
 # class TestProcessTaskObj(object):
@@ -361,6 +366,12 @@ class TestProcessPool(unittest.TestCase):
             task = pool.schedule(function, args=[1],
                                  kwargs={'keyword_argument': 1})
         self.assertEqual(task.get(), 2)
+
+    def test_process_pool_dead_process(self):
+        """Process Pool ProcessExpired is raised if process dies."""
+        with process.Pool() as pool:
+            task = pool.schedule(critical_function)
+        self.assertRaises(ProcessExpired, task.get)
 
     @unittest.skipIf(os.name == 'nt', "Test won't run on Windows'.")
     def test_process_pool_ignoring_sigterm(self):

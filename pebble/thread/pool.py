@@ -21,7 +21,7 @@ from traceback import format_exc, print_exc
 
 from .spawn import spawn
 from ..pebble import STOPPED, RUNNING, ERROR
-from ..pebble import BasePool, PoolContext, Task
+from ..pebble import BasePool, PoolContext, Task, coroutine
 
 
 @spawn(name='pool_worker', daemon=True)
@@ -71,27 +71,41 @@ def pool_worker(context):
     context.worker_event.set()
 
 
-@spawn(name='worker_manager', daemon=True)
-def worker_manager(context):
+@spawn(name='pool_manager', daemon=True)
+def pool_manager(context):
     """Collects expired workers and spawns new ones."""
     pool = context.pool
     event = context.worker_event
-    workers = context.worker_number
     event.set()
 
+    try:
+        workersmanager = workers_manager(context)
+
+        while context.state not in (ERROR, STOPPED):
+            event.wait(0.6)
+            event.clear()
+
+            workersmanager.send([w for w in pool if not w.is_alive()])
+    except StopIteration:
+        context.state = STOPPED if context.state == STOPPED else ERROR
+
+
+@coroutine
+def workers_manager(context):
+    """Manages expired Workers."""
+    pool = context.pool
+    worker_number = context.worker_number
+
     while context.state not in (ERROR, STOPPED):
-        event.wait(0.6)
-        event.clear()
+        workers = (yield)
 
-        expired = [w for w in pool.values() if not w.is_alive()]
-
-        for worker in expired:
+        for worker in workers:
             worker.join()
-            del pool[worker.ident]
+            pool.remove(worker)
 
-        for _ in range(workers - len(pool)):
+        for _ in range(worker_number - len(pool)):
             worker = pool_worker(context)
-            pool[worker.ident] = worker
+            pool.append(worker)
 
 
 class Context(PoolContext):
@@ -134,19 +148,16 @@ class Pool(BasePool):
                                 workers, task_limit)
 
     def _start(self):
-        """Start the Pool managers."""
-        self._managers = [worker_manager(self._context)]
+        """Starts the Pool manager."""
+        self._manager = pool_manager(self._context)
         self._context.state = RUNNING
 
     def stop(self):
         """Stops the pool without performing any pending task."""
         self._context.state = STOPPED
-
         self._context.worker_event.set()
-
-        for manager in self._managers:
-            manager.join()
-
+        if self._manager is not None:
+            self._manager.join()
         self._context.stop()
 
     def schedule(self, function, args=(), kwargs={}, identifier=None,

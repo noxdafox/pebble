@@ -80,7 +80,6 @@ def critical_function():
     os._exit(123)
 
 
-
 # class TestProcessTaskObj(object):
 #     a = 0
 

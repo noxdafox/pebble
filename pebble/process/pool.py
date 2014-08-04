@@ -66,11 +66,14 @@ def ready(workers, interval):
     readers = [w.reader for w in workers if not w.expired]
     writers = [w.writer for w in workers if not w.closed]
 
-    if os.name == 'nt':
-        rd = [r for r in readers if r.poll(0)]
-        wt = writers  # no way to know ready writers in Windows
-    else:
-        rd, wt, _ = select(readers, writers, [], interval)
+    try:
+        if os.name == 'nt':
+            rd = [r for r in readers if r.poll(0)]
+            wt = writers  # no way to know ready writers in Windows
+        else:
+            rd, wt, _ = select(readers, writers, [], interval)
+    except (IOError, OSError):
+        return [], []
 
     return ([w for w in workers if w.reader in rd],
             [w for w in workers if w.writer in wt])

@@ -57,6 +57,8 @@ def problematic(worker):
         return True
     elif task.cancelled:
         return True
+    elif worker.exitcode and not worker.closed:
+        return True
     else:
         return False
 
@@ -72,7 +74,7 @@ def ready(workers, interval):
             wt = writers  # no way to know ready writers in Windows
         else:
             rd, wt, _ = select(readers, writers, [], interval)
-    except (IOError, OSError):
+    except (EOFError, IOError, OSError):
         return [], []
 
     return ([w for w in workers if w.reader in rd],
@@ -139,9 +141,6 @@ def results_manager(context):
                 tasks.append(worker.receive())
             except (EOFError, IOError, OSError):
                 worker.reader.close()
-                if worker.exitcode and not worker.closed:
-                    tasks.append((worker.cancel(),
-                                 ProcessExpired('Abnormal termination')))
 
         for task, results in tasks:
             done(task, results)
@@ -154,17 +153,19 @@ def task_manager(context):
 
     while context.state not in (ERROR, STOPPED):
         workers = (yield)
-        tasks = []  # [Task, Task]
+        problematics = []  # [(Worker, Task), (Worker, Task)]
 
         for worker in workers:
             worker.stop()
-            tasks.append(worker.cancel())
+            problematics.append((worker, worker.cancel()))
 
-        for task in tasks:
+        for worker, task in problematics:
             if (task.timeout and time() - task._timestamp > task.timeout):
                 done(task, TimeoutError('Task timeout'))
             elif task.cancelled:
                 done(task, TaskCancelled('Task cancelled'))
+            elif worker.exitcode:
+                done(task, ProcessExpired('Abnormal termination'))
 
 
 @coroutine

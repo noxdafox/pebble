@@ -314,18 +314,18 @@ class Task(object):
         once the timeout expires.
 
         """
-        with self._task_ready:
-            if not self._ready:
-                self._task_ready.wait(timeout)
-            if self._ready:
-                if (isinstance(self._results, BaseException)):
-                    raise self._results
-                else:
-                    return self._results
-            else:  # get timeout
-                if cancel:
-                    self._cancel()
-                raise TimeoutError("Task is still running")
+        if self._ready:
+            return self._get()
+        else:
+            with self._task_ready:
+                if not self._ready:
+                    self._task_ready.wait(timeout)
+                if self._ready:
+                    return self._get()
+                else:  # get timed out
+                    if cancel:
+                        self._cancel()
+                    raise TimeoutError("Task is still running")
 
     def cancel(self):
         """Cancels the Task."""
@@ -338,6 +338,13 @@ class Task(object):
         self._results = TaskCancelled("Task cancelled")
         self._ready = self._cancelled = True
         self._task_ready.notify_all()
+
+    def _get(self):
+        """Returns the results."""
+        if (isinstance(self._results, BaseException)):
+            raise self._results
+        else:
+            return self._results
 
     def _set(self, results):
         """Sets the results within the task."""

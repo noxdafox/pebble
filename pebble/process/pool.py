@@ -63,19 +63,27 @@ def problematic(worker):
         return False
 
 
+def nt_reader(reader):
+    """Checks if the reader is ready in Windows."""
+    try:
+        if reader.poll(0):
+            return True
+    except (IOError, OSError):  # Pipe closed means EOF
+        return True
+
+    return False
+
+
 def ready(workers, interval):
     """Collects workers ready to send/receive."""
     readers = [w.reader for w in workers if not w.expired]
     writers = [w.writer for w in workers if not w.closed]
 
-    try:
-        if os.name == 'nt':
-            rd = [r for r in readers if r.poll(0)]
-            wt = writers  # no way to know ready writers in Windows
-        else:
-            rd, wt, _ = select(readers, writers, [], interval)
-    except (EOFError, IOError, OSError):
-        return [], []
+    if os.name == 'nt':
+        rd = [r for r in readers if nt_reader(r)]
+        wt = writers  # no way to know ready writers in Windows
+    else:
+        rd, wt, _ = select(readers, writers, [], interval)
 
     return ([w for w in workers if w.reader in rd],
             [w for w in workers if w.writer in wt])
@@ -97,7 +105,7 @@ def pool_manager(context):
             readers, writers = ready(pool, 0.2)
 
             # sleep if Pool is idling
-            if not readers and writers and queue.empty():
+            if not readers and queue.empty():
                 sleep(0.1)
 
             scheduler.send(writers)
@@ -214,7 +222,10 @@ def pool_worker(tasks, results, limit,
             error.traceback = format_exc()
 
     while not limit or next(counter) < limit:
-        function, args, kwargs = tasks.recv()
+        try:
+            function, args, kwargs = tasks.recv()
+        except (EOFError, IOError, OSError):
+            return
 
         try:
             value = function(*args, **kwargs)
@@ -225,6 +236,8 @@ def pool_worker(tasks, results, limit,
 
         try:
             results.send(error is not None and error or value)
+        except (EOFError, IOError, OSError):
+            return
         except PicklingError as error:
             results.send(error)
 

@@ -67,7 +67,6 @@ def long_function():
 
 
 def pid_function():
-    time.sleep(0.1)
     return os.getpid()
 
 
@@ -186,7 +185,7 @@ class TestProcessPool(unittest.TestCase):
         """Process Pool multiple tasks are handled by different processes."""
         tasks = []
         with process.Pool(workers=2) as pool:
-            for i in range(0, 5):
+            for i in range(0, 1000):
                 tasks.append(pool.schedule(pid_function))
         self.assertEqual(len(set([t.get() for t in tasks])), 2)
 

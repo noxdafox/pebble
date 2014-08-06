@@ -76,18 +76,6 @@ class ProcessExpired(PebbleError):
 # --------------------------------------------------------------------------- #
 #                                 Decorators                                  #
 # --------------------------------------------------------------------------- #
-def coroutine(function):
-    """Coroutine decorator, turns a function into a coroutine starting it."""
-    @wraps(function)
-    def wrapper(*args, **kwargs):
-        crtn = function(*args, **kwargs)
-        next(crtn)
-
-        return crtn
-
-    return wrapper
-
-
 def synchronized(lock):
     """Locks the execution of decorated function on given *lock*.
 
@@ -411,7 +399,7 @@ class BasePool(object):
     def __init__(self):
         self._counter = count()
         self._context = None
-        self._manager = None
+        self._managers = None
 
     def __enter__(self):
         return self
@@ -429,8 +417,9 @@ class BasePool(object):
         if self._context.state == CREATED:
             self._start()
         else:
-            if not self._manager.is_alive():
-                self._context.state = ERROR
+            for manager in self._managers:
+                if not manager.is_alive():
+                    self._context.state = ERROR
 
     def _schedule(self, task):
         """Schedules *Task* into the Pool."""
@@ -456,8 +445,10 @@ class BasePool(object):
     def stop(self):
         """Stops the pool without performing any pending task."""
         self._context.state = STOPPED
-        if self._manager is not None:
-            self._manager.join()
+        self._context.queue.put(None)
+        if self._managers is not None:
+            for manager in self._managers:
+                manager.join()
         self._context.stop()
 
     def join(self, timeout=None):

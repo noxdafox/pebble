@@ -21,7 +21,7 @@ from traceback import format_exc, print_exc
 
 from .spawn import spawn
 from ..pebble import STOPPED, RUNNING, ERROR
-from ..pebble import BasePool, PoolContext, Task, coroutine
+from ..pebble import BasePool, PoolContext, Task
 
 
 @spawn(name='pool_worker', daemon=True)
@@ -78,34 +78,25 @@ def pool_manager(context):
     event = context.worker_event
     event.set()
 
-    try:
-        workersmanager = workers_manager(context)
+    while context.state not in (ERROR, STOPPED):
+        event.wait(0.6)
+        event.clear()
 
-        while context.state not in (ERROR, STOPPED):
-            event.wait(0.6)
-            event.clear()
-
-            workersmanager.send([w for w in pool if not w.is_alive()])
-    except StopIteration:
-        context.state = STOPPED if context.state == STOPPED else ERROR
+        manage_workers(context, [w for w in pool if not w.is_alive()])
 
 
-@coroutine
-def workers_manager(context):
+def manage_workers(context, workers):
     """Manages expired Workers."""
     pool = context.pool
     worker_number = context.worker_number
 
-    while context.state not in (ERROR, STOPPED):
-        workers = (yield)
+    for worker in workers:
+        worker.join()
+        pool.remove(worker)
 
-        for worker in workers:
-            worker.join()
-            pool.remove(worker)
-
-        for _ in range(worker_number - len(pool)):
-            worker = pool_worker(context)
-            pool.append(worker)
+    for _ in range(worker_number - len(pool)):
+        worker = pool_worker(context)
+        pool.append(worker)
 
 
 class Context(PoolContext):
@@ -149,15 +140,16 @@ class Pool(BasePool):
 
     def _start(self):
         """Starts the Pool manager."""
-        self._manager = pool_manager(self._context)
+        self._managers = (pool_manager(self._context), )
         self._context.state = RUNNING
 
     def stop(self):
         """Stops the pool without performing any pending task."""
         self._context.state = STOPPED
         self._context.worker_event.set()
-        if self._manager is not None:
-            self._manager.join()
+        if self._managers is not None:
+            for manager in self._managers:
+                manager.join()
         self._context.stop()
 
     def schedule(self, function, args=(), kwargs={}, identifier=None,

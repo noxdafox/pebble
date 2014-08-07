@@ -55,7 +55,7 @@ def problematic(worker):
         return True
     elif task.cancelled:
         return True
-    elif worker.exitcode and not worker.closed:
+    elif worker.exitcode and not worker.exitcode == -15:
         return True
     else:
         return False
@@ -147,7 +147,7 @@ def manage_results(context, workers):
         try:
             tasks.append(worker.receive())
         except (EOFError, IOError, OSError):
-            worker.reader.close()
+            worker.stop()
 
     for task, results in tasks:
         context.task_done(task, results)
@@ -262,7 +262,7 @@ class Worker(object):
 
     @property
     def expired(self):
-        return self.result_reader.closed
+        return self.task_reader and self.result_reader.closed
 
     @property
     def closed(self):
@@ -401,11 +401,6 @@ class Pool(BasePool):
         """Starts the Pool manager."""
         self._managers = (pool_manager(self._context), task_manager(self._context))
         self._context.state = RUNNING
-
-    def kill(self):
-        """Kills the pool forcing all workers to terminate immediately."""
-        self._context.state = STOPPED
-        self._context.stop()
 
     def schedule(self, function, args=(), kwargs={}, identifier=None,
                  callback=None, timeout=0):

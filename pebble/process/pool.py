@@ -262,11 +262,11 @@ class Worker(object):
 
     @property
     def expired(self):
-        return self.task_reader and self.result_reader.closed
+        return self.task_reader.closed and self.result_reader.closed
 
     @property
     def closed(self):
-        return self.task_writer.closed
+        return self.task_writer.closed or self.result_reader.closed
 
     @property
     def reader(self):

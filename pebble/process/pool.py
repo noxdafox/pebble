@@ -132,11 +132,8 @@ def manage_tasks(context, workers):
             worker.schedule(task)
         except (IOError, OSError):
             worker.writer.close()
-            try:
-                queue.put(worker.cancel())
-                queue.task_done()
-            except IndexError:
-                continue
+            queue.put(task)
+            queue.task_done()
 
 
 def manage_results(context, workers):
@@ -258,30 +255,36 @@ class Worker(object):
 
     @property
     def current(self):
+        """Returns current Task ongoing in the worker."""
         return self.tasks[0]
 
     @property
     def expired(self):
-        return self.task_reader.closed and self.result_reader.closed
+        """The Worker cannot receive any more Tasks."""
+        return self.result_reader.closed
 
     @property
     def closed(self):
+        """The Worker cannot send or receive any new Task."""
         return self.task_writer.closed or self.result_reader.closed
 
     @property
     def reader(self):
+        """Receiving end of the Worker."""
         return self.result_reader
 
     @property
     def writer(self):
+        """Sending end of the Worker."""
         return self.task_writer
 
     @property
     def exitcode(self):
+        """Exit Code of the Worker's process."""
         return self.process.exitcode
 
     def clear(self):
-        """Returns enqueued tasks."""
+        """Clears Worker's Task queue returning its content."""
         tasks = []
 
         while 1:
@@ -291,7 +294,7 @@ class Worker(object):
                 return tasks
 
     def is_alive(self):
-        """Checks if process is alive."""
+        """Checks if Worker's process is alive."""
         return self.process.is_alive()
 
     def start(self):
@@ -330,7 +333,12 @@ class Worker(object):
             task._timestamp = time()
         self.tasks.append(task)
 
-        self.task_writer.send((task._function, task._args, task._kwargs))
+        try:
+            self.task_writer.send((task._function, task._args, task._kwargs))
+        except (IOError, OSError) as error:
+            task = self.tasks.pop()
+            task._timestamp = 0
+            raise error
 
         if self.limit and next(self.counter) == self.limit:
             self.task_writer.close()

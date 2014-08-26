@@ -29,14 +29,18 @@ _registered_functions = {}
 
 def stop_worker(worker):
     """Does its best to stop the worker."""
-    try:
-        worker.terminate()
-        worker.join(3)
-        if worker.is_alive() and os.name != 'nt':
+    worker.terminate()
+    worker.join(3)
+
+    if worker.is_alive() and os.name != 'nt':
+        try:
             os.kill(worker.pid, SIGKILL)
-    except Exception:
-        if worker.is_alive():
-            raise RuntimeError("Unable to terminate PID %d" % os.getpid())
+            worker.join()
+        except OSError:
+            return
+
+    if worker.is_alive():
+        raise RuntimeError("Unable to terminate PID %d" % os.getpid())
 
 
 def trampoline(name, module, *args, **kwargs):

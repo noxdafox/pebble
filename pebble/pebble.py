@@ -215,8 +215,8 @@ def waitforqueues(queues, timeout=None):
     for queue in queues:
         queue._external_lock = block
         with queue.mutex:
-            queue._old = queue.put
-            queue.put = MethodType(new, queue)
+            queue._old = queue._put
+            queue._put = MethodType(new, queue)
 
     with block:
         if len(ready()) == 0:
@@ -224,7 +224,7 @@ def waitforqueues(queues, timeout=None):
 
     for queue in queues:
         with queue.mutex:
-            queue.put = queue._old
+            queue._put = queue._old
         delattr(queue, '_old')
         delattr(queue, '_external_lock')
 

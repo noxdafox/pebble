@@ -344,9 +344,8 @@ class PoolContext(object):
     def __init__(self, queue, queueargs, initializer, initargs,
                  workers, limit):
         self.state = CREATED
-        self.pool = {}  # {tid/pid: Thread/Process}
-        self.tasks = {}  # {Task.number: Task}
-        self.managers = None  # threads managing the Pool
+        self.pool = []
+        self.manager = None  # thread managing the Pool
         self.initializer = initializer
         self.initargs = initargs
         self.worker_number = workers
@@ -362,10 +361,10 @@ class PoolContext(object):
     def join(self, timeout):
         """Joins pool's workers."""
         while len(self.pool) > 0 and (timeout is None or timeout > 0):
-            for identifier, worker in list(self.pool.items()):
+            for worker in self.pool:
                 worker.join(timeout is not None and 0.1 or None)
                 if not worker.is_alive():
-                    self.pool.pop(identifier)
+                    self.pool.remove(worker)
 
             if timeout is not None:
                 timeout = timeout - (len(self.pool) / 10.0)

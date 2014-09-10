@@ -257,9 +257,8 @@ class Context(PoolContext):
 
     def stop(self):
         """Stop the workers."""
-        with lock(self.worker_channel):
-            for worker in self.pool.values():
-                worker.terminate()
+        for worker in self.pool.values():
+            worker.terminate()
 
     def kill(self):
         """Forces all workers to stop."""

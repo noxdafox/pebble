@@ -67,6 +67,10 @@ Pools allow to execute several tasks without the need of spawning a new worker f
 
 Check the documentation for more examples.
 
+EXPERIMENTING:
+
+  * asynchronous multiprocessing through asyncio
+
 TODO:
 
   * waitforprocesses, waitforprocessqueues: wait for multiple Processes and multiprocessing.Queues

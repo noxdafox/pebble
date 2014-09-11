@@ -40,6 +40,22 @@ from ..pebble import STOPPED, RUNNING, ERROR
 from ..pebble import Task, TimeoutError, TaskCancelled
 
 
+def cancel_future(future, *callbacks):
+    future.cancel()
+    for callback in callbacks:
+        future.remove_done_callback(callback)
+
+
+def pool_manager(loop, pool, queue, queueargs,
+                 initializer, initargs, workers, task_limit):
+    """Schedules enqueued tasks to the workers."""
+    asyncio.set_event_loop(loop)
+    asyncio.async(worker_manager(pool, queue, queueargs,
+                                 initializer, initargs,
+                                 workers, task_limit), loop=loop)
+    loop.run_forever()
+
+
 @asyncio.coroutine
 def connect(*channels):
     for channel in channels:
@@ -107,8 +123,9 @@ def worker_manager(pool, queue, queueargs,
     """Collects expired workers and spawns new ones."""
     pool = pool
     worker_expired = asyncio.Event()
+    worker_expired.set()
 
-    while context.state not in (ERROR, STOPPED):
+    while 1:
         yield from worker_expired.wait()
         worker_expired.clear()
         expired = [w for w in pool if w.expired]
@@ -120,29 +137,10 @@ def worker_manager(pool, queue, queueargs,
                 queue.put(worker.tasks.popleft())
 
         for _ in range(workers - len(pool)):
-            worker = Worker(queue, worker_expired)
+            worker = Worker(queue, limit, worker_expired)
             yield from worker.start(initializer, initargs)
-            asyncio.async(worker.loop(limit))
+            asyncio.async(worker.loop())
             pool.append(worker)
-
-
-def pool_manager(loop, pool, queue, queueargs,
-                 initializer, initargs, workers, task_limit):
-    """Schedules enqueued tasks to the workers."""
-    asyncio.set_event_loop(loop)
-    context.loop = loop
-
-    asyncio.async(worker_manager(pool, queue, queueargs,
-                                 initializer, initargs,
-                                 workers, task_limit), loop=loop)
-
-    loop.run_forever()
-
-
-def cancel_future(future, *callbacks):
-    future.cancel()
-    for callback in callbacks:
-        future.remove_done_callback(callback)
 
 
 class Worker(object):
@@ -174,30 +172,30 @@ class Worker(object):
     def result(self):
         try:
             data = yield from self.result_reader.recv()
-            cancel_future(self.timeout_future, self.task_done)
             self.result_future.set_result(data)
         except (EOFError, IOError) as error:
-            self.result_reader.close()
             self.result_future.set_result(ProcessExpired('Process expired'))
-            self.expired.set()
+            self.stop()
+        finally:
+            cancel_future(self.timeout_future, self.task_done)
 
     @asyncio.coroutine
     def timeout(self, timeout):
         yield from asyncio.sleep(timeout)
 
-        cancel_future(self.result_future, self.task_done)
         self.stop()
         self.timeout_future.set_result(TimeoutError('Task timeout'))
+        cancel_future(self.result_future, self.task_done)
 
     @asyncio.coroutine
     def loop(self):
-        self.set_result()
+        self.set_result_future()
 
         while self.task_limit == 0 or next(self.task_sent) < self.task_limit:
             if not self.queue.empty():
                 task = self.queue.get(0)
                 if not self.tasks and task._timeout is not None:
-                    self.set_timeout(task._timeout)
+                    self.set_timeout_future(task._timeout)
                 self.tasks.append(task)
 
                 data = (task._function, task._args, task._kwargs)
@@ -205,12 +203,12 @@ class Worker(object):
             else:
                 yield from asyncio.sleep(0.3)
 
-    def set_result(self):
+    def set_result_future(self):
         self.result_future = asyncio.Future()
         self.result_future.add_done_callback(self.task_done)
         asyncio.async(self.result())
 
-    def set_timeout(self, timeout):
+    def set_timeout_future(self, timeout):
         self.timeout_future = asyncio.Future()
         self.timeout_future.add_done_callback(self.task_done)
         asyncio.async(self.timeout(timeout))
@@ -229,9 +227,9 @@ class Worker(object):
 
         self.queue.task_done()
 
-        self.set_result()
+        self.set_result_future()
         if self.tasks and self.tasks[0]._timeout is not None:
-            self.set_timeout(self.tasks[0]._timeout)
+            self.set_timeout_future(self.tasks[0]._timeout)
 
     def stop(self):
         stop_worker(self.process)
@@ -265,39 +263,9 @@ class Pool(BasePool):
                                      workers, task_limit))
         self._manager.daemon = True
 
-    def _start(self):
-        """Start the Pool managers."""
-        self._manager.start()
-        self._context.state = RUNNING
-
     def stop(self):
         """Stops the pool without performing any pending task."""
-        self._context.state = STOPPED
-
-        self._context.loop.stop()
+        self._loop.stop()
         self._manager.join()
 
         self._context.stop()
-
-    def schedule(self, function, args=(), kwargs={}, identifier=None,
-                 callback=None, timeout=0):
-        """Schedules *function* into the Pool, passing *args* and *kwargs*
-        respectively as arguments and keyword arguments.
-
-        If *callback* is a callable it will be executed once the function
-        execution has completed with the returned *Task* as a parameter.
-
-        *timeout* is an integer, if expires the task will be terminated
-        and *Task.get()* will raise *TimeoutError*.
-
-        The *identifier* value will be forwarded to the *Task.id* attribute.
-
-        A *Task* object is returned.
-
-        """
-        task = Task(next(self._counter), function, args, kwargs,
-                    callback, timeout, identifier)
-
-        self._schedule(task)
-
-        return task

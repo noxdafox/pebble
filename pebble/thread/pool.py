@@ -21,7 +21,7 @@ from traceback import format_exc
 
 from .spawn import spawn
 from ..pebble import STOPPED, RUNNING, ERROR
-from ..pebble import BasePool, PoolContext, Task
+from ..pebble import BasePool, Task
 
 
 @spawn(name='pool_worker', daemon=True)
@@ -86,20 +86,6 @@ def worker_manager(context):
         for _ in range(workers - len(pool)):
             worker = pool_worker(context)
             pool[worker.ident] = worker
-
-
-class Context(PoolContext):
-    """Pool's Context."""
-    def __init__(self, queue, queueargs, initializer, initargs,
-                 workers, limit):
-        super(Context, self).__init__(queue, queueargs,
-                                      initializer, initargs,
-                                      workers, limit)
-        self.worker_event = Event()
-
-    def stop(self):
-        for _ in range(self.worker_number):
-            self.queue.put(None)
 
 
 class Pool(BasePool):

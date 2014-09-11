@@ -21,6 +21,7 @@ import threading
 
 from time import sleep
 from inspect import isclass
+from itertools import count
 from functools import wraps
 from types import MethodType
 
@@ -333,24 +334,10 @@ class Task(object):
                 self._task_ready.notify_all()
 
 
-def join_workers(workers, timeout):
-    """Joins pool's workers."""
-    while len(workers) > 0 and (timeout is None or timeout > 0):
-        for worker in workers[:]:
-            worker.join(timeout is not None and 0.1 or None)
-            if not worker.is_alive():
-                workers.remove(worker)
-
-        if timeout is not None:
-            timeout = timeout - (len(workers) / 10.0)
-
-    if len(workers) > 0:
-        raise TimeoutError('Workers are still running')
-
-
 class BasePool(object):
     def __init__(self, queue, queueargs, initializer, initargs,
                  workers, limit):
+        self._counter = count()
         self._pool = []
         self._manager = None  # thread managing the Pool
         self._initializer = initializer
@@ -387,52 +374,3 @@ class BasePool(object):
 
         """
         self._closed = True
-
-    def join(self, timeout=None):
-        """Joins the pool waiting until all workers exited.
-
-        If *timeout* is set, it block until all workers are done
-        or raise TimeoutError.
-
-        """
-        if self._manager.is_alive():
-            raise RuntimeError('The Pool is still running')
-        elif self._closed:
-            if timeout is not None:
-                while self._queue.unfinished_tasks > 0 and timeout > 0:
-                    sleep(0.1)
-                    timeout -= 0.1
-            else:
-                self._queue.join()
-            self.stop()
-
-        join_workers(self._pool)
-
-    def schedule(self, function, args=(), kwargs={}, identifier=None,
-                 callback=None, timeout=0):
-        """Schedules *function* into the Pool, passing *args* and *kwargs*
-        respectively as arguments and keyword arguments.
-
-        If *callback* is a callable it will be executed once the function
-        execution has completed with the returned *Task* as a parameter.
-
-        *timeout* is an integer, if expires the task will be terminated
-        and *Task.get()* will raise *TimeoutError*.
-
-        The *identifier* value will be forwarded to the *Task.id* attribute.
-
-        A *Task* object is returned.
-
-        """
-        if not self._manager.is_alive():
-            try:
-                self._manager.start()
-            except RuntimeError:
-                raise RuntimeError('The Pool is not running')
-
-        task = Task(next(self._counter), function, args, kwargs,
-                    callback, timeout, identifier)
-
-        self._queue.put(task)
-
-        return task

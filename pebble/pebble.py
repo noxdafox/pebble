@@ -387,9 +387,9 @@ class PoolContext(object):
 
 class BasePool(object):
     def __init__(self):
+        self._pool = []
+        self._manager = None
         self._counter = count()
-        self._context = None
-        self._managers = ()
 
     def __enter__(self):
         return self

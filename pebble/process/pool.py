@@ -23,6 +23,7 @@ from time import sleep, time
 from collections import deque
 from signal import SIG_IGN, SIGINT, signal
 from traceback import format_exc
+from threading import Thread
 try:  # Python 2
     from Queue import Empty
     from cPickle import PicklingError
@@ -40,9 +41,9 @@ from ..pebble import Task, TimeoutError, TaskCancelled
 
 
 @asyncio.coroutine
-def worker_connect(tasks, results):
-    yield from tasks.connect()
-    yield from results.connect()
+def connect(*channels):
+    for channel in channels:
+        yield from channel.connect()
 
 
 @asyncio.coroutine
@@ -78,7 +79,7 @@ def pool_worker(tasks, results, initializer, initargs, limit):
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
-    loop.run_until_complete(worker_connect(tasks, results))
+    loop.run_until_complete(connect(tasks, results))
 
     if initializer is not None:
         try:
@@ -101,245 +102,122 @@ def pool_worker(tasks, results, initializer, initargs, limit):
 
 
 @asyncio.coroutine
-def worker_manager(context):
+def worker_manager(pool, queue, queueargs,
+                   initializer, initargs, workers, limit):
     """Collects expired workers and spawns new ones."""
-    pool = context.pool
-    queue = context.queue
-    limit = context.worker_limit
-    initializer = context.initializer
-    initargs = context.initargs
-    workers = context.worker_number
+    pool = pool
+    worker_expired = asyncio.Event()
 
     while context.state not in (ERROR, STOPPED):
+        yield from worker_expired.wait()
+        worker_expired.clear()
         expired = [w for w in pool if w.expired]
 
         for worker in expired:
             worker.join()
             pool.remove(worker)
             while worker.tasks:
-                queue.put(worker.cancel())
+                queue.put(worker.tasks.popleft())
 
         for _ in range(workers - len(pool)):
-            worker = Worker(initializer, initargs, limit)
-            yield from worker.start()
+            worker = Worker(queue, worker_expired)
+            yield from worker.start(initializer, initargs)
+            asyncio.async(worker.loop(limit))
             pool.append(worker)
 
-        yield from asyncio.sleep(0.3)
 
-
-@asyncio.coroutine
-def task_scheduler(context):
+def pool_manager(loop, pool, queue, queueargs,
+                 initializer, initargs, workers, task_limit):
     """Schedules enqueued tasks to the workers."""
-    pool = context.pool
-    queue = context.queue
-
-    while context.state not in (ERROR, STOPPED):
-        workers = [w for w in pool if not w.closed]
-
-        if workers:
-            try:
-                for worker in workers:
-                    task = queue.get_nowait()
-                    try:
-                        worker.schedule(task)
-                    except (IOError, OSError):
-                        queue.put(task)
-            except Empty:
-                yield from asyncio.sleep(0.3)
-        else:
-            yield from asyncio.sleep(0.1)
-
-
-@asyncio.coroutine
-def result_manager(context):
-    """Manages results coming from the Workers."""
-    pending = []
-    pool = context.pool
-    task_done = context.task_done
-
-    while context.state not in (ERROR, STOPPED):
-        workers = [w for w in pool if not w.expired and
-                   w not in [p[0] for p in pending]]
-
-        for worker in workers:
-            future = asyncio.Future()
-            asyncio.async(worker.result(future))
-            future.add_done_callback(task_done)
-            pending.append((worker, future))
-
-        if pending:
-            futures = [p[1] for p in pending]
-            done, _ = yield from asyncio.wait(
-                futures, timeout=0.3, return_when=asyncio.FIRST_COMPLETED)
-            pending = [p for p in pending if p[1] not in done]
-        else:
-            yield from asyncio.sleep(0.3)
-
-
-@asyncio.coroutine
-def timeout_manager(context):
-    pool = context.pool
-
-    while context.state not in (ERROR, STOPPED):
-        now = time()
-        workers = [w for w in pool
-                   if not w.expired and w.current is not None]
-
-        for worker in workers:
-            task = worker.current
-            if (task.timeout > 0 and now - task._timestamp > task.timeout):
-                worker.stop()
-                worker.cancel()
-                done(task, TimeoutError('Task timeout'))
-
-        yield from asyncio.sleep(0.1)
-
-
-@asyncio.coroutine
-def cancellation_manager(context):
-    pool = context.pool
-
-    while context.state not in (ERROR, STOPPED):
-        workers = [w for w in pool
-                   if not w.expired and w.current is not None]
-
-        for worker in workers:
-            task = worker.current
-            if task.cancelled:
-                worker.stop()
-                worker.cancel()
-                done(task, TaskCancelled('Task cancelled'))
-
-        yield from asyncio.sleep(0.3)
-
-
-@asyncio.coroutine
-def expiration_manager(context):
-    pool = context.pool
-
-    while context.state not in (ERROR, STOPPED):
-        workers = [w for w in pool
-                   if not w.expired and w.current is not None]
-
-        for worker in workers:
-            task = worker.current
-            if not worker.alive and not worker.closed:
-                worker.cancel()
-                done(task, ProcessExpired('Process expired'))
-
-        yield from asyncio.sleep(0.3)
-
-
-@spawn_thread(name='pool_manager', daemon=True)
-def pool_manager(context):
-    """Schedules enqueued tasks to the workers."""
-    loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     context.loop = loop
 
-    asyncio.async(worker_manager(context), loop=loop)
-    asyncio.async(task_scheduler(context), loop=loop)
-    asyncio.async(result_manager(context), loop=loop)
-    asyncio.async(timeout_manager(context), loop=loop)
-    asyncio.async(cancellation_manager(context), loop=loop)
-    asyncio.async(expiration_manager(context), loop=loop)
+    asyncio.async(worker_manager(pool, queue, queueargs,
+                                 initializer, initargs,
+                                 workers, task_limit), loop=loop)
 
     loop.run_forever()
 
 
+def cancel_future(future, *callbacks):
+    future.cancel()
+    for callback in callbacks:
+        future.remove_done_callback(callback)
+
+
 class Worker(object):
-    def __init__(self, initializer, initargs, limit):
-        self.initializer = initializer
-        self.initargs = initargs
-        self.limit = limit
-        self.counter = count()
+    def __init__(self, queue, task_limit, expiration_event):
+        self.queue = queue
+        self.task_limit = task_limit
+        self.task_sent = count()
         self.tasks = deque()
         self.process = None
+        self.result_future = None
+        self.timeout_future = None
+        self.expired = expiration_event
         self.task_reader, self.task_writer = pipe()
         self.result_reader, self.result_writer = pipe()
-
-    @property
-    def alive(self):
-        return self.process.is_alive()
-
-    @property
-    def current(self):
-        return self.tasks and self.tasks[0] or None
-
-    @property
-    def closed(self):
-        return not self.task_writer.writable
 
     @property
     def expired(self):
         return self.result_reader.closed
 
     @asyncio.coroutine
-    def result(self, future):
-        try:
-            data = yield from self.result_reader.recv()
-            task = self.tasks.popleft()
-            future.set_result((task, data))
-        except (EOFError, IOError) as error:
-            self.result_reader.close()
-            raise
-
-    @asyncio.coroutine
-    def start(self):
+    def start(self, initializer, initargs):
         self.process = pool_worker(self.task_reader, self.result_writer,
-                                   self.initializer, self.initargs, self.limit)
+                                   initializer, initargs, self.task_limit)
         self.task_reader.close()
         self.result_writer.close()
-        yield from self.task_writer.connect()
-        yield from self.result_reader.connect()
+        yield from connect(self.task_writer, self.result_reader)
 
-    def is_alive(self):
-        return self.process.is_alive()
-
-    def cancel(self):
-        return self.tasks.popleft()
-
-    def stop(self):
-        stop_worker(self.process)
-        self.task_writer.close()
-
-    def join(self, timeout):
-        self.process.join(timeout)
-
-    def schedule(self, task):
-        if not self.tasks:
-            task._timestamp = time()
-        self.tasks.append(task)
-
+    @asyncio.coroutine
+    def result(self):
         try:
-            self.task_writer.send((task._function, task._args, task._kwargs))
-        except (IOError, OSError):
-            task._timestamp = 0
-            self.cancel()
-            raise
+            data = yield from self.result_reader.recv()
+            cancel_future(self.timeout_future, self.task_done)
+            self.result_future.set_result(data)
+        except (EOFError, IOError) as error:
+            self.result_reader.close()
+            self.result_future.set_result(ProcessExpired('Process expired'))
+            self.expired.set()
 
-        if self.limit and next(self.counter) == self.limit:
-            self.task_writer.close()
+    @asyncio.coroutine
+    def timeout(self, timeout):
+        yield from asyncio.sleep(timeout)
 
+        cancel_future(self.result_future, self.task_done)
+        self.stop()
+        self.timeout_future.set_result(TimeoutError('Task timeout'))
 
-class PoolTask(Task):
-    """Extends the *Task* object to support *process* decorator."""
-    def _cancel(self):
-        """Overrides the *Task* cancel method."""
-        self._cancelled = True
+    @asyncio.coroutine
+    def loop(self):
+        self.set_result()
 
+        while self.task_limit == 0 or next(self.task_sent) < self.task_limit:
+            if not self.queue.empty():
+                task = self.queue.get(0)
+                if not self.tasks and task._timeout is not None:
+                    self.set_timeout(task._timeout)
+                self.tasks.append(task)
 
-class Context(PoolContext):
-    """Pool's Context."""
-    def __init__(self, queue, queueargs, initializer, initargs,
-                 workers, limit):
-        super(Context, self).__init__(queue, queueargs,
-                                      initializer, initargs,
-                                      workers, limit)
-        self.loop = None
+                data = (task._function, task._args, task._kwargs)
+                self.task_writer.send(data)
+            else:
+                yield from asyncio.sleep(0.3)
+
+    def set_result(self):
+        self.result_future = asyncio.Future()
+        self.result_future.add_done_callback(self.task_done)
+        asyncio.async(self.result())
+
+    def set_timeout(self, timeout):
+        self.timeout_future = asyncio.Future()
+        self.timeout_future.add_done_callback(self.task_done)
+        asyncio.async(self.timeout(timeout))
 
     def task_done(self, future):
-        task, results = future.result()
+        task = self.tasks.popleft()
+        results = future.result()
         task._set(results)
 
         if task._callback is not None:
@@ -351,10 +229,13 @@ class Context(PoolContext):
 
         self.queue.task_done()
 
+        self.set_result()
+        if self.tasks and self.tasks[0]._timeout is not None:
+            self.set_timeout(self.tasks[0]._timeout)
+
     def stop(self):
-        """Stop the workers."""
-        for worker in self.pool:
-            stop_worker(worker.process)
+        stop_worker(self.process)
+        self.expired.set()
 
 
 class Pool(BasePool):
@@ -377,12 +258,16 @@ class Pool(BasePool):
     def __init__(self, workers=1, task_limit=0, queue=None, queueargs=None,
                  initializer=None, initargs=()):
         super(Pool, self).__init__()
-        self._context = Context(queue, queueargs, initializer, initargs,
-                                workers, task_limit)
+        self._loop = asyncio.new_event_loop()
+        self._manager = Thread(target=pool_manager,
+                               args=(self._loop, self._pool, queue, queueargs,
+                                     initializer, initargs,
+                                     workers, task_limit))
+        self._manager.daemon = True
 
     def _start(self):
         """Start the Pool managers."""
-        self._manager = pool_manager(self._context)
+        self._manager.start()
         self._context.state = RUNNING
 
     def stop(self):
@@ -410,8 +295,8 @@ class Pool(BasePool):
         A *Task* object is returned.
 
         """
-        task = PoolTask(next(self._counter), function, args, kwargs,
-                        callback, timeout, identifier)
+        task = Task(next(self._counter), function, args, kwargs,
+                    callback, timeout, identifier)
 
         self._schedule(task)
 

@@ -22,7 +22,7 @@ from itertools import count
 from time import sleep, time
 from collections import deque
 from signal import SIG_IGN, SIGINT, signal
-from traceback import format_exc
+from traceback import format_exc, print_exc
 from threading import Thread
 try:  # Python 2
     from Queue import Empty
@@ -37,7 +37,7 @@ from .spawn import spawn as spawn_process
 from ..thread import spawn as spawn_thread
 from ..pebble import BasePool
 from ..pebble import STOPPED, RUNNING, ERROR
-from ..pebble import Task, TimeoutError, TaskCancelled
+from ..pebble import Task, TimeoutError, TaskCancelled, ProcessExpired
 
 
 def cancel_future(future, *callbacks):
@@ -104,7 +104,11 @@ def pool_worker(tasks, results, initializer, initargs, limit):
 
             os._exit(0)
 
-    loop.run_until_complete(worker_loop(tasks, results, limit))
+    try:
+        loop.run_until_complete(worker_loop(tasks, results, limit))
+    except:
+        print_exc()
+        raise
 
     # if deinitializer is not None:
     #     try:
@@ -188,8 +192,9 @@ class Worker(object):
         try:
             data = yield from self.result_reader.recv()
             self.result_future.set_result(data)
-        except (EOFError, IOError) as error:
-            self.result_future.set_result(ProcessExpired('Process expired'))
+        except (EOFError, IOError):
+            error = ProcessExpired('Process expired', self.process.exitcode)
+            self.result_future.set_result(error)
             self.stop()
         # finally:
         #     cancel_future(self.timeout_future, self.task_done)

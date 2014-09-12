@@ -3,13 +3,13 @@ import os
 import asyncio
 
 from collections import deque
-from pickle import load, dumps
+from pickle import load, dumps, UnpicklingError
 
 
 BUFFSIZE = 65 * 1024
 
 
-def pipe(loop=None):
+def pipe():
     reader, writer = os.pipe()
 
     reader = Connection(os.fdopen(reader, 'rb', 0))
@@ -42,11 +42,14 @@ class Connection(object):
         data = yield from self._reader.read(BUFFSIZE)
         stream = io.BytesIO(self._stream_buffer + data)
 
+        if self._reader.at_eof():
+            raise EOFError("End Of File")
+
         while 1:
             try:
                 cursor = stream.tell()
                 self._data.append(load(stream))
-            except EOFError:
+            except (EOFError, UnpicklingError):
                 stream.seek(cursor)
                 self._stream_buffer = stream.read()
                 return
@@ -114,7 +117,7 @@ class Connection(object):
         self._closed()
         self._readable()
 
-        if not self._data:
+        while not self._data:
             yield from self._receive()
 
         return self._data.popleft()

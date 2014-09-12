@@ -123,7 +123,7 @@ def worker_manager(pool, queue, initializer, initargs, workers, limit):
     worker_expired.set()
 
     while 1:
-        yield from worker_expired.wait()
+        #yield from worker_expired.wait()
         worker_expired.clear()
         expired = [w for w in pool if w.expired]
 
@@ -138,6 +138,9 @@ def worker_manager(pool, queue, initializer, initargs, workers, limit):
             yield from worker.start(initializer, initargs)
             asyncio.async(worker.loop())
             pool.append(worker)
+
+        print(queue.qsize())
+        yield from asyncio.sleep(2)
 
 
 def join_workers(workers, timeout=None):
@@ -204,14 +207,18 @@ class Worker(object):
         self.set_result_future()
 
         while self.task_limit == 0 or next(self.task_sent) < self.task_limit:
-            task = yield from self.queue.get()
+            if self.queue.qsize():
+                task = yield from self.queue.get()
 
-            # if not self.tasks and task.timeout is not None:
-            #     self.set_timeout_future(task.timeout)
-            self.tasks.append(task)
+                # if not self.tasks and task.timeout is not None:
+                #     self.set_timeout_future(task.timeout)
+                self.tasks.append(task)
 
-            data = (task._function, task._args, task._kwargs)
-            self.task_writer.send(data)
+                data = (task._function, task._args, task._kwargs)
+                self.task_writer.send(data)
+            else:
+                print(self.queue.qsize())
+                yield from asyncio.sleep(0.3)
 
     def set_result_future(self):
         self.result_future = asyncio.Future()
@@ -278,6 +285,7 @@ class Pool(BasePool):
     @asyncio.coroutine
     def _enqueue(self, task):
         yield from self._queue.put(task)
+        print("enqueued ", task.number)
 
     @asyncio.coroutine
     def _join(self):
@@ -325,7 +333,7 @@ class Pool(BasePool):
 
         """
         if self._closed:
-            sleep(3)
+            sleep(100)
             #asyncio.wait_for(self._join(), timeout)
             self.stop()
         elif self._manager.is_alive():

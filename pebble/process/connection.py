@@ -1,12 +1,8 @@
-import io
 import os
+import struct
 import asyncio
 
-from collections import deque
-from pickle import load, dumps, UnpicklingError
-
-
-BUFFSIZE = 65 * 1024
+from pickle import loads, dumps
 
 
 def pipe():
@@ -20,11 +16,9 @@ def pipe():
 
 class Connection(object):
     def __init__(self, handle):
-        self._data = deque()
-        self._stream_buffer = b''
-        self._handle = handle
         self._reader = None
         self._writer = None
+        self._handle = handle
 
     def __enter__(self):
         return self
@@ -33,26 +27,19 @@ class Connection(object):
         self.close()
 
     @asyncio.coroutine
-    def _receive(self):
+    def _recv(self):
         """Receives data from the other side of the connection
         and deserializes it.
 
         """
-        cursor = 0
-        data = yield from self._reader.read(BUFFSIZE)
-        stream = io.BytesIO(self._stream_buffer + data)
-
         if self._reader.at_eof():
             raise EOFError("End Of File")
 
-        while 1:
-            try:
-                cursor = stream.tell()
-                self._data.append(load(stream))
-            except (EOFError, UnpicklingError):
-                stream.seek(cursor)
-                self._stream_buffer = stream.read()
-                return
+        data = yield from self._reader.read(4)
+        size, = struct.unpack('!i', data)
+        data = yield from self._reader.read(size)
+
+        return loads(data)
 
     def _closed(self):
         if self.closed:
@@ -117,10 +104,7 @@ class Connection(object):
         self._closed()
         self._readable()
 
-        while not self._data:
-            yield from self._receive()
-
-        return self._data.popleft()
+        return (yield from self._recv())
 
     def fileno(self):
         """File descriptor or handle of the connection"""
@@ -139,4 +123,8 @@ class Connection(object):
         self._closed()
         self._writable()
 
-        self._writer.write(dumps(obj))
+        data = dumps(obj)
+        size = struct.pack('!i', len(data))
+
+        self._writer.write(size)
+        self._writer.write(data)

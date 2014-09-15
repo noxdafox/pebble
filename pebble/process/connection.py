@@ -95,9 +95,9 @@ class Connection(object):
         try:
             yield from asyncio.wait_for(self._receive(), timeout)
         except asyncio.TimeoutError:
-            pass
-
-        return self._data and True or False
+            return False
+        else:
+            return True
 
     @asyncio.coroutine
     def recv(self):
@@ -109,6 +109,7 @@ class Connection(object):
     def fileno(self):
         """File descriptor or handle of the connection"""
         self._closed()
+
         return self._handle
 
     def close(self):

@@ -219,7 +219,6 @@ class Worker(object):
                 data = (task._function, task._args, task._kwargs)
                 self.task_writer.send(data)
             else:
-                print(self.queue.qsize())
                 yield from asyncio.sleep(0.3)
 
     def set_result_future(self):
@@ -334,7 +333,8 @@ class Pool(BasePool):
 
         """
         if self._closed:
-            asyncio.wait_for(self._join(), timeout)
+            self._loop.call_soon_threadsafe(asyncio.wait_for,
+                                            self._join(), timeout)
             self.stop()
         elif self._manager.is_alive():
             raise RuntimeError('The Pool is still running')

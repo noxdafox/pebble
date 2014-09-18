@@ -14,6 +14,17 @@ def pipe():
     return reader, writer
 
 
+@asyncio.coroutine
+def recv(reader, size):
+    """Waits until size bytes are received."""
+    data = bytearray()
+
+    while len(data) < size:
+        data += yield from reader.read(size - len(data))
+
+    return data
+
+
 class Connection(object):
     def __init__(self, handle):
         self._reader = None
@@ -35,9 +46,9 @@ class Connection(object):
         if self._reader.at_eof():
             raise EOFError("End Of File")
 
-        data = yield from self._reader.read(4)
+        data = yield from recv(self._reader, 4)
         size, = struct.unpack('!i', data)
-        data = yield from self._reader.read(size)
+        data = yield from recv(self._reader, size)
 
         return loads(data)
 

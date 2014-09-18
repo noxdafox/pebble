@@ -23,7 +23,7 @@ from time import sleep, time
 from collections import deque
 from signal import SIG_IGN, SIGINT, signal
 from traceback import format_exc, print_exc
-from threading import Thread
+from threading import Thread, Event
 try:  # Python 2
     from Queue import Empty
     from cPickle import PicklingError
@@ -148,8 +148,8 @@ def join_workers(workers, timeout=None):
     """Joins pool's workers."""
     while len(workers) > 0 and (timeout is None or timeout > 0):
         for worker in workers[:]:
-            worker.join(timeout is not None and 0.1 or None)
-            if not worker.is_alive():
+            worker.process.join(timeout is not None and 0.1 or None)
+            if not worker.process.is_alive():
                 workers.remove(worker)
 
         if timeout is not None:
@@ -275,6 +275,7 @@ class Pool(BasePool):
                  initializer=None, initargs=()):
         super(Pool, self).__init__(queue, queueargs, initializer, initargs,
                                    workers, task_limit)
+        self.event = Event()
         self._queue = asyncio.JoinableQueue()
         self._loop = asyncio.new_event_loop()
         self._manager = Thread(target=pool_manager,
@@ -288,13 +289,16 @@ class Pool(BasePool):
         yield from self._queue.put(task)
 
     @asyncio.coroutine
-    def _join(self):
-        yield from self._queue.join()
+    def _join(self, timeout):
+        yield from asyncio.wait_for(self._queue.join(), timeout)
+        self.event.set()
 
     def stop(self):
         """Stops the pool without performing any pending task."""
         self._loop.stop()
         self._manager.join()
+        for worker in self._pool:
+            worker.stop()
 
     def schedule(self, function, args=(), kwargs={}, identifier=None,
                  callback=None, timeout=0):
@@ -333,8 +337,8 @@ class Pool(BasePool):
 
         """
         if self._closed:
-            self._loop.call_soon_threadsafe(asyncio.wait_for,
-                                            self._join(), timeout)
+            self._loop.call_soon_threadsafe(asyncio.async, self._join(timeout))
+            self.event.wait()
             self.stop()
         elif self._manager.is_alive():
             raise RuntimeError('The Pool is still running')

@@ -19,7 +19,6 @@
 import signal
 import threading
 
-from time import sleep
 from inspect import isclass
 from itertools import count
 from functools import wraps
@@ -332,6 +331,24 @@ class Task(object):
                 self._ready = True
                 self._results = results
                 self._task_ready.notify_all()
+
+
+# --------------------------------------------------------------------------- #
+#                              Pools Helpers                                  #
+# --------------------------------------------------------------------------- #
+def join_workers(workers, timeout=None):
+    """Joins pool's workers."""
+    while len(workers) > 0 and (timeout is None or timeout > 0):
+        for worker in workers[:]:
+            worker.process.join(timeout is not None and 0.1 or None)
+            if not worker.process.is_alive():
+                workers.remove(worker)
+
+        if timeout is not None:
+            timeout = timeout - (len(workers) / 10.0)
+
+    if len(workers) > 0:
+        raise TimeoutError('Workers are still running')
 
 
 class BasePool(object):

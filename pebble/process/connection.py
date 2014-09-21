@@ -104,7 +104,7 @@ class Connection(object):
         self._readable()
 
         try:
-            yield from asyncio.wait_for(self._receive(), timeout)
+            yield from asyncio.wait_for(self._recv(), timeout)
         except asyncio.TimeoutError:
             return False
         else:

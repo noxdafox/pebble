@@ -338,8 +338,10 @@ class Task(object):
 # --------------------------------------------------------------------------- #
 def join_workers(workers, timeout=None):
     """Joins pool's workers."""
+    timeout = timeout is not None and timeout / len(workers) or None
+
     while len(workers) > 0 and (timeout is None or timeout > 0):
-        for worker in workers[:]:
+        for worker in workers:
             worker.process.join(timeout is not None and 0.1 or None)
             if not worker.process.is_alive():
                 workers.remove(worker)

@@ -20,6 +20,8 @@ def recv(reader, size):
     data = bytearray()
 
     while len(data) < size:
+        if reader.at_eof():
+            raise EOFError("End Of File")
         data += yield from reader.read(size - len(data))
 
     return data
@@ -43,9 +45,6 @@ class Connection(object):
         and deserializes it.
 
         """
-        if self._reader.at_eof():
-            raise EOFError("End Of File")
-
         data = yield from recv(self._reader, 4)
         size, = struct.unpack('!i', data)
         data = yield from recv(self._reader, size)
@@ -97,18 +96,6 @@ class Connection(object):
             trns, prot = yield from loop.connect_write_pipe(asyncio.Protocol,
                                                             self._handle)
             self._writer = asyncio.StreamWriter(trns, prot, None, loop)
-
-    @asyncio.coroutine
-    def poll(self, timeout=None):
-        self._closed()
-        self._readable()
-
-        try:
-            yield from asyncio.wait_for(self._recv(), timeout)
-        except asyncio.TimeoutError:
-            return False
-        else:
-            return True
 
     @asyncio.coroutine
     def recv(self):

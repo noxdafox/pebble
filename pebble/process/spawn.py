@@ -21,23 +21,6 @@ from multiprocessing import Process
 from .generic import dump_function, register_function
 
 
-def launch(function, name, daemon, args, kwargs):
-    """Launches the function within a process."""
-    process = Process(target=function, name=name, args=args, kwargs=kwargs)
-    process.daemon = daemon
-    process.start()
-
-    return process
-
-
-def wrapped(function, name, daemon, args, kwargs):
-    """Starts decorated function within a process."""
-    if os.name == 'nt':
-        function, args = dump_function(function, args)
-
-    return launch(function, name, daemon, args, kwargs)
-
-
 def spawn(*args, **kwargs):
     """Spawns a new process and runs a function within it.
 
@@ -57,20 +40,9 @@ def spawn(*args, **kwargs):
        a decorator.
 
     """
-    name = None
-    daemon = False
-
-    if len(args) > 0 and len(kwargs) == 0:  # @concurrent
-        function = args[0]
-        if os.name == 'nt':
-            register_function(function)
-
-        @wraps(function)
-        def wrapper(*args, **kwargs):
-            return wrapped(function, name, daemon, args, kwargs)
-
-        return wrapper
-    elif len(kwargs) > 0 and len(args) == 0:  # concurrent() or @concurrent()
+    if args and not kwargs:  # decorator, no parameters
+        return decorate(args[0])
+    elif kwargs and not args:  # function or decorator with parameters
         name = kwargs.pop('name', None)
         daemon = kwargs.pop('daemon', False)
         target = kwargs.pop('target', None)
@@ -79,17 +51,39 @@ def spawn(*args, **kwargs):
 
         if target is not None:
             return launch(target, name, daemon, args, kwargs)
+        else:
+            def wrap(function):
+                return decorate(function, name, daemon)
 
-        def wrap(function):
-            if os.name == 'nt':
-                register_function(function)
-
-            @wraps(function)
-            def wrapper(*args, **kwargs):
-                return wrapped(function, name, daemon, args, kwargs)
-
-            return wrapper
-
-        return wrap
+            return wrap
     else:
-        raise ValueError("Decorator accepts only keyword arguments.")
+        raise ValueError("Only keyword arguments are accepted.")
+
+
+def decorate(function, name=None, daemon=False):
+    """Decorates the given function
+    taking care of Windows process decoration issues.
+
+    """
+    if os.name == 'nt':
+        register_function(function)
+
+    @wraps(function)
+    def wrapper(*args, **kwargs):
+        if os.name == 'nt':
+            target, args = dump_function(function, args)
+        else:
+            target = function
+
+        return launch(target, name, daemon, args, kwargs)
+
+    return wrapper
+
+
+def launch(target, name, daemon, args, kwargs):
+    """Launches the target function within a process."""
+    process = Process(target=target, name=name, args=args, kwargs=kwargs)
+    process.daemon = daemon
+    process.start()
+
+    return process

@@ -18,27 +18,18 @@ from functools import wraps
 from threading import Thread
 
 
-def launch(function, name, daemon, args, kwargs):
-    """Launches the function within a thread."""
-    thread = Thread(target=function, name=name, args=args, kwargs=kwargs)
-    thread.daemon = daemon
-    thread.start()
-
-    return thread
-
-
 def spawn(*args, **kwargs):
     """Spawns a new thread and runs a function within it.
-
-    The concurrent function works as well as a decorator.
 
     *target* is the desired function to be run
     with the given *args* and *kwargs* parameters; if *daemon* is True,
     the thread will be stopped if the parent exits (default False).
     *name* is a string, if assigned will be given to the thread.
 
-    The *spawn* function returns the Thread object which is running
-    the *target* or decorated one.
+    The *spawn* function works as well as a decorator.
+
+    Returns the Thread object which is running
+    the *target* function or decorated one.
 
     .. note:
        The decorator accepts the keywords *daemon* and *name* only.
@@ -46,35 +37,45 @@ def spawn(*args, **kwargs):
        a decorator.
 
     """
-    name = None
-    daemon = False
+    if args and not kwargs:  # decorator, no parameters
+        return decorate(args[0])
+    elif kwargs and not args:  # function or decorator with parameters
+        if 'target' in kwargs:
+            thred = ThreadWorker(kwargs.pop('target', None), **kwargs)
+            thred.start()
 
-    if len(args) > 0 and len(kwargs) == 0:  # @concurrent
-        function = args[0]
+            return thred
+        else:
+            def wrap(function):
+                name = kwargs.get('name')
+                daemon = kwargs.get('daemon')
 
-        @wraps(function)
-        def wrapper(*args, **kwargs):
-            return launch(function, name, daemon, args, kwargs)
+                return decorate(function, name=name, daemon=daemon)
 
-        return wrapper
-    elif len(kwargs) > 0 and len(args) == 0:  # concurrent() or @concurrent()
-        name = kwargs.pop('name', None)
-        daemon = kwargs.pop('daemon', False)
-        target = kwargs.pop('target', None)
-        args = kwargs.pop('args', [])
-        kwargs = kwargs.pop('kwargs', {})
-
-        if target is not None:
-            return launch(target, name, daemon, args, kwargs)
-
-        def wrap(function):
-
-            @wraps(function)
-            def wrapper(*args, **kwargs):
-                return launch(function, name, daemon, args, kwargs)
-
-            return wrapper
-
-        return wrap
+            return wrap
     else:
-        raise ValueError("Decorator accepts only keyword arguments.")
+        raise ValueError("Only keyword arguments are accepted.")
+
+
+def decorate(function, name=None, daemon=None):
+    """Decorates the given function
+    taking care of Windows thread decoration issues.
+
+    """
+    @wraps(function)
+    def wrapper(*args, **kwargs):
+        thred = ThreadWorker(function, name=name, daemon=daemon,
+                             args=args, kwargs=kwargs)
+        thred.start()
+
+        return thred
+
+    return wrapper
+
+
+class ThreadWorker(Thread):
+    def __init__(self, target, name=None, daemon=False,
+                 args=None, kwargs=None):
+        super(ThreadWorker, self).__init__(target=target, name=name,
+                                           args=args, kwargs=kwargs)
+        self.daemon = daemon

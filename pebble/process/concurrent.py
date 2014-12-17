@@ -27,7 +27,7 @@ except:  # Python 3
 from .spawn import spawn as spawn_process
 from ..thread import spawn as spawn_thread
 from ..pebble import Task, TimeoutError, ProcessExpired
-from .generic import dump_function, stop_worker, register_function
+from .common import dump_function, stop_worker, register_function
 
 
 _task_counter = count()

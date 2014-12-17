@@ -28,7 +28,7 @@ except:  # Python 3
     from queue import Empty
     from pickle import PicklingError
 
-from .generic import channels, lock, stop_worker
+from .common import channels, lock, stop_worker
 from .spawn import spawn as spawn_process
 from ..thread import spawn as spawn_thread
 from ..pebble import BasePool, PoolContext

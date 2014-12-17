@@ -18,21 +18,21 @@ import os
 from functools import wraps
 from multiprocessing import Process
 
-from .generic import dump_function, register_function
+from .common import dump_function, register_function
 
 
 def spawn(*args, **kwargs):
     """Spawns a new process and runs a function within it.
-
-    The *spawn* function works as well as a decorator.
 
     *target* is the desired function to be run
     with the given *args* and *kwargs* parameters; if *daemon* is True,
     the process will be stopped if the parent exits (default False).
     *name* is a string, if assigned will be given to the process.
 
-    The *spawn* function returns the Process object which is running
-    the *target* or decorated one.
+    The *spawn* function works as well as a decorator.
+
+    Returns the Process object which is running
+    the *target* function or decorated one.
 
     .. note:
        The decorator accepts the keywords *daemon* and *name* only.
@@ -43,24 +43,24 @@ def spawn(*args, **kwargs):
     if args and not kwargs:  # decorator, no parameters
         return decorate(args[0])
     elif kwargs and not args:  # function or decorator with parameters
-        name = kwargs.pop('name', None)
-        daemon = kwargs.pop('daemon', False)
-        target = kwargs.pop('target', None)
-        args = kwargs.pop('args', [])
-        kwargs = kwargs.pop('kwargs', {})
+        if 'target' in kwargs:
+            process = ProcessWorker(kwargs.pop('target', None), **kwargs)
+            process.start()
 
-        if target is not None:
-            return launch(target, name, daemon, args, kwargs)
+            return process
         else:
             def wrap(function):
-                return decorate(function, name, daemon)
+                name = kwargs.get('name')
+                daemon = kwargs.get('daemon')
+
+                return decorate(function, name=name, daemon=daemon)
 
             return wrap
     else:
         raise ValueError("Only keyword arguments are accepted.")
 
 
-def decorate(function, name=None, daemon=False):
+def decorate(function, name=None, daemon=None):
     """Decorates the given function
     taking care of Windows process decoration issues.
 
@@ -75,15 +75,17 @@ def decorate(function, name=None, daemon=False):
         else:
             target = function
 
-        return launch(target, name, daemon, args, kwargs)
+        process = ProcessWorker(target, name=name, daemon=daemon,
+                                args=args, kwargs=kwargs)
+        process.start()
+        return process
 
     return wrapper
 
 
-def launch(target, name, daemon, args, kwargs):
-    """Launches the target function within a process."""
-    process = Process(target=target, name=name, args=args, kwargs=kwargs)
-    process.daemon = daemon
-    process.start()
-
-    return process
+class ProcessWorker(Process):
+    def __init__(self, target, name=None, daemon=False,
+                 args=None, kwargs=None):
+        super(ProcessWorker, self).__init__(target=target, name=name,
+                                            args=args, kwargs=kwargs)
+        self.daemon = daemon

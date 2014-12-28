@@ -51,7 +51,7 @@ def spawn(*function, **properties):
         raise ValueError("Only keyword arguments are accepted.")
 
 
-def launch(target, name=None, daemon=False, args=None, kwargs=None):
+def launch(target, name=None, daemon=False, args=(), kwargs={}):
     """Launches the target function within a process."""
     process = Process(target=target, name=name, args=args, kwargs=kwargs)
     process.daemon = daemon

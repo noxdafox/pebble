@@ -67,6 +67,14 @@ class TestProcessSpawn(unittest.TestCase):
     def test_undecorated_results(self):
         """Process Spawn undecorated results are produced."""
         queue = Queue()
+        proc = process.spawn(target=decorated_kword, args=[queue, 1])
+        results = queue.get()
+        proc.join()
+        self.assertEqual(results, 1)
+
+    def test_undecorated_keyworkd_results(self):
+        """Process Spawn undecorated with keyword, results are produced."""
+        queue = Queue()
         proc = process.spawn(target=decorated_kword, args=[queue, 1],
                              kwargs={'keyword_argument': 1})
         results = queue.get()

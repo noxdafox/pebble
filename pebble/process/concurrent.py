@@ -13,53 +13,27 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with Pebble.  If not, see <http://www.gnu.org/licenses/>.
 
-import os
-
-from functools import wraps
+from time import time
 from itertools import count
 from multiprocessing import Pipe
-from traceback import print_exc, format_exc
+from traceback import format_exc
 try:  # Python 2
     from cPickle import PicklingError
 except:  # Python 3
     from pickle import PicklingError
 
-from .spawn import spawn as spawn_process
-from ..thread import spawn as spawn_thread
+from .common import decorate, stop
+from .spawn import spawn as process_spawn
+from ..thread import spawn as thread_spawn
 from ..pebble import Task, TimeoutError, ProcessExpired
-from .common import dump_function, stop_worker, register_function
 
 
 _task_counter = count()
 
 
-def launch(function, timeout, callback, identifier, args, kwargs):
-    """Launches the function within a process."""
-    reader, writer = Pipe(duplex=False)
-    worker = task_worker(writer, function, args, kwargs)
-    writer.close()
-
-    task = ProcessTask(next(_task_counter), callback=callback, timeout=timeout,
-                       function=function, args=args, kwargs=kwargs,
-                       identifier=identifier, worker=worker)
-    task_manager(task, reader)
-
-    return task
-
-
-def wrapped(function, timeout, callback, identifier, args, kwargs):
-    """Starts decorated function within a process."""
-    if os.name == 'nt':
-        function, args = dump_function(function, args)
-
-    return launch(function, timeout, callback, identifier, args, kwargs)
-
-
 def concurrent(*args, **kwargs):
     """Runs the given function in a concurrent process,
     taking care of the results and error management.
-
-    The *concurrent* function works as well as a decorator.
 
     *target* is the desired function to be run
     with the given *args* and *kwargs* parameters; if *timeout* is set,
@@ -67,7 +41,9 @@ def concurrent(*args, **kwargs):
     If a *callback* is passed, it will be run after the job has finished with
     the returned *Task* as parameter.
 
-    The *concurrent* function returns a *Task* object.
+    The *concurrent* function works as well as a decorator.
+
+    Returns a *Task* object.
 
     .. note:
        The decorator accepts the keywords *timeout* and *callback* only.
@@ -75,77 +51,64 @@ def concurrent(*args, **kwargs):
        a decorator.
 
     """
-    timeout = 0
-    callback = None
-    identifier = None
+    if args and not kwargs:  # decorator, no parameters
+        return decorate(args[0], launch)
+    elif kwargs and not args:  # function or decorator with parameters
+        if 'target' in kwargs:
+            return launch(kwargs.pop('target', None), **kwargs)
+        else:
+            def wrap(function):
+                return decorate(function, launch, **kwargs)
 
-    if len(args) > 0 and len(kwargs) == 0:  # @task
-        function = args[0]
-        if os.name == 'nt':
-            register_function(function)
-
-        @wraps(function)
-        def wrapper(*args, **kwargs):
-            return wrapped(function, timeout, callback, identifier,
-                           args, kwargs)
-
-        return wrapper
-    elif len(kwargs) > 0 and len(args) == 0:  # task() or @task()
-        timeout = kwargs.pop('timeout', 0)
-        callback = kwargs.pop('callback', None)
-        identifier = kwargs.pop('identifier', None)
-        target = kwargs.pop('target', None)
-        args = kwargs.pop('args', [])
-        kwargs = kwargs.pop('kwargs', {})
-
-        if target is not None:
-            return launch(target, timeout, callback, identifier,
-                          args, kwargs)
-
-        def wrap(function):
-            if os.name == 'nt':
-                register_function(function)
-
-            @wraps(function)
-            def wrapper(*args, **kwargs):
-                return wrapped(function, timeout, callback, identifier,
-                               args, kwargs)
-
-            return wrapper
-
-        return wrap
+            return wrap
     else:
-        raise ValueError("Decorator accepts only keyword arguments.")
+        raise ValueError("Only keyword arguments are accepted.")
 
 
-@spawn_process(daemon=True)
-def task_worker(writer, function, args, kwargs):
+def launch(target, timeout=None, callback=None, identifier=None,
+           args=None, kwargs=None):
+    """Wraps the target function within a Task
+    and executes it in a separate process.
+
+    """
+    reader, writer = Pipe(duplex=False)
+    worker = task_worker(writer, target, args, kwargs)
+    writer.close()
+
+    task = ProcessTask(next(_task_counter), worker, time(),
+                       callback=callback, timeout=timeout,
+                       function=target, args=args, kwargs=kwargs,
+                       identifier=identifier)
+    task_manager(task, reader)
+
+    return task
+
+
+@process_spawn(daemon=True)
+def task_worker(pipe, function, args, kwargs):
     """Runs the actual function in separate process."""
-    error = None
-    results = None
+    results = execute(function, args, kwargs)
+    send_results(pipe, results)
 
+
+def execute(function, args, kwargs):
     try:
-        results = function(*args, **kwargs)
-    except (IOError, OSError):
-        return 0
-    except Exception as err:
-        error = err
+        return function(*args, **kwargs)
+    except Exception as error:
         error.traceback = format_exc()
-    finally:
-        try:
-            writer.send(error is not None and error or results)
-        except (IOError, OSError, EOFError):
-            return 0
-        except PicklingError as err:
-            error = err
-            error.traceback = format_exc()
-            writer.send.put(error)
-
-    return 0
+        return error
 
 
-@spawn_thread(daemon=True)
-def task_manager(task, reader):
+def send_results(pipe, data):
+    try:
+        pipe.send(data)
+    except PicklingError as error:
+        error.traceback = format_exc()
+        pipe.send(error)
+
+
+@thread_spawn(daemon=True)
+def task_manager(task, pipe):
     """Task's lifecycle manager.
 
     Starts a new worker, waits for the *Task* to be performed,
@@ -153,41 +116,37 @@ def task_manager(task, reader):
 
     """
     worker = task._worker
-    timeout = task.timeout > 0 and task.timeout or None
 
-    try:
-        if reader.poll(timeout):
-            results = reader.recv()
-        else:
-            results = TimeoutError('Task Timeout', timeout)
-    except (IOError, OSError, EOFError):
-        results = ProcessExpired('Abnormal termination')
+    results = get_results(pipe, task.timeout > 0 and task.timeout or None)
 
-    stop_worker(worker)
-    worker.join()
+    if worker.is_alive():
+        stop(worker)
+
     if isinstance(results, ProcessExpired):
         results.exitcode = worker.exitcode
 
-    task._set(results)
-    if task._callback is not None:
-        try:
-            task._callback(task)
-        except Exception:
-            print_exc()
+    task.set_results(results)
+
+
+def get_results(pipe, timeout):
+    try:
+        if pipe.poll(timeout):
+            return pipe.recv()
+        else:
+            return TimeoutError('Task Timeout', timeout)
+    except (EnvironmentError, EOFError):
+        return ProcessExpired('Abnormal termination')
 
 
 class ProcessTask(Task):
     """Extends the *Task* object to support *process* decorator."""
-    def __init__(self, task_nr, function=None, args=None, kwargs=None,
-                 callback=None, timeout=0, identifier=None, worker=None):
-        super(ProcessTask, self).__init__(task_nr, callback=callback,
-                                          function=function, args=args,
-                                          kwargs=kwargs, timeout=timeout,
-                                          identifier=identifier)
+    def __init__(self, task_nr, worker, timestamp, **kwargs):
+        super(ProcessTask, self).__init__(task_nr, **kwargs)
         self._worker = worker
+        self._timestamp = timestamp
 
-    def _cancel(self):
+    def cancel(self):
         """Overrides the *Task* cancel method in order to signal it
         to the *process* decorator handler."""
-        super(ProcessTask, self)._cancel()
-        stop_worker(self._worker)
+        super(ProcessTask, self).cancel()
+        stop(self._worker)

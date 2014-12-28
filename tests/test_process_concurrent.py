@@ -158,6 +158,12 @@ class TestProcessConcurrent(unittest.TestCase):
                                   kwargs={'keyword_argument': 1})
         self.assertEqual(task.get(), 2)
 
+    def test_undecorated_started(self):
+        """Process Concurrent undecorated task is set to started."""
+        task = process.concurrent(target=undecorated, args=[1],
+                                  kwargs={'keyword_argument': 1})
+        self.assertTrue(task.started)
+
     def test_decorated_results(self):
         """Process Concurrent results are produced."""
         task = decorated(1, 1)

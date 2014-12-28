@@ -13,15 +13,12 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with Pebble.  If not, see <http://www.gnu.org/licenses/>.
 
-import os
-
-from functools import wraps
 from multiprocessing import Process
 
-from .common import dump_function, register_function
+from .common import decorate
 
 
-def spawn(*args, **kwargs):
+def spawn(*function, **properties):
     """Spawns a new process and runs a function within it.
 
     *target* is the desired function to be run
@@ -40,52 +37,24 @@ def spawn(*args, **kwargs):
        a decorator.
 
     """
-    if args and not kwargs:  # decorator, no parameters
-        return decorate(args[0])
-    elif kwargs and not args:  # function or decorator with parameters
-        if 'target' in kwargs:
-            process = ProcessWorker(kwargs.pop('target', None), **kwargs)
-            process.start()
-
-            return process
+    if function and not properties:  # decorator, no parameters
+        return decorate(function[0], launch)
+    elif properties and not function:  # function or decorator with parameters
+        if 'target' in properties:
+            return launch(properties.pop('target', None), **properties)
         else:
-            def wrap(function):
-                name = kwargs.get('name')
-                daemon = kwargs.get('daemon')
-
-                return decorate(function, name=name, daemon=daemon)
+            def wrap(target):
+                return decorate(target, launch, **properties)
 
             return wrap
     else:
         raise ValueError("Only keyword arguments are accepted.")
 
 
-def decorate(function, name=None, daemon=None):
-    """Decorates the given function
-    taking care of Windows process decoration issues.
+def launch(target, name=None, daemon=False, args=None, kwargs=None):
+    """Launches the target function within a process."""
+    process = Process(target=target, name=name, args=args, kwargs=kwargs)
+    process.daemon = daemon
+    process.start()
 
-    """
-    if os.name == 'nt':
-        register_function(function)
-
-    @wraps(function)
-    def wrapper(*args, **kwargs):
-        if os.name == 'nt':
-            target, args = dump_function(function, args)
-        else:
-            target = function
-
-        process = ProcessWorker(target, name=name, daemon=daemon,
-                                args=args, kwargs=kwargs)
-        process.start()
-        return process
-
-    return wrapper
-
-
-class ProcessWorker(Process):
-    def __init__(self, target, name=None, daemon=False,
-                 args=None, kwargs=None):
-        super(ProcessWorker, self).__init__(target=target, name=name,
-                                            args=args, kwargs=kwargs)
-        self.daemon = daemon
+    return process

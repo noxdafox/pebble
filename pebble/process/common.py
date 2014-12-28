@@ -1,6 +1,7 @@
 
 import os
 import sys
+from functools import wraps
 from contextlib import contextmanager
 
 from multiprocessing import Pipe, RLock
@@ -13,7 +14,7 @@ from ..pebble import TimeoutError
 _registered_functions = {}
 
 
-def stop_worker(worker):
+def stop(worker):
     """Does its best to stop the worker."""
     worker.terminate()
     worker.join(3)
@@ -27,6 +28,43 @@ def stop_worker(worker):
 
     if worker.is_alive():
         raise RuntimeError("Unable to terminate PID %d" % os.getpid())
+
+
+def decorate(function, launcher, **properties):
+    """Decorates the given function
+    taking care of Windows process decoration issues.
+
+    *function* represent the target function to be decorated,
+    *launcher* takes care of executing the function with the
+    given decoration *properties*.
+
+    """
+    if os.name == 'nt':
+        register_function(function)
+
+    @wraps(function)
+    def wrapper(*args, **kwargs):
+        if os.name == 'nt':
+            target, args = dump_function(function, args)
+        else:
+            target = function
+
+        return launcher(target, args=args, kwargs=kwargs, **properties)
+
+    return wrapper
+
+
+def register_function(function):
+    global _registered_functions
+
+    _registered_functions[function.__name__] = function
+
+
+def dump_function(function, args):
+    """Dumps a decorated function."""
+    args = [function.__name__, function.__module__] + list(args)
+
+    return trampoline, args
 
 
 def trampoline(name, module, *args, **kwargs):
@@ -46,19 +84,6 @@ def trampoline(name, module, *args, **kwargs):
         function = _registered_functions[name]
 
     return function(*args, **kwargs)
-
-
-def dump_function(function, args):
-    """Dumps a decorated function."""
-    args = [function.__name__, function.__module__] + list(args)
-
-    return trampoline, args
-
-
-def register_function(function):
-    global _registered_functions
-
-    _registered_functions[function.__name__] = function
 
 
 # --------------------------------------------------------------------------- #

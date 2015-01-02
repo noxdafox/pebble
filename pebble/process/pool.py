@@ -33,9 +33,9 @@ except:  # Python 3
 from .common import stop
 from .spawn import spawn as spawn_process
 from ..thread import spawn as spawn_thread
-from ..pebble import BasePool, PoolContext
+from ..pebble import Task, BasePool, PoolContext
 from ..pebble import STOPPED, RUNNING, ERROR
-from ..pebble import Task, TimeoutError, TaskCancelled
+from ..exceptions import TimeoutError, TaskCancelled
 
 
 ACK = 0  # task aknowledged by worker

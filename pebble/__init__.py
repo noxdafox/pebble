@@ -17,5 +17,5 @@ from . import thread
 from . import process
 from .pebble import synchronized, sighandler, waitfortasks, waitforthreads
 from .pebble import waitforqueues, Task
-from .pebble import PebbleError, PoolError, TaskCancelled
-from .pebble import TimeoutError, ProcessExpired
+from .exceptions import TimeoutError, ProcessExpired
+from .exceptions import PebbleError, PoolError, TaskCancelled

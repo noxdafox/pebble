@@ -24,7 +24,7 @@ except:  # Python 3
 if os.name in ('posix', 'os2'):
     from signal import SIGKILL
 
-from ..pebble import TimeoutError, ProcessExpired
+from ..exceptions import TimeoutError, ProcessExpired
 
 
 _registered_functions = {}

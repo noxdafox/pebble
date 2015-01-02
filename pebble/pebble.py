@@ -31,6 +31,8 @@ try:  # Python 2
 except:  # Python 3
     from queue import Queue
 
+from .exceptions import PoolError, TimeoutError, TaskCancelled
+
 
 # Pool states
 STOPPED = 0
@@ -39,35 +41,6 @@ CLOSED = 2
 CREATED = 3
 EXPIRED = 4
 ERROR = 5
-
-
-class PebbleError(Exception):
-    """Pebble base exception."""
-    pass
-
-
-class PoolError(PebbleError):
-    """Raised if an error occurred within the Pool."""
-    pass
-
-
-class TaskCancelled(PebbleError):
-    """Raised if get is called on a cancelled task."""
-    pass
-
-
-class TimeoutError(PebbleError):
-    """Raised when a timeout expires."""
-    def __init__(self, msg, value=0):
-        super(TimeoutError, self).__init__(msg)
-        self.timeout = value
-
-
-class ProcessExpired(PebbleError):
-    """Raised when process dies unexpectedly."""
-    def __init__(self, msg, code=0):
-        super(ProcessExpired, self).__init__(msg)
-        self.exitcode = code
 
 
 def synchronized(lock):

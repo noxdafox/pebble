@@ -20,7 +20,8 @@ from multiprocessing import Pipe
 from .spawn import spawn as process_spawn
 from .common import decorate, stop, send_results, get_results
 from ..thread import spawn as thread_spawn
-from ..pebble import execute, Task, ProcessExpired
+from ..pebble import execute, Task
+from ..exceptions import ProcessExpired
 
 
 _task_counter = count()

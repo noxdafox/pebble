@@ -1,14 +1,30 @@
+# This file is part of Pebble.
+
+# Pebble is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Lesser General Public License
+# as published by the Free Software Foundation,
+# either version 3 of the License, or (at your option) any later version.
+
+# Pebble is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Lesser General Public License for more details.
+
+# You should have received a copy of the GNU Lesser General Public License
+# along with Pebble.  If not, see <http://www.gnu.org/licenses/>.
 
 import os
 import sys
 from functools import wraps
-from contextlib import contextmanager
-
-from multiprocessing import Pipe, RLock
+from traceback import format_exc
+try:  # Python 2
+    from cPickle import PicklingError
+except:  # Python 3
+    from pickle import PicklingError
 if os.name in ('posix', 'os2'):
     from signal import SIGKILL
 
-from ..pebble import TimeoutError
+from ..pebble import TimeoutError, ProcessExpired
 
 
 _registered_functions = {}
@@ -86,85 +102,21 @@ def trampoline(name, module, *args, **kwargs):
     return function(*args, **kwargs)
 
 
-# --------------------------------------------------------------------------- #
-#                              Pool's Related                                 #
-# --------------------------------------------------------------------------- #
-def channels():
-    """Process Pool channel factory."""
-    read0, write0 = Pipe()
-    read1, write1 = Pipe()
-
-    return PoolChannel(read1, write0), WorkerChannel(read0, write1)
-
-
-@contextmanager
-def lock(channel):
-    channel.rlock.acquire()
-    if channel.wlock is not None:
-        channel.wlock.acquire()
+def get_results(pipe, timeout):
+    """Waits for results and handles communication errors."""
     try:
-        yield channel
-    finally:
-        channel.rlock.release()
-        if channel.wlock is not None:
-            channel.wlock.release()
-
-
-class PoolChannel(object):
-    """Pool's side of the channel."""
-    def __init__(self, reader, writer):
-        self.reader = reader
-        self.writer = writer
-
-    def poll(self, timeout=None):
-        return self.reader.poll(timeout)
-
-    def recv(self, timeout=None):
-        if self.reader.poll(timeout):
-            return self.reader.recv()
+        if pipe.poll(timeout):
+            return pipe.recv()
         else:
-            raise TimeoutError("Channel timeout")
+            return TimeoutError('Task Timeout', timeout)
+    except (EnvironmentError, EOFError):
+        return ProcessExpired('Abnormal termination')
 
-    def send(self, obj):
-        return self.writer.send(obj)
 
-
-class WorkerChannel(PoolChannel):
-    """Worker's side of the channel."""
-    def __init__(self, reader, writer):
-        super(WorkerChannel, self).__init__(reader, writer)
-        self.rlock = RLock()
-        self.wlock = os.name != 'nt' and RLock() or None
-        self.recv = self._make_recv_method()
-        self.send = self._make_send_method()
-
-    def __getstate__(self):
-        return (self.reader, self.writer,
-                self.rlock, self.wlock)
-
-    def __setstate__(self, state):
-        (self.reader, self.writer,
-         self.rlock, self.wlock) = state
-
-        self.recv = self._make_recv_method()
-        self.send = self._make_send_method()
-
-    def _make_recv_method(self):
-        def recv(timeout=None):
-            with self.rlock:
-                if self.reader.poll(timeout):
-                    return self.reader.recv()
-                else:
-                    raise TimeoutError("Channel timeout")
-
-        return recv
-
-    def _make_send_method(self):
-        def send(obj):
-            if self.wlock is not None:
-                with self.wlock:
-                    return self.writer.send(obj)
-            else:
-                return self.writer.send(obj)
-
-        return send
+def send_results(pipe, data):
+    """Send results and handles communication errors."""
+    try:
+        pipe.send(data)
+    except PicklingError as error:
+        error.traceback = format_exc()
+        pipe.send(error)

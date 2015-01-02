@@ -16,16 +16,11 @@
 from time import time
 from itertools import count
 from multiprocessing import Pipe
-from traceback import format_exc
-try:  # Python 2
-    from cPickle import PicklingError
-except:  # Python 3
-    from pickle import PicklingError
 
-from .common import decorate, stop
 from .spawn import spawn as process_spawn
+from .common import decorate, stop, send_results, get_results
 from ..thread import spawn as thread_spawn
-from ..pebble import Task, TimeoutError, ProcessExpired
+from ..pebble import execute, Task, ProcessExpired
 
 
 _task_counter = count()
@@ -91,22 +86,6 @@ def task_worker(pipe, function, args, kwargs):
     send_results(pipe, results)
 
 
-def execute(function, args, kwargs):
-    try:
-        return function(*args, **kwargs)
-    except Exception as error:
-        error.traceback = format_exc()
-        return error
-
-
-def send_results(pipe, data):
-    try:
-        pipe.send(data)
-    except PicklingError as error:
-        error.traceback = format_exc()
-        pipe.send(error)
-
-
 @thread_spawn(daemon=True)
 def task_manager(task, pipe):
     """Task's lifecycle manager.
@@ -117,7 +96,7 @@ def task_manager(task, pipe):
     """
     worker = task._worker
 
-    results = get_results(pipe, task.timeout > 0 and task.timeout or None)
+    results = get_results(pipe, task.timeout)
 
     if worker.is_alive():
         stop(worker)
@@ -126,16 +105,6 @@ def task_manager(task, pipe):
         results.exitcode = worker.exitcode
 
     task.set_results(results)
-
-
-def get_results(pipe, timeout):
-    try:
-        if pipe.poll(timeout):
-            return pipe.recv()
-        else:
-            return TimeoutError('Task Timeout', timeout)
-    except (EnvironmentError, EOFError):
-        return ProcessExpired('Abnormal termination')
 
 
 class ProcessTask(Task):

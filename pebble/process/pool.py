@@ -21,6 +21,8 @@ from itertools import count
 from time import sleep, time
 from signal import SIG_IGN, SIGINT, signal
 from traceback import format_exc
+from contextlib import contextmanager
+from multiprocessing import Pipe, RLock
 try:  # Python 2
     from Queue import Empty
     from cPickle import PicklingError
@@ -28,7 +30,7 @@ except:  # Python 3
     from queue import Empty
     from pickle import PicklingError
 
-from .common import channels, lock, stop_worker
+from .common import stop
 from .spawn import spawn as spawn_process
 from ..thread import spawn as spawn_thread
 from ..pebble import BasePool, PoolContext
@@ -178,7 +180,7 @@ def task_manager(context):
                         context.task_done(task, results)
 
                         with lock(context.worker_channel):
-                            stop_worker(pool[task._pid])
+                            stop(pool[task._pid])
                     else:  # race condition between pool and worker
                         task._timestamp = task._pid = 0
                         queue.put(task)
@@ -241,7 +243,7 @@ def worker_manager(context):
 
 class PoolTask(Task):
     """Extends the *Task* object to support *process* decorator."""
-    def _cancel(self):
+    def cancel(self):
         """Overrides the *Task* cancel method."""
         self._cancelled = True
 
@@ -266,7 +268,7 @@ class Context(PoolContext):
 
         with lock(self.worker_channel):
             for worker in self.pool.values():
-                stop_worker(worker)
+                stop(worker)
 
 
 class Pool(BasePool):
@@ -340,3 +342,87 @@ class Pool(BasePool):
         self._schedule(task)
 
         return task
+
+
+# --------------------------------------------------------------------------- #
+#                              Pool's Related                                 #
+# --------------------------------------------------------------------------- #
+def channels():
+    """Process Pool channel factory."""
+    read0, write0 = Pipe()
+    read1, write1 = Pipe()
+
+    return PoolChannel(read1, write0), WorkerChannel(read0, write1)
+
+
+@contextmanager
+def lock(channel):
+    channel.rlock.acquire()
+    if channel.wlock is not None:
+        channel.wlock.acquire()
+    try:
+        yield channel
+    finally:
+        channel.rlock.release()
+        if channel.wlock is not None:
+            channel.wlock.release()
+
+
+class PoolChannel(object):
+    """Pool's side of the channel."""
+    def __init__(self, reader, writer):
+        self.reader = reader
+        self.writer = writer
+
+    def poll(self, timeout=None):
+        return self.reader.poll(timeout)
+
+    def recv(self, timeout=None):
+        if self.reader.poll(timeout):
+            return self.reader.recv()
+        else:
+            raise TimeoutError("Channel timeout")
+
+    def send(self, obj):
+        return self.writer.send(obj)
+
+
+class WorkerChannel(PoolChannel):
+    """Worker's side of the channel."""
+    def __init__(self, reader, writer):
+        super(WorkerChannel, self).__init__(reader, writer)
+        self.rlock = RLock()
+        self.wlock = os.name != 'nt' and RLock() or None
+        self.recv = self._make_recv_method()
+        self.send = self._make_send_method()
+
+    def __getstate__(self):
+        return (self.reader, self.writer,
+                self.rlock, self.wlock)
+
+    def __setstate__(self, state):
+        (self.reader, self.writer,
+         self.rlock, self.wlock) = state
+
+        self.recv = self._make_recv_method()
+        self.send = self._make_send_method()
+
+    def _make_recv_method(self):
+        def recv(timeout=None):
+            with self.rlock:
+                if self.reader.poll(timeout):
+                    return self.reader.recv()
+                else:
+                    raise TimeoutError("Channel timeout")
+
+        return recv
+
+    def _make_send_method(self):
+        def send(obj):
+            if self.wlock is not None:
+                with self.wlock:
+                    return self.writer.send(obj)
+            else:
+                return self.writer.send(obj)
+
+        return send

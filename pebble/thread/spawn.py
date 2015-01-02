@@ -13,12 +13,12 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with Pebble.  If not, see <http://www.gnu.org/licenses/>.
 
-
-from functools import wraps
 from threading import Thread
 
+from .common import decorate
 
-def spawn(*args, **kwargs):
+
+def spawn(*function, **properties):
     """Spawns a new thread and runs a function within it.
 
     *target* is the desired function to be run
@@ -37,45 +37,24 @@ def spawn(*args, **kwargs):
        a decorator.
 
     """
-    if args and not kwargs:  # decorator, no parameters
-        return decorate(args[0])
-    elif kwargs and not args:  # function or decorator with parameters
-        if 'target' in kwargs:
-            thred = ThreadWorker(kwargs.pop('target', None), **kwargs)
-            thred.start()
-
-            return thred
+    if function and not properties:  # decorator, no parameters
+        return decorate(function[0], launch)
+    elif properties and not function:  # function or decorator with parameters
+        if 'target' in properties:
+            return launch(properties.pop('target', None), **properties)
         else:
-            def wrap(function):
-                name = kwargs.get('name')
-                daemon = kwargs.get('daemon')
-
-                return decorate(function, name=name, daemon=daemon)
+            def wrap(target):
+                return decorate(target, launch, **properties)
 
             return wrap
     else:
         raise ValueError("Only keyword arguments are accepted.")
 
 
-def decorate(function, name=None, daemon=None):
-    """Decorates the given function
-    taking care of Windows thread decoration issues.
+def launch(target, name=None, daemon=False, args=(), kwargs={}):
+    """Launches the target function within a thread."""
+    thread = Thread(target=target, name=name, args=args, kwargs=kwargs)
+    thread.daemon = daemon
+    thread.start()
 
-    """
-    @wraps(function)
-    def wrapper(*args, **kwargs):
-        thred = ThreadWorker(function, name=name, daemon=daemon,
-                             args=args, kwargs=kwargs)
-        thred.start()
-
-        return thred
-
-    return wrapper
-
-
-class ThreadWorker(Thread):
-    def __init__(self, target, name=None, daemon=False,
-                 args=None, kwargs=None):
-        super(ThreadWorker, self).__init__(target=target, name=name,
-                                           args=args, kwargs=kwargs)
-        self.daemon = daemon
+    return thread

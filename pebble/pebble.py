@@ -41,18 +41,6 @@ EXPIRED = 4
 ERROR = 5
 
 
-def execute(function, args, kwargs):
-    """Runs the given function returning its results or exception."""
-    try:
-        return function(*args, **kwargs)
-    except Exception as error:
-        error.traceback = format_exc()
-        return error
-
-
-# --------------------------------------------------------------------------- #
-#                                 Exceptions                                  #
-# --------------------------------------------------------------------------- #
 class PebbleError(Exception):
     """Pebble base exception."""
     pass
@@ -82,9 +70,6 @@ class ProcessExpired(PebbleError):
         self.exitcode = code
 
 
-# --------------------------------------------------------------------------- #
-#                                 Decorators                                  #
-# --------------------------------------------------------------------------- #
 def synchronized(lock):
     """Locks the execution of decorated function on given *lock*.
 
@@ -123,15 +108,6 @@ def sighandler(signals):
         return wrapper
 
     return wrap
-
-
-# --------------------------------------------------------------------------- #
-#                               Common Functions                              #
-# --------------------------------------------------------------------------- #
-def new(self, *args):
-    self._old(*args)
-    with self._external_lock:
-        self._external_lock.notify_all()
 
 
 def waitfortasks(tasks, timeout=None):
@@ -240,9 +216,12 @@ def waitforqueues(queues, timeout=None):
     return ready()
 
 
-# --------------------------------------------------------------------------- #
-#                               Common Objects                                #
-# --------------------------------------------------------------------------- #
+def new(self, *args):
+    self._old(*args)
+    with self._external_lock:
+        self._external_lock.notify_all()
+
+
 class Task(object):
     """Handler to the ongoing task."""
     def __init__(self, task_nr, function=None, args=None, kwargs=None,
@@ -352,6 +331,15 @@ class Task(object):
                 self._callback(self)
             except Exception:
                 print_exc()
+
+
+def execute(function, args, kwargs):
+    """Runs the given function returning its results or exception."""
+    try:
+        return function(*args, **kwargs)
+    except Exception as error:
+        error.traceback = format_exc()
+        return error
 
 
 class PoolContext(object):

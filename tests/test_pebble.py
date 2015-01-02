@@ -316,7 +316,7 @@ class TestTask(unittest.TestCase):
         self.assertRaises(TaskCancelled, self.task.get)
 
     def test_cancel_overriding(self):
-        """Task cancel overrides a set task."""
+        """Task cancel does not override a set task."""
         self.task._set(42)
         self.task.cancel()
-        self.assertRaises(TaskCancelled, self.task.get)
+        self.assertEqual(self.task.get(), 42)

@@ -24,7 +24,7 @@ from inspect import isclass
 from itertools import count
 from functools import wraps
 from types import MethodType
-from traceback import print_exc
+from traceback import format_exc, print_exc
 
 try:  # Python 2
     from Queue import Queue
@@ -39,6 +39,15 @@ CLOSED = 2
 CREATED = 3
 EXPIRED = 4
 ERROR = 5
+
+
+def execute(function, args, kwargs):
+    """Runs the given function returning its results or exception."""
+    try:
+        return function(*args, **kwargs)
+    except Exception as error:
+        error.traceback = format_exc()
+        return error
 
 
 # --------------------------------------------------------------------------- #
@@ -239,7 +248,7 @@ class Task(object):
     def __init__(self, task_nr, function=None, args=None, kwargs=None,
                  callback=None, timeout=0, identifier=None):
         self.id = identifier
-        self.timeout = timeout
+        self._timeout = timeout
         self._function = function
         self._args = args
         self._kwargs = kwargs
@@ -274,9 +283,34 @@ class Task(object):
         return self._timestamp > 0 and True or False
 
     @property
+    def timeout(self):
+        return self._timeout
+
+    @property
     def success(self):
         return (self._ready and not
                 isinstance(self._results, BaseException) or False)
+
+    def get(self, timeout=None, cancel=False):
+        """Retrieves the produced results, blocks until results are ready.
+
+        If the executed code raised an error it will be re-raised.
+
+        If *timeout* is set the call will block until the timeout expires
+        raising *TimeoutError" if results are not yet available.
+        If *cancel* is True while *timeout* is set *Task* will be cancelled
+        once the timeout expires.
+
+        """
+        if self.wait(timeout=timeout):
+            if (isinstance(self._results, BaseException)):
+                raise self._results
+            else:
+                return self._results
+        else:
+            if cancel:
+                self.cancel()
+            raise TimeoutError("Task is still running")
 
     def wait(self, timeout=None):
         """Waits until results are ready.
@@ -291,48 +325,33 @@ class Task(object):
                 self._task_ready.wait(timeout)
             return self._ready
 
-    def get(self, timeout=None, cancel=False):
-        """Retrieves the produced results, blocks until results are ready.
-
-        If the executed code raised an error it will be re-raised.
-
-        If *timeout* is set the call will block until the timeout expires
-        raising *TimeoutError" if results are not yet available.
-        If *cancel* is True while *timeout* is set *Task* will be cancelled
-        once the timeout expires.
-
-        """
-        with self._task_ready:
-            if not self._ready:  # block if not ready
-                self._task_ready.wait(timeout)
-            if self._ready:  # return results
-                if (isinstance(self._results, BaseException)):
-                    raise self._results
-                else:
-                    return self._results
-            else:  # get timeout
-                if cancel:
-                    self._cancel()
-                raise TimeoutError("Task is still running")
-
     def cancel(self):
         """Cancels the Task."""
-        with self._task_ready:
-            self._cancel()
+        self._cancelled = True
+        self.set_results(TaskCancelled("Task cancelled"))
 
-    def _cancel(self):
-        """Cancels the Task."""
-        self._results = TaskCancelled("Task cancelled")
-        self._ready = self._cancelled = True
-        self._task_ready.notify_all()
+    def set_results(self, results):
+        """Sets the results within the task and run the installed callback.
+
+        This function is meant for testing and internal use.
+
+        """
+        self._set(results)
+        self._run_callback()
 
     def _set(self, results):
-        """Sets the results within the task."""
         with self._task_ready:
             if not self._ready:
                 self._ready = True
                 self._results = results
                 self._task_ready.notify_all()
+
+    def _run_callback(self):
+        if self._callback is not None:
+            try:
+                self._callback(self)
+            except Exception:
+                print_exc()
 
 
 class PoolContext(object):

@@ -17,7 +17,10 @@
 
 
 def function_handler(launcher, decorator, *args, **kwargs):
-    """"""
+    """Distinguishes between function and decorator usage of spawn and
+    concurrent functions.
+
+    """
     if isfunction(args, kwargs):
         return launcher(kwargs.pop('target', None), **kwargs)
     elif issimpledecorator(args, kwargs):
@@ -32,6 +35,7 @@ def function_handler(launcher, decorator, *args, **kwargs):
 
 
 def isfunction(args, kwargs):
+    """spawn or concurrent used as regular function."""
     if not args and kwargs and 'target' in kwargs:
         return True
     else:
@@ -39,6 +43,7 @@ def isfunction(args, kwargs):
 
 
 def issimpledecorator(args, kwargs):
+    """spawn or concurrent used as decorator with no parameters."""
     if args and not kwargs:
         return True
     else:
@@ -46,6 +51,7 @@ def issimpledecorator(args, kwargs):
 
 
 def isparametrizeddecorator(args, kwargs):
+    """spawn or concurrent used as decorator with parameters."""
     if not args and kwargs:
         return True
     else:

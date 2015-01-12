@@ -198,6 +198,7 @@ class Task(object):
         self._task_ready = threading.Condition(threading.Lock())
         self._timestamp = 0
         self._callback = callback
+        # self._metatask = metatask  TODO: function and its arguments here
 
     def __str__(self):
         return self.__repr__()

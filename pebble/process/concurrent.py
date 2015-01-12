@@ -21,6 +21,7 @@ from .spawn import spawn as process_spawn
 from .common import decorate, stop, send_results, get_results
 from ..thread import spawn as thread_spawn
 from ..pebble import execute, Task
+from ..utils import function_handler
 from ..exceptions import ProcessExpired
 
 
@@ -47,18 +48,7 @@ def concurrent(*args, **kwargs):
        a decorator.
 
     """
-    if args and not kwargs:  # decorator, no parameters
-        return decorate(args[0], launch)
-    elif kwargs and not args:  # function or decorator with parameters
-        if 'target' in kwargs:
-            return launch(kwargs.pop('target', None), **kwargs)
-        else:
-            def wrap(function):
-                return decorate(function, launch, **kwargs)
-
-            return wrap
-    else:
-        raise ValueError("Only keyword arguments are accepted.")
+    return function_handler(launch, decorate, *args, **kwargs)
 
 
 def launch(target, timeout=None, callback=None, identifier=None,

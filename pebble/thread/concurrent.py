@@ -17,6 +17,7 @@ from itertools import count
 
 from .spawn import spawn
 from .common import decorate
+from ..utils import function_handler
 from ..pebble import execute, Task
 
 
@@ -43,18 +44,7 @@ def concurrent(*args, **kwargs):
        a decorator.
 
     """
-    if args and not kwargs:  # decorator, no parameters
-        return decorate(args[0], launch)
-    elif kwargs and not args:  # function or decorator with parameters
-        if 'target' in kwargs:
-            return launch(kwargs.pop('target', None), **kwargs)
-        else:
-            def wrap(function):
-                return decorate(function, launch, **kwargs)
-
-            return wrap
-    else:
-        raise ValueError("Only keyword arguments are accepted.")
+    return function_handler(launch, decorate, *args, **kwargs)
 
 
 def launch(function, callback=None, identifier=None, args=None, kwargs=None):

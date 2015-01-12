@@ -16,9 +16,10 @@
 from multiprocessing import Process
 
 from .common import decorate
+from ..utils import function_handler
 
 
-def spawn(*function, **properties):
+def spawn(*args, **kwargs):
     """Spawns a new process and runs a function within it.
 
     *target* is the desired function to be run
@@ -37,18 +38,7 @@ def spawn(*function, **properties):
        a decorator.
 
     """
-    if function and not properties:  # decorator, no parameters
-        return decorate(function[0], launch)
-    elif properties and not function:  # function or decorator with parameters
-        if 'target' in properties:
-            return launch(properties.pop('target', None), **properties)
-        else:
-            def wrap(target):
-                return decorate(target, launch, **properties)
-
-            return wrap
-    else:
-        raise ValueError("Only keyword arguments are accepted.")
+    return function_handler(launch, decorate, *args, **kwargs)
 
 
 def launch(target, name=None, daemon=False, args=(), kwargs={}):

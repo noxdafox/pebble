@@ -26,15 +26,6 @@ from traceback import print_exc
 from .exceptions import TimeoutError, TaskCancelled
 
 
-# Pool states
-STOPPED = 0
-RUNNING = 1
-CLOSED = 2
-CREATED = 3
-EXPIRED = 4
-ERROR = 5
-
-
 def synchronized(lock):
     """Locks the execution of decorated function on given *lock*.
 
@@ -60,11 +51,7 @@ def sighandler(signals):
 
     """
     def wrap(function):
-        if isinstance(signals, (list, tuple)):
-            for signum in signals:
-                signal.signal(signum, function)
-        else:
-            signal.signal(signals, function)
+        set_signal_handlers(signals, function)
 
         @wraps(function)
         def wrapper(*args, **kwargs):
@@ -73,6 +60,14 @@ def sighandler(signals):
         return wrapper
 
     return wrap
+
+
+def set_signal_handlers(signals, function):
+        if isinstance(signals, (list, tuple)):
+            for signum in signals:
+                signal.signal(signum, function)
+        else:
+            signal.signal(signals, function)
 
 
 def waitfortasks(tasks, timeout=None):

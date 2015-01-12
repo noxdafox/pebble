@@ -17,8 +17,8 @@ from itertools import count
 
 from .spawn import spawn
 from .common import decorate
-from ..utils import function_handler
-from ..pebble import execute, Task
+from ..pebble import Task
+from ..utils import execute, function_handler
 
 
 _task_counter = count()

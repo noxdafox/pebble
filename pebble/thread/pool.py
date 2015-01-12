@@ -20,8 +20,9 @@ from time import time
 from traceback import format_exc
 
 from .spawn import spawn
-from ..pebble import STOPPED, RUNNING, ERROR
-from ..pebble import BasePool, PoolContext, Task
+from ..pebble import Task
+from ..utils import STOPPED, RUNNING, ERROR
+from ..utils import BasePool, PoolContext
 
 
 @spawn(name='pool_worker', daemon=True)

@@ -143,10 +143,12 @@ def task_scheduler(context):
             continue
 
         if task is not None:
-            number = task.number
-            tasks[number] = task
+            function = task._metadata['function']
+            args = task._metadata['args']
+            kwargs = task._metadata['kwargs']
+            tasks[task.number] = task
 
-            put((number, task._function, task._args, task._kwargs))
+            put((task.number, function, args, kwargs))
         else:  # stop sentinel
             return
 
@@ -337,8 +339,10 @@ class Pool(BasePool):
         A *Task* object is returned.
 
         """
-        task = PoolTask(next(self._counter), function, args, kwargs,
-                        callback, timeout, identifier)
+        metadata = {'function': function, 'args': args, 'kwargs':  kwargs}
+        task = PoolTask(next(self._counter),
+                        callback=callback, timeout=timeout,
+                        identifier=identifier, metadata=metadata)
 
         self._schedule(task)
 

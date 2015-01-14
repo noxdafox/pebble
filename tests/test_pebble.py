@@ -203,16 +203,16 @@ class TestWaitForQueues(unittest.TestCase):
 
 class TestTask(unittest.TestCase):
     def setUp(self):
-        self.task = Task(0, None, None, None, None, None, None)
+        self.task = Task(0)
 
     def test_number(self):
         """Task number is reported correctly."""
-        t = Task(42, None, None, None, None, None, None)
+        t = Task(42)
         self.assertEqual(t.number, 42)
 
     def test_task_id(self):
         """Task ID is forwarded to it."""
-        t = Task(0, None, None, None, None, None, 'foo')
+        t = Task(0, identifier='foo')
         self.assertEqual(t.id, 'foo')
 
     def test_ready(self):

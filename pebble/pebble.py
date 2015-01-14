@@ -184,13 +184,10 @@ def new(self, *args):
 
 class Task(object):
     """Handler to the ongoing task."""
-    def __init__(self, task_nr, function=None, args=None, kwargs=None,
-                 callback=None, timeout=0, identifier=None):
+    def __init__(self, task_nr, callback=None, timeout=0, identifier=None,
+                 metadata=None):
         self.id = identifier
         self._timeout = timeout
-        self._function = function
-        self._args = args
-        self._kwargs = kwargs
         self._number = task_nr
         self._ready = False
         self._cancelled = False
@@ -198,7 +195,7 @@ class Task(object):
         self._task_ready = threading.Condition(threading.Lock())
         self._timestamp = 0
         self._callback = callback
-        # self._metatask = metatask  TODO: function and its arguments here
+        self._metadata = metadata
 
     def __str__(self):
         return self.__repr__()

@@ -63,7 +63,6 @@ def launch(target, timeout=None, callback=None, identifier=None,
 
     task = ProcessTask(next(_task_counter), worker, time(),
                        callback=callback, timeout=timeout,
-                       function=target, args=args, kwargs=kwargs,
                        identifier=identifier)
     task_manager(task, reader)
 

@@ -52,9 +52,9 @@ def launch(function, callback=None, identifier=None, args=None, kwargs=None):
     and executes it in a separate thread.
 
     """
+    metadata = {'function': function, 'args': args, 'kwargs':  kwargs}
     task = Task(next(_task_counter), callback=callback,
-                function=function, args=args, kwargs=kwargs,
-                identifier=identifier)
+                metadata=metadata, identifier=identifier)
     task_worker(task)
 
     return task
@@ -63,5 +63,9 @@ def launch(function, callback=None, identifier=None, args=None, kwargs=None):
 @spawn(daemon=True)
 def task_worker(task):
     """Runs the actual function in separate thread."""
-    results = execute(task._function, task._args, task._kwargs)
+    function = task._metadata['function']
+    args = task._metadata['args']
+    kwargs = task._metadata['kwargs']
+
+    results = execute(function, args, kwargs)
     task.set_results(results)

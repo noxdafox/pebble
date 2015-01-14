@@ -22,14 +22,14 @@ from traceback import format_exc
 from .spawn import spawn
 from ..pebble import Task
 from ..utils import STOPPED, RUNNING, ERROR
-from ..utils import BasePool, PoolContext
+from ..utils import execute, BasePool, PoolContext
 
 
 @spawn(name='pool_worker', daemon=True)
 def pool_worker(context):
     """Runs the actual function in separate process."""
     error = None
-    value = None
+    results = None
     counter = count()
     queue = context.queue
     limit = context.worker_limit
@@ -50,18 +50,17 @@ def pool_worker(context):
             queue.task_done()
             return
 
-        try:
-            if not task._cancelled:
-                task._timestamp = time()
-                value = task._function(*task._args, **task._kwargs)
-        except Exception as err:
-            if error is None:  # do not overwrite initializer errors
-                error = err
-                error.traceback = format_exc()
+        function = task._metadata['function']
+        args = task._metadata['args']
+        kwargs = task._metadata['kwargs']
 
-        task_done(task, error is not None and error or value)
+        if not task._cancelled:
+            task._timestamp = time()
+            results = execute(function, args, kwargs)
+
+        task_done(task, error is not None and error or results)
         error = None
-        value = None
+        results = None
 
     context.worker_event.set()
 
@@ -155,8 +154,9 @@ class Pool(BasePool):
         A *Task* object is returned.
 
         """
-        task = Task(next(self._counter), function, args, kwargs,
-                    callback, 0, identifier)
+        metadata = {'function': function, 'args': args, 'kwargs':  kwargs}
+        task = Task(next(self._counter), metadata=metadata,
+                    identifier=identifier, callback=callback)
 
         self._schedule(task)
 

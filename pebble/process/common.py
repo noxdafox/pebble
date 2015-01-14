@@ -90,16 +90,19 @@ def trampoline(name, module, *args, **kwargs):
     if not found, forces its registering and then executes it.
 
     """
+    function = function_lookup(name, module)
+    return function(*args, **kwargs)
+
+
+def function_lookup(name, module):
     try:
-        function = _registered_functions[name]
+        return _registered_functions[name]
     except KeyError:  # force function registering
         __import__(module)
         mod = sys.modules[module]
         getattr(mod, name)
-    finally:
-        function = _registered_functions[name]
 
-    return function(*args, **kwargs)
+        return _registered_functions[name]
 
 
 def get_results(pipe, timeout):

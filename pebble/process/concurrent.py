@@ -80,7 +80,7 @@ def task_worker(pipe, function, args, kwargs):
 def task_manager(task, pipe):
     """Task's lifecycle manager.
 
-    Starts a new worker, waits for the *Task* to be performed,
+    Waits for the *Task* to be performed,
     collects results, runs the callback and cleans up the process.
 
     """
@@ -88,13 +88,13 @@ def task_manager(task, pipe):
 
     results = get_results(pipe, task.timeout)
 
-    if worker.is_alive():
-        stop(worker)
-
     if isinstance(results, ProcessExpired):
         results.exitcode = worker.exitcode
 
     task.set_results(results)
+
+    if worker.is_alive():
+        stop(worker)
 
 
 class ProcessTask(Task):

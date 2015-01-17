@@ -1,5 +1,4 @@
 __all__ = ['concurrent', 'spawn', 'Pool']
 
-from .pool import Pool
-from .spawn import spawn
-from .concurrent import concurrent
+from pebble.process.pool import Pool
+from pebble.process.decorators import spawn, concurrent

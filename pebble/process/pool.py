@@ -30,13 +30,13 @@ except:  # Python 3
     from queue import Empty
     from pickle import PicklingError
 
-from .common import stop
-from .spawn import spawn as spawn_process
-from ..thread import spawn as spawn_thread
-from ..pebble import Task
-from ..utils import BasePool, PoolContext
-from ..utils import STOPPED, RUNNING, ERROR
-from ..exceptions import TimeoutError, TaskCancelled
+from pebble import thread
+from pebble.task import Task
+from pebble.process.utils import stop
+from pebble.process.decorators import spawn
+from pebble.utils import BasePool, PoolContext
+from pebble.utils import STOPPED, RUNNING, ERROR
+from pebble.exceptions import TimeoutError, TaskCancelled
 
 
 ACK = 0  # task aknowledged by worker
@@ -92,7 +92,7 @@ def task_state(task, pool, timestamp):
     return error, results
 
 
-@spawn_process(name='pool_worker', daemon=True)
+@spawn(name='pool_worker', daemon=True)
 def pool_worker(channel, initializer, initargs, limit):
     """Runs the actual function in separate process."""
     error = None
@@ -129,7 +129,7 @@ def pool_worker(channel, initializer, initargs, limit):
     sys.exit(0)
 
 
-@spawn_thread(name='task_scheduler', daemon=True)
+@thread.spawn(name='task_scheduler', daemon=True)
 def task_scheduler(context):
     """Schedules enqueued tasks to the workers."""
     queue = context.queue
@@ -153,7 +153,7 @@ def task_scheduler(context):
             return
 
 
-@spawn_thread(name='task_manager', daemon=True)
+@thread.spawn(name='task_manager', daemon=True)
 def task_manager(context):
     """Manages running tasks.
 
@@ -194,7 +194,7 @@ def task_manager(context):
         sleep(0.2)
 
 
-@spawn_thread(name='message_manager', daemon=True)
+@thread.spawn(name='message_manager', daemon=True)
 def message_manager(context):
     """Gather messages from workers,
     sets tasks status and runs callbacks.
@@ -220,7 +220,7 @@ def message_manager(context):
             return
 
 
-@spawn_thread(name='worker_manager', daemon=True)
+@thread.spawn(name='worker_manager', daemon=True)
 def worker_manager(context):
     """Collects expired workers and spawns new ones."""
     pool = context.pool

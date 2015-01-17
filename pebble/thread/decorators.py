@@ -14,14 +14,45 @@
 # along with Pebble.  If not, see <http://www.gnu.org/licenses/>.
 
 from itertools import count
+from threading import Thread
 
-from .spawn import spawn
-from .common import decorate
-from ..pebble import Task
-from ..utils import execute, function_handler
+from pebble.task import Task
+from pebble.thread.utils import decorate
+from pebble.utils import execute, function_handler
 
 
 _task_counter = count()
+
+
+def spawn(*args, **kwargs):
+    """Spawns a new thread and runs a function within it.
+
+    *target* is the desired function to be run
+    with the given *args* and *kwargs* parameters; if *daemon* is True,
+    the thread will be stopped if the parent exits (default False).
+    *name* is a string, if assigned will be given to the thread.
+
+    The *spawn* function works as well as a decorator.
+
+    Returns the Thread object which is running
+    the *target* function or decorated one.
+
+    .. note:
+       The decorator accepts the keywords *daemon* and *name* only.
+       If *target* keyword is not specified, the function will act as
+       a decorator.
+
+    """
+    return function_handler(launch_thread, decorate, *args, **kwargs)
+
+
+def launch_thread(target, name=None, daemon=False, args=(), kwargs={}):
+    """Launches the target function within a thread."""
+    thread = Thread(target=target, name=name, args=args, kwargs=kwargs)
+    thread.daemon = daemon
+    thread.start()
+
+    return thread
 
 
 def concurrent(*args, **kwargs):
@@ -44,10 +75,11 @@ def concurrent(*args, **kwargs):
        a decorator.
 
     """
-    return function_handler(launch, decorate, *args, **kwargs)
+    return function_handler(launch_task, decorate, *args, **kwargs)
 
 
-def launch(function, callback=None, identifier=None, args=None, kwargs=None):
+def launch_task(function, callback=None, identifier=None,
+                args=None, kwargs=None):
     """Wraps the target function within a Task
     and executes it in a separate thread.
 

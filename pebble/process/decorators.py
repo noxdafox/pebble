@@ -15,17 +15,47 @@
 
 from time import time
 from itertools import count
-from multiprocessing import Pipe
+from multiprocessing import Pipe, Process
 
-from .spawn import spawn as process_spawn
-from .common import decorate, stop, send_results, get_results
-from ..utils import execute, function_handler
-from ..thread import spawn as thread_spawn
-from ..pebble import Task
-from ..exceptions import ProcessExpired
+from pebble import thread
+from pebble.task import Task
+from pebble.exceptions import ProcessExpired
+from pebble.utils import execute, function_handler
+from pebble.process.utils import stop, send_results, get_results, decorate
 
 
 _task_counter = count()
+
+
+def spawn(*args, **kwargs):
+    """Spawns a new process and runs a function within it.
+
+    *target* is the desired function to be run
+    with the given *args* and *kwargs* parameters; if *daemon* is True,
+    the process will be stopped if the parent exits (default False).
+    *name* is a string, if assigned will be given to the process.
+
+    The *spawn* function works as well as a decorator.
+
+    Returns the Process object which is running
+    the *target* function or decorated one.
+
+    .. note:
+       The decorator accepts the keywords *daemon* and *name* only.
+       If *target* keyword is not specified, the function will act as
+       a decorator.
+
+    """
+    return function_handler(launch_process, decorate, *args, **kwargs)
+
+
+def launch_process(target, name=None, daemon=False, args=(), kwargs={}):
+    """Launches the target function within a process."""
+    process = Process(target=target, name=name, args=args, kwargs=kwargs)
+    process.daemon = daemon
+    process.start()
+
+    return process
 
 
 def concurrent(*args, **kwargs):
@@ -48,11 +78,11 @@ def concurrent(*args, **kwargs):
        a decorator.
 
     """
-    return function_handler(launch, decorate, *args, **kwargs)
+    return function_handler(launch_task, decorate, *args, **kwargs)
 
 
-def launch(target, timeout=None, callback=None, identifier=None,
-           args=None, kwargs=None):
+def launch_task(target, timeout=None, callback=None, identifier=None,
+                args=None, kwargs=None):
     """Wraps the target function within a Task
     and executes it in a separate process.
 
@@ -61,22 +91,21 @@ def launch(target, timeout=None, callback=None, identifier=None,
     worker = task_worker(writer, target, args, kwargs)
     writer.close()
 
-    task = ProcessTask(next(_task_counter), worker, time(),
-                       callback=callback, timeout=timeout,
-                       identifier=identifier)
+    task = ProcessTask(next(_task_counter), worker, callback=callback,
+                       timeout=timeout, identifier=identifier)
     task_manager(task, reader)
 
     return task
 
 
-@process_spawn(daemon=True)
+@spawn(daemon=True)
 def task_worker(pipe, function, args, kwargs):
     """Runs the actual function in separate process."""
     results = execute(function, args, kwargs)
     send_results(pipe, results)
 
 
-@thread_spawn(daemon=True)
+@thread.spawn(daemon=True)
 def task_manager(task, pipe):
     """Task's lifecycle manager.
 
@@ -99,10 +128,10 @@ def task_manager(task, pipe):
 
 class ProcessTask(Task):
     """Extends the *Task* object to support *process* decorator."""
-    def __init__(self, task_nr, worker, timestamp, **kwargs):
+    def __init__(self, task_nr, worker, **kwargs):
         super(ProcessTask, self).__init__(task_nr, **kwargs)
         self._worker = worker
-        self._timestamp = timestamp
+        self._timestamp = time()
 
     def cancel(self):
         """Overrides the *Task* cancel method in order to signal it

@@ -19,10 +19,10 @@ from threading import Event
 from time import time
 from traceback import format_exc
 
-from .spawn import spawn
-from ..pebble import Task
-from ..utils import STOPPED, RUNNING, ERROR
-from ..utils import execute, BasePool, PoolContext
+from pebble.task import Task
+from pebble.thread.decorators import spawn
+from pebble.utils import STOPPED, RUNNING, ERROR
+from pebble.utils import execute, BasePool, PoolContext
 
 
 @spawn(name='pool_worker', daemon=True)

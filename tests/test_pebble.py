@@ -8,19 +8,27 @@ try:  # Python 2
 except:  # Python 3
     from queue import Queue
 
+from pebble import decorators
+
 from pebble import synchronized, sighandler, thread
 from pebble import waitfortasks, waitforthreads, waitforqueues
 from pebble import Task, TimeoutError, TaskCancelled
 
 
 results = 0
-lock = threading.Lock()
+semaphore = threading.Semaphore()
 
 
-@synchronized(lock)
-def function():
+@synchronized
+def synchronized_function():
     """A docstring."""
-    return lock.acquire(False)
+    return decorators._synchronized_lock.acquire(False)
+
+
+@synchronized(semaphore)
+def custom_synchronized_function():
+    """A docstring."""
+    return semaphore.acquire(False)
 
 
 try:
@@ -58,22 +66,43 @@ def concurrent_function(value):
     return value
 
 
+@thread.spawn
+def spurious_wakeup_function(value, lock):
+    value = value / 2
+    time.sleep(value)
+    lock.acquire()
+    time.sleep(value)
+    return value
+
+
 class TestSynchronizedDecorator(unittest.TestCase):
     def test_wrapper_decorator_docstring(self):
         """Synchronized docstring of the original function is preserved."""
-        self.assertEqual(function.__doc__, "A docstring.")
+        self.assertEqual(synchronized_function.__doc__, "A docstring.")
 
     def test_syncronized_locked(self):
         """Synchronized Lock is acquired
         during execution of decorated function."""
-        self.assertFalse(function())
+        self.assertFalse(synchronized_function())
 
     def test_syncronized_released(self):
-        """Synchronized Lock is acquired
+        """Synchronized Lock is released
         during execution of decorated function."""
-        function()
-        self.assertTrue(lock.acquire(False))
-        lock.release()
+        synchronized_function()
+        self.assertTrue(decorators._synchronized_lock.acquire(False))
+        decorators._synchronized_lock.release()
+
+    def test_custom_syncronized_locked(self):
+        """Synchronized semaphore is acquired
+        during execution of decorated function."""
+        self.assertFalse(custom_synchronized_function())
+
+    def test_custom_syncronized_released(self):
+        """Synchronized semaphore is acquired
+        during execution of decorated function."""
+        custom_synchronized_function()
+        self.assertTrue(semaphore.acquire(False))
+        semaphore.release()
 
 
 class TestSigHandler(unittest.TestCase):
@@ -105,13 +134,10 @@ class TestSigHandler(unittest.TestCase):
 
 
 class TestWaitForTasks(unittest.TestCase):
-    def setUp(self):
-        pass
-
     def test_waitfortasks_single(self):
         """Waitfortasks waits for a single task."""
         task = concurrent_function(0.01)
-        self.assertEqual(waitfortasks([task])[0], task)
+        self.assertEqual(list(waitfortasks([task]))[0], task)
 
     def test_waitfortasks_multiple(self):
         """Waitfortasks waits for multiple tasks."""
@@ -119,12 +145,12 @@ class TestWaitForTasks(unittest.TestCase):
         for _ in range(5):
             tasks.append(concurrent_function(0.01))
         time.sleep(0.1)
-        self.assertEqual(waitfortasks(tasks), tasks)
+        self.assertEqual(list(waitfortasks(tasks)), tasks)
 
     def test_waitfortasks_timeout(self):
         """Waitfortasks returns empty list if timeout."""
         task = concurrent_function(0.1)
-        self.assertEqual(waitfortasks([task], timeout=0.01), [])
+        self.assertEqual(list(waitfortasks([task], timeout=0.01)), [])
 
     def test_waitfortasks_restore(self):
         """Waitfortasks Task object is restored to original one."""
@@ -135,13 +161,10 @@ class TestWaitForTasks(unittest.TestCase):
 
 
 class TestWaitForThreads(unittest.TestCase):
-    def setUp(self):
-        pass
-
     def test_waitforthreads_single(self):
         """Waitforthreads waits for a single thread."""
         thread = thread_function(0.01)
-        self.assertEqual(waitforthreads([thread])[0], thread)
+        self.assertEqual(list(waitforthreads([thread]))[0], thread)
 
     def test_waitforthreads_multiple(self):
         """Waitforthreads waits for multiple threads."""
@@ -149,12 +172,12 @@ class TestWaitForThreads(unittest.TestCase):
         for _ in range(5):
             threads.append(thread_function(0.01))
         time.sleep(0.1)
-        self.assertEqual(waitforthreads(threads), threads)
+        self.assertEqual(list(waitforthreads(threads)), threads)
 
     def test_waitforthreads_timeout(self):
         """Waitforthreads returns empty list if timeout."""
         thread = thread_function(0.1)
-        self.assertEqual(waitforthreads([thread], timeout=0.01), [])
+        self.assertEqual(list(waitforthreads([thread], timeout=0.01)), [])
 
     def test_waitforthreads_restore(self):
         """Waitforthreads get_ident is restored to original one."""
@@ -170,27 +193,33 @@ class TestWaitForThreads(unittest.TestCase):
         else:
             self.assertEqual(threading._get_ident, expected)
 
+    def test_waitforthreads_spurious(self):
+        """Waitforthreads tolerates spurious wakeups."""
+        lock = threading.RLock()
+        thread = spurious_wakeup_function(0.1, lock)
+        self.assertEqual(list(waitforthreads([thread])), [thread])
+
 
 class TestWaitForQueues(unittest.TestCase):
     def setUp(self):
-        self.queues = (Queue(), Queue(), Queue())
+        self.queues = [Queue(), Queue(), Queue()]
 
     def test_waitforqueues_single(self):
         """Waitforqueues waits for a single queue."""
         queue_function(self.queues, 0, 0.01)
-        self.assertEqual(waitforqueues(self.queues)[0], self.queues[0])
+        self.assertEqual(list(waitforqueues(self.queues))[0], self.queues[0])
 
     def test_waitforqueues_multiple(self):
         """Waitforqueues waits for multiple queues."""
         for index in range(3):
             queue_function(self.queues, index, 0.01)
         time.sleep(0.1)
-        self.assertEqual(waitforqueues(self.queues), list(self.queues))
+        self.assertEqual(list(waitforqueues(self.queues)), self.queues)
 
     def test_waitforqueues_timeout(self):
         """Waitforqueues returns empty list if timeout."""
         queue_function(self.queues, 0, 0.1)
-        self.assertEqual(waitforqueues(self.queues, timeout=0.01), [])
+        self.assertEqual(list(waitforqueues(self.queues, timeout=0.01)), [])
 
     def test_waitforqueues_restore(self):
         """Waitforqueues Queue object is restored to original one."""

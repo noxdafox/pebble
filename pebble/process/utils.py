@@ -15,6 +15,7 @@
 
 import os
 import sys
+
 from functools import wraps
 from traceback import format_exc
 try:  # Python 2
@@ -24,7 +25,7 @@ except:  # Python 3
 if os.name in ('posix', 'os2'):
     from signal import SIGKILL
 
-from ..exceptions import TimeoutError, ProcessExpired
+from pebble.exceptions import TimeoutError, ProcessExpired
 
 
 _registered_functions = {}
@@ -44,6 +45,26 @@ def stop(worker):
 
     if worker.is_alive():
         raise RuntimeError("Unable to terminate PID %d" % os.getpid())
+
+
+def get_results(pipe, timeout):
+    """Waits for results and handles communication errors."""
+    try:
+        if pipe.poll(timeout):
+            return pipe.recv()
+        else:
+            return TimeoutError('Task Timeout', timeout)
+    except (EnvironmentError, EOFError):
+        return ProcessExpired('Abnormal termination')
+
+
+def send_results(pipe, data):
+    """Send results and handles communication errors."""
+    try:
+        pipe.send(data)
+    except PicklingError as error:
+        error.traceback = format_exc()
+        pipe.send(error)
 
 
 def decorate(function, launcher, **properties):
@@ -95,6 +116,10 @@ def trampoline(name, module, *args, **kwargs):
 
 
 def function_lookup(name, module):
+    """Searches the function between the registered ones.
+    If not found, it imports the module forcing its registration.
+
+    """
     try:
         return _registered_functions[name]
     except KeyError:  # force function registering
@@ -103,23 +128,3 @@ def function_lookup(name, module):
         getattr(mod, name)
 
         return _registered_functions[name]
-
-
-def get_results(pipe, timeout):
-    """Waits for results and handles communication errors."""
-    try:
-        if pipe.poll(timeout):
-            return pipe.recv()
-        else:
-            return TimeoutError('Task Timeout', timeout)
-    except (EnvironmentError, EOFError):
-        return ProcessExpired('Abnormal termination')
-
-
-def send_results(pipe, data):
-    """Send results and handles communication errors."""
-    try:
-        pipe.send(data)
-    except PicklingError as error:
-        error.traceback = format_exc()
-        pipe.send(error)

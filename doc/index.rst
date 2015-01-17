@@ -176,11 +176,13 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
 :mod:`pebble`
 -------------
 
-.. decorator:: synchronized(lock)
+.. decorator:: synchronized([lock])
 
-   A synchronized *function* will be run exclusively accordingly to its *lock* type. If a Thread or Process is executing a synchronized function, all the other Threads or Processes calling the same *function* will be blocked until the first caller has finished its execution.
+    A synchronized function prevents two or more callers to interleave its execution preventing race conditions.
 
-   The *synchronized* decorator accepts all the synchronizing objects exposed by the Python standard *threading* and *multiprocessing* libraries.
+    The *synchronized* decorator accepts as optional parameter a *Lock*, *RLock* or *Semaphore* from *threading* and *multiprocessing* modules.
+
+    If no synchronization object is given, a single *threading.Lock* will be employed. This implies that between different decorated functions only one at a time will be executed.
 
 .. decorator:: sighandler(signals)
 

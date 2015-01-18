@@ -15,7 +15,6 @@
 
 # Common utility functions
 
-
 from time import sleep
 from inspect import isclass
 from itertools import count

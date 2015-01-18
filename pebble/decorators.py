@@ -30,7 +30,7 @@ def synchronized(*args):
     Semaphore object which will be employed to ensure the function's atomicity.
 
     If no synchronization object is given, a single threading.Lock will be used.
-    This implies that between multiple decorated function only one at a time
+    This implies that between different decorated function only one at a time
     will be executed.
 
     """

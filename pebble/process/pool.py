@@ -263,15 +263,7 @@ class Context(PoolContext):
     def stop(self):
         """Stop the workers."""
         for worker in self.pool.values():
-            worker.terminate()
-
-    def kill(self):
-        """Forces all workers to stop."""
-        self.stop()
-
-        with lock(self.worker_channel):
-            for worker in self.pool.values():
-                stop(worker)
+            stop(worker)
 
 
 class Pool(BasePool):
@@ -321,7 +313,7 @@ class Pool(BasePool):
         """Kills the pool forcing all workers to terminate immediately."""
         self._context.state = STOPPED
 
-        self._context.kill()
+        self._context.stop()
 
     def schedule(self, function, args=(), kwargs={}, identifier=None,
                  callback=None, timeout=0):

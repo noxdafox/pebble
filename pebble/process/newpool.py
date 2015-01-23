@@ -1,5 +1,10 @@
 
 
+from pebble import thread
+from pebble.task import Task
+from pebble.process.utils import stop
+from pebble.process.decorators import spawn
+
 
 @thread.spawn
 def task_scheduler_loop(pool):
@@ -155,7 +160,7 @@ class WorkerProcess(object):
         pool_side, worker_side = create_channels()
         self.alive = True
         self.channel = pool_side
-        self.process = process(worker_side)
+        self.process = worker_process(worker_side)
 
     def send(self, task):
         function = task._metadata['function']
@@ -172,3 +177,42 @@ class WorkerProcess(object):
     def stop(self):
         stop(self.process)
         self.alive = False
+
+
+@spawn(name='pool_worker', daemon=True)
+def pool_worker(channel, initializer, initargs, limit):
+    """Runs the actual function in separate process."""
+    signal(SIGINT, SIG_IGN)
+    counter = count()
+
+    if initializer is not None:
+        if not run_initializer(initializer, initargs):
+            return os.EX_SOFTWARE
+
+    while not limit or next(counter) < limit:
+        try:
+            execute_next_task(channel)
+        except (EOFError, EnvironmentError) as error:
+            # TODO: return correct ERRNO
+            return error.errno
+
+    # if deinitializer is not None:
+        # if not run_initializer(deinitializer, deinitargs):
+        #     return os.EX_SOFTWARE
+
+    return os.EX_OK
+
+
+def execute_next_task(channel):
+    function, args, kwargs = channel.recv()
+    results = execute(function, args, kwargs)
+    send_results(channel, results)
+
+
+def run_initializer(initializer, initargs):
+    try:
+        initializer(*initargs)
+        return True
+    except Exception as error:
+        print_exc()
+        return False

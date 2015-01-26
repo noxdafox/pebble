@@ -1,12 +1,22 @@
 
+import os
+import time
+
+from itertools import count
+from collections import deque
+from traceback import print_exc
+from multiprocessing import Pipe
+from signal import SIG_IGN, SIGINT, signal
 
 from pebble import thread
 from pebble.task import Task
-from pebble.process.utils import stop
+from pebble.utils import execute
 from pebble.process.decorators import spawn
+from pebble.process.utils import stop, send_results
+from pebble.exceptions import TimeoutError, TaskCancelled, ProcessExpired
 
 
-@thread.spawn
+@thread.spawn(name='task_scheduler')
 def task_scheduler_loop(pool):
     scheduler = task_scheduler(pool._workers)
     next(scheduler)  # prime the coroutine
@@ -37,11 +47,12 @@ def task_scheduler(workers):
                 task = None
 
 
-@thread.spawn
+@thread.spawn(name='pool_manager')
 def pool_manager_loop(pool):
     while pool.alive:
         reset_expired_workers(pool)
         manage_tasks(pool)
+        time.sleep(0.1)
 
 
 def reset_expired_workers(pool):
@@ -129,10 +140,14 @@ class WorkerTaskManager(object):
 
     @property
     def task_timeout(self):
-        if self.task_buffer and has_timeout(self.task_buffer[0]):
+        if self.task_buffer and self.has_timeout(self.task_buffer[0]):
             return True
         else:
             return False
+
+    @staticmethod
+    def has_timeout(task):
+        return task.timeout > 0 and time.time() - task._timestamp > task.timeout
 
     @property
     def task_cancelled(self):
@@ -143,6 +158,8 @@ class WorkerTaskManager(object):
 
     def schedule_task(self, task):
         self.task_buffer.append(task)
+        if not self.task_buffer:
+            self.task_buffer[0]._timestamp = time.time()
 
     def retract_task(self):
         task = self.task_buffer.pop()
@@ -152,7 +169,7 @@ class WorkerTaskManager(object):
         task = self.task_buffer.popleft()
         task.set_result(result)
         if self.task_buffer:
-            self.task_buffer[0]._timestamp = time()
+            self.task_buffer[0]._timestamp = time.time()
 
 
 class WorkerProcess(object):
@@ -179,8 +196,8 @@ class WorkerProcess(object):
         self.alive = False
 
 
-@spawn(name='pool_worker', daemon=True)
-def pool_worker(channel, initializer, initargs, limit):
+@spawn(name='worker_process', daemon=True)
+def worker_process(channel, initializer, initargs, limit):
     """Runs the actual function in separate process."""
     signal(SIGINT, SIG_IGN)
     counter = count()
@@ -213,6 +230,6 @@ def run_initializer(initializer, initargs):
     try:
         initializer(*initargs)
         return True
-    except Exception as error:
+    except Exception:
         print_exc()
         return False

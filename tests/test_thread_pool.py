@@ -59,27 +59,6 @@ def tid_function():
     return threading.current_thread()
 
 
-# class TestThreadTaskObj(object):
-#     a = 0
-
-#     def __init__(self):
-#         self.b = 1
-
-#     @classmethod
-#     @thread.task
-#     def clsmethod(cls):
-#         return cls.a
-
-#     @thread.task
-#     def instmethod(self):
-#         return self.b
-
-#     @staticmethod
-#     @thread.task
-#     def stcmethod():
-#         return 2
-
-
 class TestThreadPool(unittest.TestCase):
     def setUp(self):
         global initarg
@@ -149,7 +128,7 @@ class TestThreadPool(unittest.TestCase):
         self.assertTrue(isinstance(self.exception, TaskCancelled))
 
     def test_thread_pool_different_thread(self):
-        """Thread Pool multiple tasks are handled by different threades."""
+        """Thread Pool multiple tasks are handled by different threads."""
         tasks = []
         with thread.Pool(workers=2) as pool:
             for i in range(0, 5):
@@ -177,10 +156,13 @@ class TestThreadPool(unittest.TestCase):
         self.assertEqual(task.get(), 1)
 
     def test_thread_pool_initializer_error(self):
-        """Thread Pool an exception in a initializer is raised by get."""
-        with thread.Pool(initializer=initializer_error) as pool:
-            task = pool.schedule(initializer_function)
-        self.assertRaises(Exception, task.get)
+        """Thread Pool Tasks are not executed if initializer fails."""
+        pool = thread.Pool(initializer=initializer_error)
+        task = pool.schedule(initializer_function)
+        with self.assertRaises(TimeoutError):
+            task.get(timeout=0.1)
+        pool.stop()
+        pool.join()
 
     def test_thread_pool_created(self):
         """Thread Pool is not active if nothing is scheduled."""
@@ -222,7 +204,7 @@ class TestThreadPool(unittest.TestCase):
         tasks = []
         pool = thread.Pool()
         for index in range(10):
-            tasks.append(pool.schedule(function, args=[index]))
+            tasks.append(pool.schedule(long_function))
         pool.stop()
         pool.join()
         self.assertTrue(len([t for t in tasks if not t.ready]) > 0)
@@ -241,7 +223,8 @@ class TestThreadPool(unittest.TestCase):
         pool.schedule(function, args=[1])
         pool.stop()
         pool.join()
-        self.assertEqual(len(pool._context.pool), 0)
+        alive_workers = [w for w in pool._context.workers if w.alive]
+        self.assertEqual(len(alive_workers), 0)
 
     def test_thread_pool_join_running(self):
         """Thread Pool RuntimeError is raised if active pool joined."""
@@ -260,12 +243,12 @@ class TestThreadPool(unittest.TestCase):
         pool.join()
 
     def test_thread_pool_callback_error(self):
-        """Thread Pool stop if error in callback."""
+        """Thread Pool errors in callback does not stop the pool."""
         with thread.Pool() as pool:
             pool.schedule(function, args=[1], callback=error_callback,
                           kwargs={'keyword_argument': 1})
-        time.sleep(0.1)
-        self.assertRaises(PoolError, pool.schedule, function, args=[1])
+            time.sleep(0.1)
+            self.assertTrue(pool.active)
 
     def test_thread_pool_exception_isolated(self):
         """Thread Pool an Exception does not affect other tasks."""

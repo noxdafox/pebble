@@ -54,7 +54,7 @@ def prepare_tasks(tasks, lock):
 
 def wait_tasks(tasks, lock, timeout):
     with lock:
-        if not any(map(lambda t: t.ready, tasks)):
+        if all(map(lambda t: not t.ready, tasks)):
             lock.wait(timeout)
 
 
@@ -99,7 +99,7 @@ def prepare_queues(queues, lock):
 
 def wait_queues(queues, lock, timeout):
     with lock:
-        if not any(map(lambda q: not q.empty(), queues)):
+        if all(map(lambda q: q.empty(), queues)):
             lock.wait(timeout)
 
 
@@ -108,8 +108,8 @@ def reset_queues(queues):
     for queue in queues:
         with queue.mutex:
             queue._put = queue._pebble_old_method
-        delattr(queue, '_pebble_old_method')
-        delattr(queue, '_pebble_lock')
+            delattr(queue, '_pebble_old_method')
+            delattr(queue, '_pebble_lock')
 
 
 def waitforthreads(threads, timeout=None):
@@ -162,7 +162,7 @@ def wait_threads(threads, lock, timeout):
     time_left = lambda: timeout - (time() - timestamp)
 
     with lock:
-        while not any(map(lambda t: not t.is_alive(), threads)):
+        while all(map(lambda t: t.is_alive(), threads)):
             if timeout is None:
                 lock.wait()
             elif time_left() > 0:

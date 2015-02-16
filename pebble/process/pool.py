@@ -103,7 +103,6 @@ def pool_manager_loop(pool):
         else:
             time.sleep(SLEEP_UNIT)
 
-    pool.schedule(None)
     stop_workers(pool.workers)
 
 

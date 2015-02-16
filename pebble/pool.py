@@ -62,6 +62,8 @@ class BasePool(object):
 
     def stop(self):
         self._context.state = STOPPED
+        for _ in self._context.workers:
+            self._context.schedule(None)
 
     def join(self, timeout=None):
         if self._context.state == RUNNING:

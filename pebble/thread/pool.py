@@ -52,8 +52,6 @@ def pool_manager_loop(pool):
         reset_workers(pool.workers)
         time.sleep(SLEEP_UNIT)
 
-    for worker in pool.workers:
-        pool.schedule(None)
     stop_workers(pool.workers)
 
 

@@ -27,7 +27,7 @@ from pebble.task import Task
 from pebble.utils import coroutine, execute
 from pebble.pool import reset_workers, stop_workers
 from pebble.pool import BasePool, WorkerParameters, run_initializer
-from pebble.pool import CREATED, RUNNING, ERROR, CLOSED, STOPPED, SLEEP_UNIT
+from pebble.pool import RUNNING, ERROR, STOPPED, SLEEP_UNIT
 from pebble.process.decorators import spawn
 from pebble.process.utils import stop, send_results
 from pebble.exceptions import TimeoutError, TaskCancelled, ProcessExpired
@@ -96,22 +96,41 @@ def task_fetcher(pool):
 @thread.spawn(daemon=True, name='pool_manager')
 def pool_manager_loop(pool):
     while pool.state not in (ERROR, STOPPED):
-        reset_workers(pool.workers)
-        manage_tasks(pool)
-        time.sleep(SLEEP_UNIT)
+        workers = inspect_workers(pool.workers)
+
+        if any(workers):
+            manage_workers(pool, workers)
+        else:
+            time.sleep(SLEEP_UNIT)
 
     pool.schedule(None)
     stop_workers(pool.workers)
 
 
-def manage_tasks(pool):
-    for worker in pool.workers:
-        if worker.handle_result():
+def inspect_workers(workers):
+    ready = [w for w in workers if w.task_ready()]
+    timeout = [w for w in workers if w.task_timeout()]
+    cancelled = [w for w in workers if w.task_cancelled()]
+    expired = [w for w in workers if not w.alive]
+
+    return ready, timeout, cancelled, expired
+
+
+def manage_workers(pool, workers):
+    print workers
+    ready, timeout, cancelled, expired = workers
+
+    for ready_worker in ready:
+        if ready_worker.handle_result():
             pool.acknowledge()
-        if worker.handle_timeout():
-            pool.acknowledge()
-        if worker.handle_cancel():
-            pool.acknowledge()
+    for timeout_worker in timeout:
+        timeout_worker.handle_timeout()
+        pool.acknowledge()
+    for cancelled_worker in cancelled:
+        cancelled_worker.handle_cancel()
+        pool.acknowledge()
+    for expired_worker in expired:
+        expired_worker.reset()
 
 
 class Worker(object):
@@ -128,6 +147,18 @@ class Worker(object):
         else:
             return False
 
+    def task_ready(self):
+        if self.process_worker.alive:
+            return self.process_worker.receiver_ready
+        else:
+            return False
+
+    def task_timeout(self):
+        return self.task_manager.task_timeout
+
+    def task_cancelled(self):
+        return self.task_manager.task_cancelled
+
     def schedule_task(self, task):
         with self.mutex:
             self.task_manager.schedule_task(task)
@@ -142,14 +173,11 @@ class Worker(object):
 
     def handle_result(self):
         try:
-            if self.process_worker.results_ready:
-                result = self.get_result()
-                self.task_manager.set_result(result)
-                return True
-            else:
-                return False
+            result = self.get_result()
+            self.task_manager.set_result(result)
+            return True
         except EOFError:
-            pass
+            return False
 
     def get_result(self):
         try:
@@ -166,20 +194,12 @@ class Worker(object):
             raise
 
     def handle_timeout(self):
-        if self.task_manager.task_timeout:
-            self.process_worker.stop()
-            self.task_manager.set_result(TimeoutError('Task timeout'))
-            return True
-        else:
-            return False
+        self.stop()
+        self.task_manager.set_result(TimeoutError('Task timeout'))
 
     def handle_cancel(self):
-        if self.task_manager.task_cancelled:
-            self.process_worker.stop()
-            self.task_manager.set_result(TaskCancelled('Task cancelled'))
-            return True
-        else:
-            return False
+        self.stop()
+        self.task_manager.set_result(TaskCancelled('Task cancelled'))
 
     def stop(self):
         if self.process_worker.alive:
@@ -275,10 +295,13 @@ class WorkerProcess(object):
 
     @property
     def exitcode(self):
-        return self.process.exitcode
+        if self.channel.closed:
+            return os.EX_OK
+        else:
+            return self.process.exitcode
 
     @property
-    def results_ready(self):
+    def receiver_ready(self):
         return self.channel.reader.poll()
 
     def send(self, task):
@@ -293,6 +316,7 @@ class WorkerProcess(object):
 
     def stop(self):
         stop(self.process)
+        self.channel.close()
         self.alive = False
 
 
@@ -300,6 +324,10 @@ class Channel(object):
     def __init__(self, reader, writer):
         self.reader = reader
         self.writer = writer
+
+    @property
+    def closed(self):
+        return all((self.reader.closed, self.writer.closed))
 
     def close(self):
         self.reader.close()

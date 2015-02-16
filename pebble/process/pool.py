@@ -117,12 +117,14 @@ def inspect_workers(workers):
 
 
 def manage_workers(pool, workers):
-    print workers
     ready, timeout, cancelled, expired = workers
 
     for ready_worker in ready:
-        if ready_worker.handle_result():
+        try:
+            ready_worker.handle_result()
             pool.acknowledge()
+        except RuntimeError:
+            continue
     for timeout_worker in timeout:
         timeout_worker.handle_timeout()
         pool.acknowledge()
@@ -175,9 +177,8 @@ class Worker(object):
         try:
             result = self.get_result()
             self.task_manager.set_result(result)
-            return True
         except EOFError:
-            return False
+            raise RuntimeError('Process expired')
 
     def get_result(self):
         try:
@@ -281,7 +282,6 @@ class WorkerTaskManager(object):
 class WorkerProcess(object):
     def __init__(self, parameters):
         pool_side, worker_side = self.create_channels()
-        self.alive = True
         self.channel = pool_side
         self.process = worker_process(parameters, worker_side)
         worker_side.close()
@@ -292,6 +292,10 @@ class WorkerProcess(object):
         reader2, writer2 = Pipe()
 
         return Channel(reader1, writer2), Channel(reader2, writer1)
+
+    @property
+    def alive(self):
+        return not self.channel.closed
 
     @property
     def exitcode(self):
@@ -311,13 +315,12 @@ class WorkerProcess(object):
         try:
             return self.channel.reader.recv()
         except (EOFError, EnvironmentError):
-            self.alive = False
+            self.stop()
             raise
 
     def stop(self):
         stop(self.process)
         self.channel.close()
-        self.alive = False
 
 
 class Channel(object):

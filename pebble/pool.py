@@ -22,7 +22,7 @@ from collections import namedtuple
 
 try:  # Python 2
     from Queue import Queue
-except:  # Python 3
+except ImportError:  # Python 3
     from queue import Queue
 
 from .task import Task
@@ -104,7 +104,7 @@ class BasePool(object):
         else:
             for manager in self._managers:
                 if not manager.is_alive():
-                    self._state = ERROR
+                    self._context._state = ERROR
 
 
 def wait_queue_depletion(queue, timeout):
@@ -119,7 +119,7 @@ def wait_queue_timeout(queue, timeout):
         if queue.unfinished_tasks:
             time.sleep(SLEEP_UNIT)
         else:
-            return
+            break
     else:
         raise TimeoutError("Tasks are still being executed")
 
@@ -156,7 +156,8 @@ class WorkersManager(object):
     def __init__(self, pool):
         self.pool = pool
 
-    def manage_expired_workers(self, expired_workers):
+    @staticmethod
+    def manage_expired_workers(expired_workers):
         for worker in expired_workers:
             worker.reset()
 

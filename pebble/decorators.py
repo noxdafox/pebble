@@ -19,7 +19,7 @@ import threading
 from functools import wraps
 
 
-_synchronized_lock = threading.Lock()
+synchronized_lock = threading.Lock()
 
 
 def synchronized(*args):
@@ -36,7 +36,7 @@ def synchronized(*args):
 
     """
     if callable(args[0]):
-        return decorate_synchronized(args[0], _synchronized_lock)
+        return decorate_synchronized(args[0], synchronized_lock)
     else:
         def wrap(function):
             return decorate_synchronized(function, args[0])

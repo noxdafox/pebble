@@ -15,16 +15,11 @@
 
 import time
 from itertools import count
-from threading import Event
-from traceback import format_exc
-from collections import namedtuple
-
-from pebble.task import Task
 from pebble.utils import execute
 from pebble.thread.decorators import spawn
-from pebble.pool import reset_workers, stop_workers
-from pebble.pool import CREATED, STOPPED, RUNNING, ERROR, SLEEP_UNIT
-from pebble.pool import BasePool, WorkerParameters, run_initializer
+from pebble.pool import run_initializer
+from pebble.pool import STOPPED, RUNNING, ERROR, SLEEP_UNIT
+from pebble.pool import BasePool, WorkerParameters, WorkersManager
 
 
 class Pool(BasePool):
@@ -36,7 +31,6 @@ class Pool(BasePool):
                                                self._context)
 
     def _start_pool(self):
-        reset_workers(self._context.workers)
         self._managers = (pool_manager_loop(self._context), )
         self._context.state = RUNNING
 
@@ -48,13 +42,26 @@ def create_workers(workers, task_limit, initializer, initargs, pool):
 
 @spawn(daemon=True, name='pool_manager')
 def pool_manager_loop(pool):
-    while pool.state not in (ERROR, STOPPED):
-        reset_workers(pool.workers)
-        time.sleep(SLEEP_UNIT)
+    workers_manager = ThreadWorkersManager(pool)
 
-    for worker in pool.workers:
-        pool.schedule(None)
-    stop_workers(pool.workers)
+    while pool.state not in (ERROR, STOPPED):
+        workers = workers_manager.inspect_workers()
+
+        if any(workers):
+            workers_manager.manage_workers(workers)
+        else:
+            time.sleep(SLEEP_UNIT)
+
+    workers_manager.stop_workers()
+
+
+class ThreadWorkersManager(WorkersManager):
+    def inspect_workers(self):
+        return [(w for w in self.pool.workers if not w.alive)]
+
+    def manage_workers(self, workers):
+        expired = workers[0]
+        self.manage_expired_workers(expired)
 
 
 class Worker(object):

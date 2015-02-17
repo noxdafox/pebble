@@ -61,6 +61,8 @@ class BasePool(object):
         self._context.state = CLOSED
 
     def stop(self):
+        for _ in self._context.workers:
+            self._context.schedule(None)
         self._context.state = STOPPED
 
     def join(self, timeout=None):
@@ -124,16 +126,10 @@ def wait_queue_timeout(queue, timeout):
 
 class PoolContext(object):
     def __init__(self, queue, queueargs):
-        self.state = CREATED
         self.workers = None
+        self.state = CREATED
         self.counter = count()
-        if queue is not None:
-            if isclass(queue):
-                self.task_queue = queue(*queueargs)
-            else:
-                raise ValueError("Queue must be Class")
-        else:
-            self.task_queue = Queue()
+        self.task_queue = create_queue(queue, queueargs)
 
     @property
     def alive(self):
@@ -144,6 +140,29 @@ class PoolContext(object):
 
     def acknowledge(self):
         self.task_queue.task_done()
+
+
+def create_queue(queue, queueargs):
+    if queue is not None:
+        if isclass(queue):
+            return queue(*queueargs)
+        else:
+            raise ValueError("Queue must be Class")
+    else:
+        return Queue()
+
+
+class WorkersManager(object):
+    def __init__(self, pool):
+        self.pool = pool
+
+    def manage_expired_workers(self, expired_workers):
+        for worker in expired_workers:
+            worker.reset()
+
+    def stop_workers(self):
+        for worker in self.pool.workers:
+            worker.stop()
 
 
 WorkerParameters = namedtuple('WorkerParameters',
@@ -161,14 +180,3 @@ def run_initializer(initializer, initargs):
     except Exception:
         print_exc()
         return False
-
-
-def reset_workers(workers):
-    for worker in workers:
-        if not worker.alive:
-            worker.reset()
-
-
-def stop_workers(workers):
-    for worker in workers:
-        worker.stop()

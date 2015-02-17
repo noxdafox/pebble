@@ -25,8 +25,8 @@ from signal import SIG_IGN, SIGINT, signal
 from pebble import thread
 from pebble.task import Task
 from pebble.utils import coroutine, execute
-from pebble.pool import reset_workers, stop_workers
-from pebble.pool import BasePool, WorkerParameters, run_initializer
+from pebble.pool import run_initializer
+from pebble.pool import BasePool, WorkerParameters, WorkersManager
 from pebble.pool import RUNNING, ERROR, STOPPED, SLEEP_UNIT
 from pebble.process.decorators import spawn
 from pebble.process.utils import stop, send_results
@@ -41,7 +41,8 @@ class Pool(BasePool):
                                                initializer, initargs)
 
     def _start_pool(self):
-        reset_workers(self._context.workers)
+        for worker in self._context.workers:
+            worker.reset()
         self._managers = (pool_manager_loop(self._context),
                           task_scheduler_loop(self._context))
         self._context.state = RUNNING
@@ -95,44 +96,55 @@ def task_fetcher(pool):
 
 @thread.spawn(daemon=True, name='pool_manager')
 def pool_manager_loop(pool):
+    workers_manager = ProcessWorkersManager(pool)
+
     while pool.state not in (ERROR, STOPPED):
-        workers = inspect_workers(pool.workers)
+        workers = workers_manager.inspect_workers()
 
         if any(workers):
-            manage_workers(pool, workers)
+            workers_manager.manage_workers(workers)
         else:
             time.sleep(SLEEP_UNIT)
 
-    pool.schedule(None)
-    stop_workers(pool.workers)
+    workers_manager.stop_workers()
 
 
-def inspect_workers(workers):
-    ready = [w for w in workers if w.task_ready()]
-    timeout = [w for w in workers if w.task_timeout()]
-    cancelled = [w for w in workers if w.task_cancelled()]
-    expired = [w for w in workers if not w.alive]
+class ProcessWorkersManager(WorkersManager):
+    def inspect_workers(self):
+        workers = self.pool.workers
 
-    return ready, timeout, cancelled, expired
+        ready = (w for w in workers if w.task_ready())
+        timeout = (w for w in workers if w.task_timeout())
+        cancelled = (w for w in workers if w.task_cancelled())
+        expired = (w for w in workers if not w.alive)
 
+        return ready, timeout, cancelled, expired
 
-def manage_workers(pool, workers):
-    ready, timeout, cancelled, expired = workers
+    def manage_workers(self, workers):
+        ready, timeout, cancelled, expired = workers
 
-    for ready_worker in ready:
-        try:
-            ready_worker.handle_result()
-            pool.acknowledge()
-        except RuntimeError:
-            continue
-    for timeout_worker in timeout:
-        timeout_worker.handle_timeout()
-        pool.acknowledge()
-    for cancelled_worker in cancelled:
-        cancelled_worker.handle_cancel()
-        pool.acknowledge()
-    for expired_worker in expired:
-        expired_worker.reset()
+        self.manage_ready_workers(ready)
+        self.manage_timeout_workers(timeout)
+        self.manage_cancelled_workers(cancelled)
+        self.manage_expired_workers(expired)
+
+    def manage_ready_workers(self, ready_workers):
+        for worker in ready_workers:
+            try:
+                worker.handle_result()
+                self.pool.acknowledge()
+            except RuntimeError:
+                continue
+
+    def manage_timeout_workers(self, timeout_workers):
+        for worker in timeout_workers:
+            worker.handle_timeout()
+            self.pool.acknowledge()
+
+    def manage_cancelled_workers(self, cancelled_workers):
+        for worker in cancelled_workers:
+            worker.handle_cancel()
+            self.pool.acknowledge()
 
 
 class Worker(object):

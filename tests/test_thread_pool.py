@@ -3,7 +3,7 @@ import unittest
 import threading
 
 from pebble import thread
-from pebble import PoolError, TaskCancelled, TimeoutError
+from pebble import TaskCancelled, TimeoutError
 
 
 event = threading.Event()
@@ -160,7 +160,7 @@ class TestThreadPool(unittest.TestCase):
         pool = thread.Pool(initializer=initializer_error)
         task = pool.schedule(initializer_function)
         with self.assertRaises(TimeoutError):
-            task.get(timeout=0.1)
+            task.get(timeout=0.01)
         pool.stop()
         pool.join()
 

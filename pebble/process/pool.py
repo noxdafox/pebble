@@ -49,8 +49,8 @@ class Pool(BasePool):
 
 
 def create_workers(workers, task_limit, initializer, initargs):
-    parameters = WorkerParameters(task_limit, initializer, initargs, None, None)
-    return [Worker(parameters) for _ in range(workers)]
+    params = WorkerParameters(task_limit, initializer, initargs, None, None)
+    return [Worker(params) for _ in range(workers)]
 
 
 @thread.spawn(daemon=True, name='task_scheduler')
@@ -350,23 +350,23 @@ class Channel(object):
 
 
 @spawn(name='worker_process', daemon=True)
-def worker_process(parameters, channel):
+def worker_process(params, channel):
     """Runs the actual function in separate process."""
     signal(SIGINT, SIG_IGN)
 
-    if parameters.initializer is not None:
-        if not run_initializer(parameters.initializer, parameters.initargs):
+    if params.initializer is not None:
+        if not run_initializer(params.initializer, params.initargs):
             os._exit(os.EX_OK)
 
     try:
-        for task in get_next_task(channel, parameters.task_limit):
+        for task in get_next_task(channel, params.task_limit):
             results = execute_next_task(task)
             send_results(channel.writer, results)
     except (EOFError, EnvironmentError) as error:
         return error.errno
 
-    if parameters.deinitializer is not None:
-        if not run_initializer(parameters.deinitializer, parameters.deinitargs):
+    if params.deinitializer is not None:
+        if not run_initializer(params.deinitializer, params.deinitargs):
             os._exit(os.EX_OK)
 
     return os._exit(os.EX_OK)

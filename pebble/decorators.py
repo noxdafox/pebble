@@ -29,7 +29,8 @@ def synchronized(*args):
     The synchronized decorator accepts as optional parameter a Lock, RLock or
     Semaphore object which will be employed to ensure the function's atomicity.
 
-    If no synchronization object is given, a single threading.Lock will be used.
+    If no synchronization object is given, a single threading.Lock
+    will be used.
     This implies that between different decorated function only one at a time
     will be executed.
 

@@ -36,8 +36,8 @@ class Pool(BasePool):
 
 
 def create_workers(workers, task_limit, initializer, initargs, pool):
-    parameters = WorkerParameters(task_limit, initializer, initargs, None, None)
-    return [Worker(parameters, pool) for _ in range(workers)]
+    params = WorkerParameters(task_limit, initializer, initargs, None, None)
+    return [Worker(params, pool) for _ in range(workers)]
 
 
 @spawn(daemon=True, name='pool_manager')
@@ -85,18 +85,18 @@ class Worker(object):
 
 
 @spawn(name='worker_thread', daemon=True)
-def worker_thread(parameters, pool):
+def worker_thread(params, pool):
     """Runs the actual function in separate thread."""
-    if parameters.initializer is not None:
-        if not run_initializer(parameters.initializer, parameters.initargs):
+    if params.initializer is not None:
+        if not run_initializer(params.initializer, params.initargs):
             return
 
-    for task in get_next_task(pool, parameters.task_limit):
+    for task in get_next_task(pool, params.task_limit):
         execute_next_task(task)
         pool.acknowledge()
 
-    if parameters.deinitializer is not None:
-        if not run_initializer(parameters.deinitializer, parameters.deinitargs):
+    if params.deinitializer is not None:
+        if not run_initializer(params.deinitializer, params.deinitargs):
             return
 
     return

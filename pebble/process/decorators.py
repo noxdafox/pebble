@@ -24,7 +24,7 @@ from pebble.utils import execute, function_handler
 from pebble.process.utils import stop, send_results, get_results, decorate
 
 
-_task_counter = count()
+task_counter = count()
 
 
 def spawn(*args, **kwargs):
@@ -91,7 +91,7 @@ def launch_task(target, timeout=None, callback=None, identifier=None,
     worker = task_worker(writer, target, args, kwargs)
     writer.close()
 
-    task = ProcessTask(next(_task_counter), worker, callback=callback,
+    task = ProcessTask(next(task_counter), worker, callback=callback,
                        timeout=timeout, identifier=identifier)
     task_manager(task, reader)
 

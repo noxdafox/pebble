@@ -21,7 +21,7 @@ from pebble.thread.utils import decorate
 from pebble.utils import execute, function_handler
 
 
-_task_counter = count()
+task_counter = count()
 
 
 def spawn(*args, **kwargs):
@@ -85,7 +85,7 @@ def launch_task(function, callback=None, identifier=None,
 
     """
     metadata = {'function': function, 'args': args, 'kwargs':  kwargs}
-    task = Task(next(_task_counter), callback=callback,
+    task = Task(next(task_counter), callback=callback,
                 metadata=metadata, identifier=identifier)
     task_worker(task)
 

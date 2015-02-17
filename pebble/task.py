@@ -80,7 +80,7 @@ class Task(object):
 
         """
         if self.wait(timeout=timeout):
-            if (isinstance(self._results, BaseException)):
+            if isinstance(self._results, BaseException):
                 raise self._results
             else:
                 return self._results

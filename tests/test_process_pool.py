@@ -198,7 +198,7 @@ class TestProcessPool(unittest.TestCase):
         pool = process.Pool(initializer=initializer_error)
         task = pool.schedule(initializer_function)
         with self.assertRaises(TimeoutError):
-            task.get(timeout=0.1)
+            task.get(timeout=0.01)
         pool.stop()
         pool.join()
 

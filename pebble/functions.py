@@ -89,7 +89,7 @@ def waitforqueues(queues, timeout=None):
 
 
 def prepare_queues(queues, lock):
-    """Replaces queue._put() method in order to notify the waiting Condition."""
+    """Replaces queue._put() method to notify the waiting Condition."""
     for queue in queues:
         queue._pebble_lock = lock
         with queue.mutex:

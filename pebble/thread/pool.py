@@ -15,16 +15,11 @@
 
 import time
 from itertools import count
-from threading import Event
-from traceback import format_exc
-from collections import namedtuple
-
-from pebble.task import Task
 from pebble.utils import execute
 from pebble.thread.decorators import spawn
-from pebble.pool import reset_workers, stop_workers
-from pebble.pool import CREATED, STOPPED, RUNNING, ERROR, SLEEP_UNIT
-from pebble.pool import BasePool, WorkerParameters, run_initializer
+from pebble.pool import run_initializer
+from pebble.pool import STOPPED, RUNNING, ERROR, SLEEP_UNIT
+from pebble.pool import BasePool, WorkerParameters, WorkersManager
 
 
 class Pool(BasePool):
@@ -36,23 +31,37 @@ class Pool(BasePool):
                                                self._context)
 
     def _start_pool(self):
-        reset_workers(self._context.workers)
         self._managers = (pool_manager_loop(self._context), )
         self._context.state = RUNNING
 
 
 def create_workers(workers, task_limit, initializer, initargs, pool):
-    parameters = WorkerParameters(task_limit, initializer, initargs, None, None)
-    return [Worker(parameters, pool) for _ in range(workers)]
+    params = WorkerParameters(task_limit, initializer, initargs, None, None)
+    return [Worker(params, pool) for _ in range(workers)]
 
 
 @spawn(daemon=True, name='pool_manager')
 def pool_manager_loop(pool):
-    while pool.state not in (ERROR, STOPPED):
-        reset_workers(pool.workers)
-        time.sleep(SLEEP_UNIT)
+    workers_manager = ThreadWorkersManager(pool)
 
-    stop_workers(pool.workers)
+    while pool.state not in (ERROR, STOPPED):
+        workers = workers_manager.inspect_workers()
+
+        if any(workers):
+            workers_manager.manage_workers(workers)
+        else:
+            time.sleep(SLEEP_UNIT)
+
+    workers_manager.stop_workers()
+
+
+class ThreadWorkersManager(WorkersManager):
+    def inspect_workers(self):
+        return [(w for w in self.pool.workers if not w.alive)]
+
+    def manage_workers(self, workers):
+        expired = workers[0]
+        self.manage_expired_workers(expired)
 
 
 class Worker(object):
@@ -76,18 +85,18 @@ class Worker(object):
 
 
 @spawn(name='worker_thread', daemon=True)
-def worker_thread(parameters, pool):
+def worker_thread(params, pool):
     """Runs the actual function in separate thread."""
-    if parameters.initializer is not None:
-        if not run_initializer(parameters.initializer, parameters.initargs):
+    if params.initializer is not None:
+        if not run_initializer(params.initializer, params.initargs):
             return
 
-    for task in get_next_task(pool, parameters.task_limit):
+    for task in get_next_task(pool, params.task_limit):
         execute_next_task(task)
         pool.acknowledge()
 
-    if parameters.deinitializer is not None:
-        if not run_initializer(parameters.deinitializer, parameters.deinitargs):
+    if params.deinitializer is not None:
+        if not run_initializer(params.deinitializer, params.deinitargs):
             return
 
     return

@@ -16,6 +16,7 @@
 import os
 import time
 
+from select import select
 from threading import Lock
 from itertools import count
 from collections import deque
@@ -25,8 +26,8 @@ from signal import SIG_IGN, SIGINT, signal
 from pebble import thread
 from pebble.task import Task
 from pebble.utils import coroutine, execute
-from pebble.pool import reset_workers, stop_workers
-from pebble.pool import BasePool, WorkerParameters, run_initializer
+from pebble.pool import run_initializer
+from pebble.pool import BasePool, WorkerParameters, WorkersManager
 from pebble.pool import RUNNING, ERROR, STOPPED, SLEEP_UNIT
 from pebble.process.decorators import spawn
 from pebble.process.utils import stop, send_results
@@ -41,15 +42,16 @@ class Pool(BasePool):
                                                initializer, initargs)
 
     def _start_pool(self):
-        reset_workers(self._context.workers)
+        for worker in self._context.workers:
+            worker.reset()
         self._managers = (pool_manager_loop(self._context),
                           task_scheduler_loop(self._context))
         self._context.state = RUNNING
 
 
 def create_workers(workers, task_limit, initializer, initargs):
-    parameters = WorkerParameters(task_limit, initializer, initargs, None, None)
-    return [Worker(parameters) for _ in range(workers)]
+    params = WorkerParameters(task_limit, initializer, initargs, None, None)
+    return [Worker(params) for _ in range(workers)]
 
 
 @thread.spawn(daemon=True, name='task_scheduler')
@@ -95,43 +97,63 @@ def task_fetcher(pool):
 
 @thread.spawn(daemon=True, name='pool_manager')
 def pool_manager_loop(pool):
+    workers_manager = ProcessWorkersManager(pool)
+
     while pool.state not in (ERROR, STOPPED):
-        workers = inspect_workers(pool.workers)
+        workers = workers_manager.inspect_workers()
 
         if any(workers):
-            manage_workers(pool, workers)
+            workers_manager.manage_workers(workers)
         else:
             time.sleep(SLEEP_UNIT)
 
-    stop_workers(pool.workers)
+    workers_manager.stop_workers()
 
 
-def inspect_workers(workers):
-    ready = [w for w in workers if w.task_ready()]
-    timeout = [w for w in workers if w.task_timeout()]
-    cancelled = [w for w in workers if w.task_cancelled()]
-    expired = [w for w in workers if not w.alive]
+class ProcessWorkersManager(WorkersManager):
+    def inspect_workers(self):
+        workers = self.pool.workers
 
-    return ready, timeout, cancelled, expired
+        ready = get_ready_workers(workers)
+        timeout = (w for w in workers if w.task_timeout())
+        cancelled = (w for w in workers if w.task_cancelled())
+        expired = (w for w in workers if not w.alive)
+
+        return ready, timeout, cancelled, expired
+
+    def manage_workers(self, workers):
+        ready, timeout, cancelled, expired = workers
+
+        self.manage_ready_workers(ready)
+        self.manage_timeout_workers(timeout)
+        self.manage_cancelled_workers(cancelled)
+        self.manage_expired_workers(expired)
+
+    def manage_ready_workers(self, ready_workers):
+        for worker in ready_workers:
+            try:
+                worker.handle_result()
+                self.pool.acknowledge()
+            except RuntimeError:
+                continue
+
+    def manage_timeout_workers(self, timeout_workers):
+        for worker in timeout_workers:
+            worker.handle_timeout()
+            self.pool.acknowledge()
+
+    def manage_cancelled_workers(self, cancelled_workers):
+        for worker in cancelled_workers:
+            worker.handle_cancel()
+            self.pool.acknowledge()
 
 
-def manage_workers(pool, workers):
-    ready, timeout, cancelled, expired = workers
-
-    for ready_worker in ready:
-        try:
-            ready_worker.handle_result()
-            pool.acknowledge()
-        except RuntimeError:
-            continue
-    for timeout_worker in timeout:
-        timeout_worker.handle_timeout()
-        pool.acknowledge()
-    for cancelled_worker in cancelled:
-        cancelled_worker.handle_cancel()
-        pool.acknowledge()
-    for expired_worker in expired:
-        expired_worker.reset()
+def get_ready_workers(workers):
+    if os.name == 'nt':
+        return (w for w in workers if w.task_ready())
+    else:
+        ready_selectors = select((w.selector for w in workers), (), (), 0.1)
+        return (w for w in workers if w.selector in ready_selectors[0])
 
 
 class Worker(object):
@@ -147,6 +169,10 @@ class Worker(object):
             return self.process_worker.alive
         else:
             return False
+
+    @property
+    def selector(self):
+        return self.process_worker.receiver
 
     def task_ready(self):
         if self.process_worker.alive:
@@ -304,6 +330,10 @@ class WorkerProcess(object):
             return self.process.exitcode
 
     @property
+    def receiver(self):
+        return self.channel.reader
+
+    @property
     def receiver_ready(self):
         return self.channel.reader.poll()
 
@@ -337,23 +367,23 @@ class Channel(object):
 
 
 @spawn(name='worker_process', daemon=True)
-def worker_process(parameters, channel):
+def worker_process(params, channel):
     """Runs the actual function in separate process."""
     signal(SIGINT, SIG_IGN)
 
-    if parameters.initializer is not None:
-        if not run_initializer(parameters.initializer, parameters.initargs):
+    if params.initializer is not None:
+        if not run_initializer(params.initializer, params.initargs):
             os._exit(os.EX_OK)
 
     try:
-        for task in get_next_task(channel, parameters.task_limit):
+        for task in get_next_task(channel, params.task_limit):
             results = execute_next_task(task)
             send_results(channel.writer, results)
     except (EOFError, EnvironmentError) as error:
         return error.errno
 
-    if parameters.deinitializer is not None:
-        if not run_initializer(parameters.deinitializer, parameters.deinitargs):
+    if params.deinitializer is not None:
+        if not run_initializer(params.deinitializer, params.deinitargs):
             os._exit(os.EX_OK)
 
     return os._exit(os.EX_OK)

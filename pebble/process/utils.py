@@ -20,7 +20,7 @@ from functools import wraps
 from traceback import format_exc
 try:  # Python 2
     from cPickle import PicklingError
-except:  # Python 3
+except ImportError:  # Python 3
     from pickle import PicklingError
 if os.name in ('posix', 'os2'):
     from signal import SIGKILL
@@ -28,7 +28,7 @@ if os.name in ('posix', 'os2'):
 from pebble.exceptions import TimeoutError, ProcessExpired
 
 
-_registered_functions = {}
+registered_functions = {}
 
 
 def stop(worker):
@@ -92,9 +92,9 @@ def decorate(function, launcher, **properties):
 
 
 def register_function(function):
-    global _registered_functions
+    global registered_functions
 
-    _registered_functions[function.__name__] = function
+    registered_functions[function.__name__] = function
 
 
 def dump_function(function, args):
@@ -121,10 +121,10 @@ def function_lookup(name, module):
 
     """
     try:
-        return _registered_functions[name]
+        return registered_functions[name]
     except KeyError:  # force function registering
         __import__(module)
         mod = sys.modules[module]
         getattr(mod, name)
 
-        return _registered_functions[name]
+        return registered_functions[name]

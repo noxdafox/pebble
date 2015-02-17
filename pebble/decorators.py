@@ -19,7 +19,7 @@ import threading
 from functools import wraps
 
 
-_synchronized_lock = threading.Lock()
+synchronized_lock = threading.Lock()
 
 
 def synchronized(*args):
@@ -29,13 +29,14 @@ def synchronized(*args):
     The synchronized decorator accepts as optional parameter a Lock, RLock or
     Semaphore object which will be employed to ensure the function's atomicity.
 
-    If no synchronization object is given, a single threading.Lock will be used.
+    If no synchronization object is given, a single threading.Lock
+    will be used.
     This implies that between different decorated function only one at a time
     will be executed.
 
     """
     if callable(args[0]):
-        return decorate_synchronized(args[0], _synchronized_lock)
+        return decorate_synchronized(args[0], synchronized_lock)
     else:
         def wrap(function):
             return decorate_synchronized(function, args[0])

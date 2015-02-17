@@ -22,7 +22,7 @@ semaphore = threading.Semaphore()
 @synchronized
 def synchronized_function():
     """A docstring."""
-    return decorators._synchronized_lock.acquire(False)
+    return decorators.synchronized_lock.acquire(False)
 
 
 @synchronized(semaphore)
@@ -89,8 +89,8 @@ class TestSynchronizedDecorator(unittest.TestCase):
         """Synchronized Lock is released
         during execution of decorated function."""
         synchronized_function()
-        self.assertTrue(decorators._synchronized_lock.acquire(False))
-        decorators._synchronized_lock.release()
+        self.assertTrue(decorators.synchronized_lock.acquire(False))
+        decorators.synchronized_lock.release()
 
     def test_custom_syncronized_locked(self):
         """Synchronized semaphore is acquired

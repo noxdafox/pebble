@@ -100,8 +100,6 @@ def worker_thread(params, pool):
         if not run_initializer(params.deinitializer, params.deinitargs):
             return
 
-    return
-
 
 def get_next_task(pool, task_limit):
     counter = count()

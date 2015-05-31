@@ -104,22 +104,31 @@ def pool_manager_loop(pool):
 
         if any(workers):
             workers_manager.manage_workers(workers)
-        else:
-            time.sleep(SLEEP_UNIT)
 
     workers_manager.stop_workers()
 
 
 class ProcessWorkersManager(WorkersManager):
+    last_inspection = 0
+
     def inspect_workers(self):
         workers = self.pool.workers
 
         ready = get_ready_workers(workers)
-        timeout = (w for w in workers if w.task_timeout())
-        cancelled = (w for w in workers if w.task_cancelled())
-        expired = (w for w in workers if not w.alive)
+        timeout, cancelled, expired = self.get_problematic_workers(workers)
 
         return ready, timeout, cancelled, expired
+
+    def get_problematic_workers(self, workers):
+        timestamp = time.time()
+
+        if timestamp - self.last_inspection >= SLEEP_UNIT:
+            self.last_inspection = timestamp
+            return ((w for w in workers if w.task_timeout()),
+                    (w for w in workers if w.task_cancelled()),
+                    (w for w in workers if not w.alive))
+        else:
+            return (), (), ()
 
     def manage_workers(self, workers):
         ready, timeout, cancelled, expired = workers
@@ -148,12 +157,23 @@ class ProcessWorkersManager(WorkersManager):
             self.pool.acknowledge()
 
 
-def get_ready_workers(workers):
-    if os.name == 'nt':
-        return (w for w in workers if w.task_ready())
-    else:
-        ready_selectors = select((w.selector for w in workers), (), (), 0.1)
-        return (w for w in workers if w.selector in ready_selectors[0])
+def get_ready_workers_unix(workers):
+    valid_selectors = (w.selector for w in workers if not w.selector.closed)
+    ready_selectors = select(valid_selectors, (), (), SLEEP_UNIT)
+    return (w for w in workers if w.selector in ready_selectors[0])
+
+
+def get_ready_workers_windows(workers):
+    ready_workers = (w for w in workers if w.task_ready())
+    if not any(ready_workers):
+        time.sleep(SLEEP_UNIT)
+    return ready_workers
+
+
+if os.name == 'nt':
+    get_ready_workers = get_ready_workers_windows
+else:
+    get_ready_workers = get_ready_workers_unix
 
 
 class Worker(object):

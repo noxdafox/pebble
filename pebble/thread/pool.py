@@ -78,7 +78,8 @@ class Worker(object):
             return False
 
     def stop(self):
-        self.thread_worker.join()
+        if self.alive:
+            self.thread_worker.join()
 
     def reset(self):
         self.thread_worker = worker_thread(self.parameters, self.pool)

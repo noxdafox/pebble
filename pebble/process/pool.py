@@ -248,7 +248,7 @@ class Worker(object):
         self.task_manager.set_result(TaskCancelled('Task cancelled'))
 
     def stop(self):
-        if self.process_worker.alive:
+        if self.alive:
             self.process_worker.stop()
 
     def reset(self):

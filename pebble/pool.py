@@ -61,8 +61,6 @@ class BasePool(object):
         self._context.state = CLOSED
 
     def stop(self):
-        for _ in self._context.workers:
-            self._context.schedule(None)
         self._context.state = STOPPED
         for _ in self._context.workers:
             self._context.schedule(None)

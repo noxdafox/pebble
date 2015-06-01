@@ -261,7 +261,8 @@ class TestProcessPool(unittest.TestCase):
         pool.schedule(function, args=[1])
         pool.stop()
         pool.join()
-        alive_workers = [w for w in pool._context.workers if w.alive]
+        alive_workers = [w for w in pool._context.workers_manager.workers
+                         if w.alive]
         self.assertEqual(len(alive_workers), 0)
 
     def test_process_pool_join_running(self):

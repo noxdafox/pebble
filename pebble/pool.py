@@ -62,8 +62,6 @@ class BasePool(object):
 
     def stop(self):
         self._context.state = STOPPED
-        for _ in self._context.workers:
-            self._context.schedule(None)
 
     def join(self, timeout=None):
         if self._context.state == RUNNING:
@@ -75,6 +73,7 @@ class BasePool(object):
         else:
             for manager in self._managers:
                 manager.join()
+            self._context.workers_manager.stop_workers()
 
     def schedule(self, function, args=(), kwargs={}, identifier=None,
                  callback=None, timeout=0):
@@ -126,9 +125,9 @@ def wait_queue_timeout(queue, timeout):
 
 class PoolContext(object):
     def __init__(self, queue, queueargs):
-        self.workers = None
         self.state = CREATED
         self.counter = count()
+        self.workers_manager = None
         self.task_queue = create_queue(queue, queueargs)
 
     @property
@@ -155,15 +154,12 @@ def create_queue(queue, queueargs):
 class WorkersManager(object):
     def __init__(self, pool):
         self.pool = pool
+        self.workers = None
 
     @staticmethod
     def manage_expired_workers(expired_workers):
         for worker in expired_workers:
             worker.reset()
-
-    def stop_workers(self):
-        for worker in self.pool.workers:
-            worker.stop()
 
 
 WorkerParameters = namedtuple('WorkerParameters',

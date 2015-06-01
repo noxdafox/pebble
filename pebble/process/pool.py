@@ -38,20 +38,20 @@ class Pool(BasePool):
     def __init__(self, workers=1, task_limit=0, queue=None, queueargs=None,
                  initializer=None, initargs=()):
         super(Pool, self).__init__(queue, queueargs)
-        self._context.workers = create_workers(workers, task_limit,
-                                               initializer, initargs)
+        self._context.workers_manager = ProcessWorkersManager(self._context)
+        self._context.workers_manager.create_workers(workers, task_limit,
+                                                     initializer, initargs)
 
     def _start_pool(self):
-        for worker in self._context.workers:
-            worker.reset()
+        self._context.workers_manager.manage_expired_workers(
+            self._context.workers_manager.workers)
         self._managers = (pool_manager_loop(self._context),
                           task_scheduler_loop(self._context))
         self._context.state = RUNNING
 
-
-def create_workers(workers, task_limit, initializer, initargs):
-    params = WorkerParameters(task_limit, initializer, initargs, None, None)
-    return [Worker(params) for _ in range(workers)]
+    def stop(self):
+        super(Pool, self).stop()
+        self._context.schedule(None)
 
 
 @thread.spawn(daemon=True, name='task_scheduler')
@@ -68,7 +68,7 @@ def task_scheduler_loop(pool):
 @coroutine
 def task_scheduler(pool):
     task = None
-    workers = pool.workers
+    workers = pool.workers_manager.workers
 
     while pool.state not in (ERROR, STOPPED):
         for worker in workers:
@@ -97,7 +97,7 @@ def task_fetcher(pool):
 
 @thread.spawn(daemon=True, name='pool_manager')
 def pool_manager_loop(pool):
-    workers_manager = ProcessWorkersManager(pool)
+    workers_manager = pool.workers_manager
 
     while pool.state not in (ERROR, STOPPED):
         workers = workers_manager.inspect_workers()
@@ -105,14 +105,18 @@ def pool_manager_loop(pool):
         if any(workers):
             workers_manager.manage_workers(workers)
 
-    workers_manager.stop_workers()
-
 
 class ProcessWorkersManager(WorkersManager):
-    last_inspection = 0
+    def __init__(self, pool):
+        super(ProcessWorkersManager, self).__init__(pool)
+        self.last_inspection = 0
+
+    def create_workers(self, workers, task_limit, initializer, initargs):
+        params = WorkerParameters(task_limit, initializer, initargs, None, None)
+        self.workers = tuple(Worker(params) for _ in range(workers))
 
     def inspect_workers(self):
-        workers = self.pool.workers
+        workers = self.workers
 
         ready = get_ready_workers(workers)
         timeout, cancelled, expired = self.get_problematic_workers(workers)
@@ -155,6 +159,10 @@ class ProcessWorkersManager(WorkersManager):
         for worker in cancelled_workers:
             worker.handle_cancel()
             self.pool.acknowledge()
+
+    def stop_workers(self):
+        for worker in self.workers:
+            worker.stop()
 
 
 def get_ready_workers_unix(workers):

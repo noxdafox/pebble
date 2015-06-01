@@ -26,23 +26,20 @@ class Pool(BasePool):
     def __init__(self, workers=1, task_limit=0, queue=None, queueargs=None,
                  initializer=None, initargs=()):
         super(Pool, self).__init__(queue, queueargs)
-        self._context.workers = create_workers(workers, task_limit,
-                                               initializer, initargs,
-                                               self._context)
+        self._context.workers_manager = ThreadWorkersManager(self._context)
+        self._context.workers_manager.create_workers(workers, task_limit,
+                                                     initializer, initargs)
 
     def _start_pool(self):
+        self._context.workers_manager.manage_expired_workers(
+            self._context.workers_manager.workers)
         self._managers = (pool_manager_loop(self._context), )
         self._context.state = RUNNING
 
 
-def create_workers(workers, task_limit, initializer, initargs, pool):
-    params = WorkerParameters(task_limit, initializer, initargs, None, None)
-    return [Worker(params, pool) for _ in range(workers)]
-
-
 @spawn(daemon=True, name='pool_manager')
 def pool_manager_loop(pool):
-    workers_manager = ThreadWorkersManager(pool)
+    workers_manager = pool.workers_manager
 
     while pool.state not in (ERROR, STOPPED):
         workers = workers_manager.inspect_workers()
@@ -52,16 +49,27 @@ def pool_manager_loop(pool):
         else:
             time.sleep(SLEEP_UNIT)
 
-    workers_manager.stop_workers()
-
 
 class ThreadWorkersManager(WorkersManager):
+    def __init__(self, pool):
+        super(ThreadWorkersManager, self).__init__(pool)
+
+    def create_workers(self, workers, task_limit, initializer, initargs):
+        params = WorkerParameters(task_limit, initializer, initargs, None, None)
+        self.workers = [Worker(params, self.pool) for _ in range(workers)]
+
     def inspect_workers(self):
-        return [(w for w in self.pool.workers if not w.alive)]
+        return [(w for w in self.workers if not w.alive)]
 
     def manage_workers(self, workers):
         expired = workers[0]
         self.manage_expired_workers(expired)
+
+    def stop_workers(self):
+        for _ in self.workers:
+            self.pool.schedule(None)
+        for worker in self.workers:
+            worker.stop()
 
 
 class Worker(object):

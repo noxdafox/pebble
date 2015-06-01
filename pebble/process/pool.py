@@ -22,7 +22,7 @@ from time import sleep, time
 from signal import SIG_IGN, SIGINT, signal
 from traceback import format_exc
 from contextlib import contextmanager
-from multiprocessing import Pipe, RLock
+from multiprocessing import Pipe, Lock
 try:  # Python 2
     from Queue import Empty
     from cPickle import PicklingError
@@ -55,9 +55,8 @@ def get_task(channel, pid):
     while function is None:
         try:
             channel.poll()
-            with lock(channel):
-                number, function, args, kwargs = channel.recv(0)
-                channel.send((ACK, number, pid))
+            number, function, args, kwargs = channel.recv(0)
+            channel.send((ACK, number, pid))
         except TimeoutError:  # race condition between workers
             continue
         except (OSError, IOError):
@@ -138,7 +137,7 @@ def task_scheduler(context):
 
     while context.state not in (ERROR, STOPPED):
         try:
-            task = queue.get(0.6)
+            task = queue.get(timeout=0.6)
         except Empty:
             continue
 
@@ -388,8 +387,8 @@ class WorkerChannel(PoolChannel):
     """Worker's side of the channel."""
     def __init__(self, reader, writer):
         super(WorkerChannel, self).__init__(reader, writer)
-        self.rlock = RLock()
-        self.wlock = os.name != 'nt' and RLock() or None
+        self.rlock = Lock()
+        self.wlock = os.name != 'nt' and Lock() or None
         self.recv = self._make_recv_method()
         self.send = self._make_send_method()
 

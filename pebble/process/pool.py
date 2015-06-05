@@ -17,21 +17,24 @@
 import os
 import time
 
-from multiprocessing import Pipe
-from signal import SIG_IGN, SIGINT, signal
+from itertools import count
+from collections import namedtuple
+from signal import SIG_IGN, SIGINT, SIGTERM, SIGKILL, signal
 
 from pebble import thread
 from pebble.task import Task
 from pebble.utils import execute
 from pebble.pool import run_initializer
-from pebble.pool import BasePool, WorkerParameters, WorkersManager
-from pebble.pool import RUNNING, ERROR, STOPPED, SLEEP_UNIT
+from pebble.pool import BasePool, WorkerParameters
+from pebble.pool import RUNNING, SLEEP_UNIT
+from pebble.process.channel import channels
 from pebble.process.decorators import spawn
 from pebble.process.utils import stop, send_results
 from pebble.exceptions import TimeoutError, TaskCancelled, ProcessExpired
 
 
 NoMessage = namedtuple('NoMessage', ())
+NewTask = namedtuple('NewTask', ('id', 'payload'))
 Results = namedtuple('Results', ('worker', 'results'))
 Acknowledgement = namedtuple('Acknowledgement', ('worker', 'task'))
 
@@ -41,11 +44,12 @@ class Pool(BasePool):
                  initializer=None, initargs=()):
         super(Pool, self).__init__(queue, queueargs)
         self._context.task_manager = TaskManager(self._context)
-        self._context.workers_manager = ProcessWorkersManager(self._context)
-        self._context.workers_manager.create_workers(workers, task_limit,
-                                                     initializer, initargs)
+        self._context.workers_manager = ProcessWorkersManager(workers)
+        self._context.workers_manager.worker_parameters = WorkerParameters(
+            task_limit, initializer, initargs, None, None)
 
     def _start_pool(self):
+        self._context.workers_manager.update_workers_status()
         self._managers = (pool_manager_loop(self._context),
                           task_scheduler_loop(self._context))
         self._context.state = RUNNING
@@ -89,15 +93,13 @@ def pool_manager_loop(context):
 
 
 def get_next_message(context):
-    channel = workers_manager.pool_channel
+    channel = context.workers_manager.pool_channel
 
     while context.alive:
-        try:
-            channel.poll(SLEEP_UNIT)
-        except TimeoutError:
-            yield NoMessage()
-        else:
+        if channel.poll(SLEEP_UNIT):
             yield channel.recv()
+        else:
+            yield NoMessage()
 
 
 class TaskManager(object):
@@ -119,32 +121,35 @@ class TaskManager(object):
         self.inspect_tasks()
 
     def task_start(self, acknowledgement):
-        task = self.tasks.pop(message.task)
+        task = self.queued.pop(acknowledgement.task)
         task._timestamp = time.time()
-        self.in_progress[message.worker] = task
+        self.in_progress[acknowledgement.worker] = task
 
     def task_done(self, results):
-        task = self.in_progress.pop(results.worker)
-        task.set_results(results)
-        self.context.acknowledge_task()
+        try:
+            task = self.in_progress.pop(results.worker)
+            task.set_results(results.results)
+            self.context.acknowledge_task()
+        except KeyError:  # timeout/cancelled task deliver
+            pass
 
     def inspect_tasks(self):
+        timestamp = time.time()
+
         if timestamp - self.last_inspection >= SLEEP_UNIT:
             self.inspection()
             self.last_inspection = timestamp
 
     def inspection(self):
-        for worker_id, task in self.in_progress.items():
+        for worker_id, task in tuple(self.in_progress.items()):
             if self.has_timeout(task):
                 self.task_problem(worker_id, TimeoutError('Task timeout'))
             elif task.cancelled:
                 self.task_problem(worker_id, TaskCancelled('Task cancelled'))
 
     def task_problem(self, worker_id, error):
-        task = self.in_progress.pop(worker_id)
-        context.workers_manager.stop_worker(worker_id)
-        task.set_results(error)
-        self.context.acknowledge_task()
+        self.context.workers_manager.stop_worker(worker_id)
+        self.task_done(Results(worker_id, error))
 
     @staticmethod
     def has_timeout(task):
@@ -155,115 +160,50 @@ class TaskManager(object):
 
 
 class ProcessWorkersManager(object):
-    def __init__(self):
+    def __init__(self, workers):
         self.workers = {}
+        self.workers_number = workers
+        self.worker_parameters = None
         self.pool_channel, self.workers_channel = channels()
 
     def schedule(self, task):
-        self.workers_channel.send(task._metadata)
+        self.pool_channel.send(NewTask(id(task), task._metadata))
 
-    def create_workers(self, workers, task_limit, initializer, initargs):
-        self.worker_parameters = WorkerParameters(task_limit, initializer,
-                                                  initargs, None, None)
-        for _ in range(workers):
-            self.new_worker()
-
-    def new_worker(self):
-        worker = worker_process(self.worker_parameters, self.workers_channel)
-        self.workers[worker.pid] = worker
+    def update_workers_status(self):
+        self.inspect_workers()
+        self.create_workers()
 
     def inspect_workers(self):
-        for worker_id, worker in self.workers.items():
+        for worker_id, worker in tuple(self.workers.items()):
             if not worker.is_alive():
                 self.expired_worker(worker_id)
+
+    def create_workers(self):
+        for _ in range(self.workers_number - len(self.workers)):
+            self.new_worker()
 
     def expired_worker(self, worker_id):
         worker = self.workers.pop(worker_id)
         self.inspect_expiration(worker)
-        self.new_worker()
 
     def inspect_expiration(self, worker):
-        if worker.exitcode != os.EX_OK:
+        if abs(worker.exitcode) not in (os.EX_OK, SIGTERM, SIGKILL):
             results = ProcessExpired('Abnormal termination')
-            results.exitcode = self.process_worker.exitcode
+            results.exitcode = worker.exitcode
             self.workers_channel.send(Results(worker.pid, results))
+
+    def new_worker(self):
+        worker = worker_process(self.worker_parameters, self.workers_channel)
+        self.workers[worker.pid] = worker
 
     def stop_workers(self):
         for worker_id in self.workers.keys():
             self.stop_worker(worker_id)
 
     def stop_worker(self, worker_id):
-        with self.workers_channel.lock:
-            worker = self.workers.pop(worker_id)
-            stop(worker)
-
-
-def channels():
-    read0, write0 = Pipe()
-    read1, write1 = Pipe()
-
-    return Channel(read1, write0), WorkerChannel(read0, write1)
-
-
-class Channel(object):
-    def __init__(self, reader, writer):
-        self.reader = reader
-        self.writer = writer
-
-    def poll(self, timeout=None):
-        return self.reader.poll(timeout)
-
-    def recv(self):
-        return self.reader.recv()
-
-    def send(self, obj):
-        return self.writer.send(obj)
-
-
-class WorkerChannel(Channel):
-    def __init__(self, reader, writer):
-        super(WorkerChannel, self).__init__(reader, writer)
-        self.reader_mutex = Lock()
-        self.writer_mutex = os.name != 'nt' and Lock() or None
-        self.recv = self._make_recv_method()
-        self.send = self._make_send_method()
-
-    def __getstate__(self):
-        return (self.reader, self.writer,
-                self.reader_mutex, self.writer_mutex)
-
-    def __setstate__(self, state):
-        (self.reader, self.writer,
-         self.reader_mutex, self.writer_mutex) = state
-
-        self.recv = self._make_recv_method()
-        self.send = self._make_send_method()
-
-    def _make_recv_method(self):
-        def recv():
-            with self.rlock:
-                return self.reader.recv()
-
-        return recv
-
-    def _make_send_method(self):
-        def send(obj):
-            if self.wlock is not None:
-                with self.wlock:
-                    return self.writer.send(obj)
-            else:
-                return self.writer.send(obj)
-
-        return send
-
-    @contextmanager
-    def lock(self):
-        with self.reader_mutex:
-            if self.writer_mutex is not None:
-                with self.writer_mutex:
-                    yield self
-            else:
-                yield self
+        if worker_id in self.workers:
+            with self.workers_channel.lock:
+                stop(self.workers[worker_id])
 
 
 @spawn(name='worker_process', daemon=True)
@@ -300,9 +240,9 @@ def worker_get_next_task(channel, task_limit):
 def fetch_task(channel):
     channel.poll()
     task = channel.recv()
-    channel.send(Acknowledgement(os.getpid(), id(task)))
+    channel.send(Acknowledgement(os.getpid(), task.id))
 
-    return task
+    return task.payload
 
 
 def execute_next_task(task):

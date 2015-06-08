@@ -202,8 +202,11 @@ class ProcessWorkersManager(object):
 
     def stop_worker(self, worker_id):
         if worker_id in self.workers:
-            with self.workers_channel.lock:
-                stop(self.workers[worker_id])
+            try:
+                with self.workers_channel.lock:
+                    stop(self.workers[worker_id])
+            except TimeoutError:
+                raise RuntimeError("Unable to acquire channel, busy")
 
 
 @spawn(name='worker_process', daemon=True)

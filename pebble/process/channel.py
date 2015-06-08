@@ -1,8 +1,12 @@
 import os
+import time
 
 from select import select
 from contextlib import contextmanager
 from multiprocessing import Lock, Pipe
+
+from pebble.pool import SLEEP_UNIT
+from pebble.exceptions import TimeoutError
 
 
 def channels():
@@ -10,9 +14,9 @@ def channels():
     read1, write1 = Pipe(duplex=False)
 
     if os.name == 'nt':
-        return WindowsChannel(read1, write0), WorkerChannel(read0, write1)
+        return WindowsChannel(read1, write0), UnixWorkerChannel(read0, write1)
     else:
-        return UnixChannel(read1, write0), WorkerChannel(read0, write1)
+        return UnixChannel(read1, write0), UnixWorkerChannel(read0, write1)
 
 
 class Channel(object):
@@ -40,38 +44,33 @@ class WindowsChannel(Channel):
         return self.reader.poll(timeout=timeout)
 
 
-class WorkerChannel(Channel):
+class UnixWorkerChannel(UnixChannel):
     def __init__(self, reader, writer):
-        super(WorkerChannel, self).__init__(reader, writer)
-        self.reader_mutex = Lock()
-        self.writer_mutex = os.name != 'nt' and Lock() or None
+        super(UnixWorkerChannel, self).__init__(reader, writer)
+        self.mutex = ChannelMutex()
         self.recv = self._make_recv_method()
         self.send = self._make_send_method()
 
     def __getstate__(self):
-        return (self.reader, self.writer,
-                self.reader_mutex, self.writer_mutex)
+        return self.reader, self.writer, self.mutex.__getstate__()
 
     def __setstate__(self, state):
-        (self.reader, self.writer,
-         self.reader_mutex, self.writer_mutex) = state
+        self.reader, self.writer, mutex_state = state
+        self.mutex.__setstate__(mutex_state)
 
         self.recv = self._make_recv_method()
         self.send = self._make_send_method()
 
     def _make_recv_method(self):
         def recv():
-            with self.reader_mutex:
+            with self.mutex.reader:
                 return self.reader.recv()
 
         return recv
 
     def _make_send_method(self):
         def send(obj):
-            if self.writer_mutex is not None:
-                with self.writer_mutex:
-                    return self.writer.send(obj)
-            else:
+            with self.mutex.writer:
                 return self.writer.send(obj)
 
         return send
@@ -79,9 +78,60 @@ class WorkerChannel(Channel):
     @property
     @contextmanager
     def lock(self):
+        with self.mutex:
+            yield self
+
+
+class ChannelMutex(object):
+    def __init__(self):
+        self.reader_mutex = Lock()
+        self.writer_mutex = Lock()
+
+    def __getstate__(self):
+        return self.reader_mutex, self.writer_mutex
+
+    def __setstate__(self, state):
+        self.reader_mutex, self.writer_mutex = state
+
+    def __enter__(self):
+        if self.acquire():
+            return self
+        else:
+            self.reader_mutex.release()
+            raise TimeoutError("Unable to acquire lock")
+
+    def __exit__(self, *_):
+        self.reader_mutex.release()
+        self.writer_mutex.release()
+
+    def acquire(self):
+        self.reader_mutex.acquire()
+        try:
+            return self.writer_mutex.acquire(timeout=SLEEP_UNIT)
+        except TypeError:
+            return python_2_lock(self.writer_mutex, SLEEP_UNIT)
+
+    @property
+    @contextmanager
+    def reader(self):
         with self.reader_mutex:
-            if self.writer_mutex is not None:
-                with self.writer_mutex:
-                    yield self
-            else:
-                yield self
+            yield self
+
+    @property
+    @contextmanager
+    def writer(self):
+        with self.writer_mutex:
+            yield self
+
+
+def python_2_lock(mutex, timeout):
+    """As Python 2 Lock has no timeout we implement our own."""
+    timestamp = time.time()
+
+    while 1:
+        if mutex.acquire(blocking=False):
+            return True
+        else:
+            if time.time() - timestamp > timeout:
+                time.sleep(0.01)
+                return False

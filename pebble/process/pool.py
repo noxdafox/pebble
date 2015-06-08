@@ -130,15 +130,21 @@ class TaskManager(object):
             task = self.in_progress.pop(results.worker)
             task.set_results(results.results)
             self.context.acknowledge_task()
-        except KeyError:  # timeout/cancelled task deliver
+        except KeyError:
+            # delivered results of cancelled/timeout task
             pass
 
     def inspect_tasks(self):
         timestamp = time.time()
 
         if timestamp - self.last_inspection >= SLEEP_UNIT:
-            self.inspection()
-            self.last_inspection = timestamp
+            try:
+                self.inspection()
+            except RuntimeError:
+                # unable to stop worker due to channel being busy
+                pass
+            else:
+                self.last_inspection = timestamp
 
     def inspection(self):
         for worker_id, task in tuple(self.in_progress.items()):

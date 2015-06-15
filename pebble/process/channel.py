@@ -3,7 +3,7 @@ import time
 
 from select import select
 from contextlib import contextmanager
-from multiprocessing import Lock, Pipe
+from multiprocessing import RLock, Pipe
 
 from pebble.pool import SLEEP_UNIT
 from pebble.exceptions import TimeoutError
@@ -84,8 +84,8 @@ class UnixWorkerChannel(UnixChannel):
 
 class ChannelMutex(object):
     def __init__(self):
-        self.reader_mutex = Lock()
-        self.writer_mutex = Lock()
+        self.reader_mutex = RLock()
+        self.writer_mutex = RLock()
 
     def __getstate__(self):
         return self.reader_mutex, self.writer_mutex

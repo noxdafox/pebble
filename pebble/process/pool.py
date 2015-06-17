@@ -19,14 +19,13 @@ import time
 
 from itertools import count
 from collections import namedtuple
-from signal import SIG_IGN, SIGINT, SIGTERM, SIGKILL, signal
+from signal import SIG_IGN, SIGINT, signal
 
 from pebble import thread
 from pebble.task import Task
 from pebble.utils import execute
-from pebble.pool import run_initializer
-from pebble.pool import BasePool, WorkerParameters
 from pebble.pool import RUNNING, SLEEP_UNIT
+from pebble.pool import BasePool, run_initializer
 from pebble.process.channel import channels
 from pebble.process.decorators import spawn
 from pebble.process.utils import stop, send_results
@@ -35,65 +34,63 @@ from pebble.exceptions import TimeoutError, TaskCancelled, ProcessExpired
 
 NoMessage = namedtuple('NoMessage', ())
 NewTask = namedtuple('NewTask', ('id', 'payload'))
-Results = namedtuple('Results', ('worker', 'results'))
+Results = namedtuple('Results', ('task', 'results'))
 Acknowledgement = namedtuple('Acknowledgement', ('worker', 'task'))
 
 
 class Pool(BasePool):
     def __init__(self, workers=1, task_limit=0, queue=None, queueargs=None,
                  initializer=None, initargs=()):
-        super(Pool, self).__init__(queue, queueargs)
-        self._context.task_manager = TaskManager(self._context)
-        self._context.workers_manager = ProcessWorkersManager(workers)
-        self._context.workers_manager.worker_parameters = WorkerParameters(
-            task_limit, initializer, initargs, None, None)
+        super(Pool, self).__init__(workers, task_limit, queue, queueargs,
+                                   initializer, initargs)
+        self._pool_manager = PoolManager(self._context)
 
     def _start_pool(self):
-        self._context.workers_manager.update_workers_status()
-        self._managers = (pool_manager_loop(self._context),
-                          task_scheduler_loop(self._context))
+        self._pool_manager.start()
+        self._loops = (pool_manager_loop(self._pool_manager),
+                       task_scheduler_loop(self._pool_manager))
         self._context.state = RUNNING
+
+    def _stop_pool(self):
+        self._pool_manager.stop()
 
     def stop(self):
         super(Pool, self).stop()
-        self._context.schedule(None)
+        self._context.task_queue.put(None)
 
 
 @thread.spawn(daemon=True, name='task_scheduler')
-def task_scheduler_loop(context):
-    task_manager = context.task_manager
-    workers_manager = context.workers_manager
-
-    for task in pool_get_next_task(context):
-        task_manager.schedule(task)
-        workers_manager.schedule(task)
+def task_scheduler_loop(pool_manager):
+    for task in pool_get_next_task(pool_manager):
+        pool_manager.schedule(task)
 
 
-def pool_get_next_task(context):
-    queue = context.task_queue
+def pool_get_next_task(pool_manager):
+    context = pool_manager.context
+    task_queue = context.task_queue
 
     while context.alive:
-        task = queue.get()
+        task = task_queue.get()
 
         if isinstance(task, Task) and not task.cancelled:
             yield task
         else:
-            queue.task_done()
+            task_queue.task_done()
             return
 
 
 @thread.spawn(daemon=True, name='context_manager')
-def pool_manager_loop(context):
-    task_manager = context.task_manager
-    workers_manager = context.workers_manager
+def pool_manager_loop(pool_manager):
+    context = pool_manager.context
 
-    for message in get_next_message(context):
-        task_manager.update_task_status(message)
-        workers_manager.update_workers_status()
+    for message in get_next_message(pool_manager):
+        pool_manager.process_message(message)
+        pool_manager.update_status()
 
 
-def get_next_message(context):
-    channel = context.workers_manager.pool_channel
+def get_next_message(pool_manager):
+    context = pool_manager.context
+    channel = pool_manager.worker_manager.pool_channel
 
     while context.alive:
         if channel.poll(SLEEP_UNIT):
@@ -102,117 +99,141 @@ def get_next_message(context):
             yield NoMessage()
 
 
-class TaskManager(object):
+class PoolManager(object):
     def __init__(self, context):
         self.context = context
-        self.queued = {}
-        self.in_progress = {}
-        self.last_inspection = 0
+        self.last_status_update = 0
+        self.task_manager = TaskManager(context.task_queue.task_done)
+        self.worker_manager = ProcessWorkerManager(context.workers,
+                                                   context.worker_parameters)
+
+    def start(self):
+        self.worker_manager.create_workers()
+
+    def stop(self):
+        self.worker_manager.stop_workers()
 
     def schedule(self, task):
-        self.queued[id(task)] = task
+        self.task_manager.register(task)
+        self.worker_manager.dispatch(task)
 
-    def update_task_status(self, message):
+    def process_message(self, message):
         if isinstance(message, Acknowledgement):
-            self.task_start(message)
+            self.task_manager.task_start(message.task, message.worker)
         elif isinstance(message, Results):
-            self.task_done(message)
+            self.task_manager.task_done(message.task, message.results)
 
-        self.inspect_tasks()
-
-    def task_start(self, acknowledgement):
-        task = self.queued.pop(acknowledgement.task)
-        task._timestamp = time.time()
-        self.in_progress[acknowledgement.worker] = task
-
-    def task_done(self, results):
-        try:
-            task = self.in_progress.pop(results.worker)
-            task.set_results(results.results)
-            self.context.acknowledge_task()
-        except KeyError:
-            # delivered results of cancelled/timeout task
-            pass
-
-    def inspect_tasks(self):
+    def update_status(self):
         timestamp = time.time()
 
-        if timestamp - self.last_inspection >= SLEEP_UNIT:
-            try:
-                self.inspection()
-            except RuntimeError:
-                # unable to stop worker due to channel being busy
-                pass
-            else:
-                self.last_inspection = timestamp
+        if timestamp - self.last_status_update >= 2*SLEEP_UNIT:
+            self.inspect_tasks()
+            self.inspect_workers()
 
-    def inspection(self):
-        for worker_id, task in tuple(self.in_progress.items()):
-            if self.has_timeout(task):
-                self.task_problem(worker_id, TimeoutError('Task timeout'))
-            elif task.cancelled:
-                self.task_problem(worker_id, TaskCancelled('Task cancelled'))
+    def inspect_tasks(self):
+        timeout, cancelled = self.task_manager.inspect_tasks()
 
-    def task_problem(self, worker_id, error):
-        self.context.workers_manager.stop_worker(worker_id)
-        self.task_done(Results(worker_id, error))
+        for task in timeout:
+            self.task_manager.task_done(id(task), TimeoutError('Timeout'))
+        for task in cancelled:
+            self.task_manager.task_done(id(task), TaskCancelled('Cancelled'))
+
+        for worker_id in (t._metadata for t in timeout + cancelled):
+            self.worker_manager.stop_worker(worker_id)
+
+    def inspect_workers(self):
+        for worker_id, exitcode in self.worker_manager.inspect_workers():
+            task = self.worker_id_lookup(worker_id)
+            if task is not None:
+                error = ProcessExpired('Abnormal termination', code=exitcode)
+                self.task_manager.task_done(id(task), error)
+
+        self.worker_manager.create_workers()
+
+    def worker_id_lookup(self, worker_id):
+        for task in tuple(self.task_manager.tasks.values()):
+            if task._metadata == worker_id:
+                return task
+
+
+class TaskManager(object):
+    def __init__(self, task_done_callback):
+        self.tasks = {}
+        self.task_done_callback = task_done_callback
+
+    def register(self, task):
+        self.tasks[id(task)] = task
+
+    def task_start(self, task_id, worker_id):
+        try:
+            task = self.tasks[task_id]
+        except KeyError:
+            pass
+        else:
+            task._metadata = worker_id
+            task._timestamp = time.time()
+
+    def task_done(self, task_id, results):
+        try:
+            task = self.tasks.pop(task_id)
+        except KeyError:
+            pass
+        else:
+            task.set_results(results)
+            self.task_done_callback()
+
+    def inspect_tasks(self):
+        tasks = tuple(self.tasks.values())
+
+        return (tuple(t for t in tasks if self.has_timeout(t)),
+                tuple(t for t in tasks if t.started and t.cancelled))
 
     @staticmethod
     def has_timeout(task):
-        if task.timeout:
+        if task.timeout and task.started:
             return time.time() - task._timestamp > task.timeout
         else:
             return False
 
 
-class ProcessWorkersManager(object):
-    def __init__(self, workers):
+class ProcessWorkerManager(object):
+    def __init__(self, workers, worker_parameters):
         self.workers = {}
         self.workers_number = workers
-        self.worker_parameters = None
-        self.pool_channel, self.workers_channel = channels()
+        self.worker_parameters = worker_parameters
+        self.pool_channel, self.workers_channel = channels(SLEEP_UNIT / 4)
 
-    def schedule(self, task):
+    def dispatch(self, task):
         self.pool_channel.send(NewTask(id(task), task._metadata))
 
-    def update_workers_status(self):
-        self.inspect_workers()
-        self.create_workers()
-
     def inspect_workers(self):
-        for worker_id, worker in tuple(self.workers.items()):
-            if not worker.is_alive():
-                self.expired_worker(worker_id)
+        expired = tuple(w for w in self.workers.values() if not w.is_alive())
+
+        for worker in expired:
+            self.workers.pop(worker.pid)
+
+        return ((w.pid, w.exitcode) for w in expired if w.exitcode != os.EX_OK)
 
     def create_workers(self):
         for _ in range(self.workers_number - len(self.workers)):
             self.new_worker()
 
-    def expired_worker(self, worker_id):
-        worker = self.workers.pop(worker_id)
-        self.inspect_expiration(worker)
-
-    def inspect_expiration(self, worker):
-        if abs(worker.exitcode) not in (os.EX_OK, SIGTERM, SIGKILL):
-            results = ProcessExpired('Abnormal termination')
-            results.exitcode = worker.exitcode
-            self.workers_channel.send(Results(worker.pid, results))
+    def stop_workers(self):
+        for worker_id in tuple(self.workers.keys()):
+            self.stop_worker(worker_id)
 
     def new_worker(self):
         worker = worker_process(self.worker_parameters, self.workers_channel)
         self.workers[worker.pid] = worker
 
-    def stop_workers(self):
-        for worker_id in self.workers.keys():
-            self.stop_worker(worker_id)
-
     def stop_worker(self, worker_id):
-        if worker_id in self.workers:
-            try:
-                with self.workers_channel.lock:
-                    stop(self.workers[worker_id])
-            except TimeoutError:
-                raise RuntimeError("Unable to acquire channel, busy")
+        try:
+            with self.workers_channel.lock:
+                stop(self.workers.pop(worker_id))
+        except TimeoutError:  # unable to acquire channel, busy
+            pass
+        except KeyError:  # worker already expired
+            pass
 
 
 @spawn(name='worker_process', daemon=True)
@@ -226,8 +247,8 @@ def worker_process(params, channel):
 
     try:
         for task in worker_get_next_task(channel, params.task_limit):
-            results = execute_next_task(task)
-            send_results(channel, Results(os.getpid(), results))
+            results = execute_next_task(task.payload)
+            send_results(channel, Results(task.id, results))
     except (EOFError, EnvironmentError) as error:
         return error.errno
 
@@ -242,16 +263,28 @@ def worker_get_next_task(channel, task_limit):
     counter = count()
 
     while not task_limit or next(counter) < task_limit:
-        task = fetch_task(channel)
-        yield task
+        yield fetch_task(channel)
 
 
 def fetch_task(channel):
-    channel.poll()
-    task = channel.recv()
-    channel.send(Acknowledgement(os.getpid(), task.id))
+    task = None
 
-    return task.payload
+    channel.poll()
+    while task is None:
+        try:
+            task = task_transaction(channel)
+        except TimeoutError:  # unable to acquire channel, busy
+            pass
+
+    return task
+
+
+def task_transaction(channel):
+    with channel.lock:
+        task = channel.recv()
+        channel.send(Acknowledgement(os.getpid(), task.id))
+
+    return task
 
 
 def execute_next_task(task):

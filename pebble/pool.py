@@ -41,10 +41,19 @@ EXPIRED = 4
 ERROR = 5
 
 
+WorkerParameters = namedtuple('WorkerParameters', ('task_limit',
+                                                   'initializer',
+                                                   'initargs',
+                                                   'deinitializer',
+                                                   'deinitargs'))
+
+
 class BasePool(object):
-    def __init__(self, queue, queueargs):
-        self._managers = ()
-        self._context = PoolContext(queue, queueargs)
+    def __init__(self, workers, task_limit, queue, queueargs,
+                 initializer, initargs):
+        self._context = PoolContext(workers, task_limit, queue, queueargs,
+                                    initializer, initargs)
+        self._loops = ()
 
     def __enter__(self):
         return self
@@ -71,9 +80,9 @@ class BasePool(object):
             self.stop()
             self.join()
         else:
-            for manager in self._managers:
-                manager.join()
-            self._context.workers_manager.stop_workers()
+            for loop in self._loops:
+                loop.join()
+            self._stop_pool()
 
     def schedule(self, function, args=(), kwargs={}, identifier=None,
                  callback=None, timeout=0):
@@ -83,9 +92,9 @@ class BasePool(object):
     def _schedule_task(self, callback, timeout, identifier, metadata):
         self._check_pool_state()
 
-        task = Task(next(self._context.counter), callback=callback,
+        task = Task(next(self._context.task_counter), callback=callback,
                     timeout=timeout, identifier=identifier, metadata=metadata)
-        self._context.schedule(task)
+        self._context.task_queue.put(task)
 
         return task
 
@@ -101,9 +110,31 @@ class BasePool(object):
         if self._context.state == CREATED:
             self._start_pool()
         else:
-            for manager in self._managers:
-                if not manager.is_alive():
-                    self._context._state = ERROR
+            for loop in self._loops:
+                if not loop.is_alive():
+                    self._context.state = ERROR
+
+    def _start_pool(self):
+        raise NotImplementedError("Not implemented")
+
+    def _stop_pool(self):
+        raise NotImplementedError("Not implemented")
+
+
+class PoolContext(object):
+    def __init__(self, workers, task_limit, queue, queueargs,
+                 initializer, initargs):
+        self.state = CREATED
+        self.workers = workers
+        self.task_counter = count()
+        self.task_queue = create_queue(queue, queueargs)
+        self.worker_parameters = WorkerParameters(task_limit,
+                                                  initializer, initargs,
+                                                  None, None)
+
+    @property
+    def alive(self):
+        return self.state not in (ERROR, STOPPED)
 
 
 def wait_queue_depletion(queue, timeout):
@@ -123,24 +154,6 @@ def wait_queue_timeout(queue, timeout):
         raise TimeoutError("Tasks are still being executed")
 
 
-class PoolContext(object):
-    def __init__(self, queue, queueargs):
-        self.state = CREATED
-        self.counter = count()
-        self.workers_manager = None
-        self.task_queue = create_queue(queue, queueargs)
-
-    @property
-    def alive(self):
-        return self.state not in (ERROR, STOPPED)
-
-    def schedule(self, task):
-        self.task_queue.put(task)
-
-    def acknowledge_task(self):
-        self.task_queue.task_done()
-
-
 def create_queue(queue, queueargs):
     if queue is not None:
         if isclass(queue):
@@ -149,14 +162,6 @@ def create_queue(queue, queueargs):
             raise ValueError("Queue must be Class")
     else:
         return Queue()
-
-
-WorkerParameters = namedtuple('WorkerParameters',
-                              ('task_limit',
-                               'initializer',
-                               'initargs',
-                               'deinitializer',
-                               'deinitargs'))
 
 
 def run_initializer(initializer, initargs):

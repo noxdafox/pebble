@@ -47,8 +47,9 @@ class Pool(BasePool):
 
     def _start_pool(self):
         self._pool_manager.start()
-        self._loops = (pool_manager_loop(self._pool_manager),
-                       task_scheduler_loop(self._pool_manager))
+        self._loops = (task_scheduler_loop(self._pool_manager),
+                       pool_manager_loop(self._pool_manager),
+                       message_manager_loop(self._pool_manager))
         self._context.state = RUNNING
 
     def _stop_pool(self):
@@ -79,13 +80,19 @@ def pool_get_next_task(pool_manager):
             return
 
 
-@thread.spawn(daemon=True, name='context_manager')
+@thread.spawn(daemon=True, name='pool_manager')
 def pool_manager_loop(pool_manager):
     context = pool_manager.context
 
+    while context.alive:
+        pool_manager.update_status()
+        time.sleep(SLEEP_UNIT)
+
+
+@thread.spawn(daemon=True, name='message_manager')
+def message_manager_loop(pool_manager):
     for message in get_next_message(pool_manager):
         pool_manager.process_message(message)
-        pool_manager.update_status()
 
 
 def get_next_message(pool_manager):
@@ -102,10 +109,9 @@ def get_next_message(pool_manager):
 class PoolManager(object):
     def __init__(self, context):
         self.context = context
-        self.last_status_update = 0
         self.task_manager = TaskManager(context.task_queue.task_done)
-        self.worker_manager = ProcessWorkerManager(context.workers,
-                                                   context.worker_parameters)
+        self.worker_manager = WorkerManager(context.workers,
+                                            context.worker_parameters)
 
     def start(self):
         self.worker_manager.create_workers()
@@ -124,13 +130,10 @@ class PoolManager(object):
             self.task_manager.task_done(message.task, message.results)
 
     def update_status(self):
-        timestamp = time.time()
+        self.update_tasks()
+        self.update_workers()
 
-        if timestamp - self.last_status_update >= 2*SLEEP_UNIT:
-            self.inspect_tasks()
-            self.inspect_workers()
-
-    def inspect_tasks(self):
+    def update_tasks(self):
         timeout, cancelled = self.task_manager.inspect_tasks()
 
         for task in timeout:
@@ -141,7 +144,7 @@ class PoolManager(object):
         for worker_id in (t._metadata for t in timeout + cancelled):
             self.worker_manager.stop_worker(worker_id)
 
-    def inspect_workers(self):
+    def update_workers(self):
         for worker_id, exitcode in self.worker_manager.inspect_workers():
             task = self.worker_id_lookup(worker_id)
             if task is not None:
@@ -196,12 +199,12 @@ class TaskManager(object):
             return False
 
 
-class ProcessWorkerManager(object):
+class WorkerManager(object):
     def __init__(self, workers, worker_parameters):
         self.workers = {}
         self.workers_number = workers
         self.worker_parameters = worker_parameters
-        self.pool_channel, self.workers_channel = channels(SLEEP_UNIT / 4)
+        self.pool_channel, self.workers_channel = channels(SLEEP_UNIT / 2)
 
     def dispatch(self, task):
         self.pool_channel.send(NewTask(id(task), task._metadata))

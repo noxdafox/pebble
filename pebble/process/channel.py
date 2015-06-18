@@ -157,7 +157,7 @@ def python_2_lock(mutex, timeout):
         else:
             if time.time() - timestamp > timeout:
                 return False
-            time.sleep(0.005)
+            time.sleep(0.01)
 
 
 if sys.version_info[0] < 3:

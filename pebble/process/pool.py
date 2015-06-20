@@ -145,18 +145,28 @@ class PoolManager(object):
             self.worker_manager.stop_worker(worker_id)
 
     def update_workers(self):
-        for worker_id, exitcode in self.worker_manager.inspect_workers():
-            task = self.worker_id_lookup(worker_id)
-            if task is not None:
-                error = ProcessExpired('Abnormal termination', code=exitcode)
-                self.task_manager.task_done(id(task), error)
+        for expiration in self.worker_manager.inspect_workers():
+            self.handle_worker_expiration(expiration)
 
         self.worker_manager.create_workers()
+
+    def handle_worker_expiration(self, expiration):
+        worker_id, exitcode = expiration
+
+        try:
+            task = self.worker_id_lookup(worker_id)
+        except LookupError:
+            pass
+        else:
+            error = ProcessExpired('Abnormal termination', code=exitcode)
+            self.task_manager.task_done(id(task), error)
 
     def worker_id_lookup(self, worker_id):
         for task in tuple(self.task_manager.tasks.values()):
             if task._metadata == worker_id:
                 return task
+            else:
+                raise LookupError("Not found")
 
 
 class TaskManager(object):
@@ -168,19 +178,15 @@ class TaskManager(object):
         self.tasks[id(task)] = task
 
     def task_start(self, task_id, worker_id):
-        try:
-            task = self.tasks[task_id]
-        except KeyError:
-            pass
-        else:
-            task._metadata = worker_id
-            task._timestamp = time.time()
+        task = self.tasks[task_id]
+        task._metadata = worker_id
+        task._timestamp = time.time()
 
     def task_done(self, task_id, results):
         try:
             task = self.tasks.pop(task_id)
         except KeyError:
-            pass
+            pass  # results of previously timeout/cancelled task
         else:
             task.set_results(results)
             self.task_done_callback()
@@ -204,7 +210,7 @@ class WorkerManager(object):
         self.workers = {}
         self.workers_number = workers
         self.worker_parameters = worker_parameters
-        self.pool_channel, self.workers_channel = channels(SLEEP_UNIT / 2)
+        self.pool_channel, self.workers_channel = channels()
 
     def dispatch(self, task):
         self.pool_channel.send(NewTask(id(task), task._metadata))
@@ -233,8 +239,6 @@ class WorkerManager(object):
         try:
             with self.workers_channel.lock:
                 stop(self.workers.pop(worker_id))
-        except TimeoutError:  # unable to acquire channel, busy
-            pass
         except KeyError:  # worker already expired
             pass
 
@@ -270,22 +274,20 @@ def worker_get_next_task(channel, task_limit):
 
 
 def fetch_task(channel):
-    task = None
-
-    channel.poll()
-    while task is None:
+    while channel.poll():
         try:
-            task = task_transaction(channel)
-        except TimeoutError:  # unable to acquire channel, busy
-            pass
-
-    return task
+            return task_transaction(channel)
+        except RuntimeError:
+            continue  # another worker got the task
 
 
 def task_transaction(channel):
     with channel.lock:
-        task = channel.recv()
-        channel.send(Acknowledgement(os.getpid(), task.id))
+        if channel.poll(0):
+            task = channel.recv()
+            channel.send(Acknowledgement(os.getpid(), task.id))
+        else:
+            raise RuntimeError("Race condition between workers")
 
     return task
 

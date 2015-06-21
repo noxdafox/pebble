@@ -165,8 +165,8 @@ class PoolManager(object):
         for task in tuple(self.task_manager.tasks.values()):
             if task._metadata == worker_id:
                 return task
-            else:
-                raise LookupError("Not found")
+        else:
+            raise LookupError("Not found")
 
 
 class TaskManager(object):

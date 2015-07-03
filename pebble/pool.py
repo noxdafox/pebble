@@ -50,9 +50,10 @@ WorkerParameters = namedtuple('WorkerParameters', ('task_limit',
 
 class BasePool(object):
     def __init__(self, workers, task_limit, queue, queueargs,
-                 initializer, initargs):
+                 initializer, initargs, deinitializer, deinitargs):
         self._context = PoolContext(workers, task_limit, queue, queueargs,
-                                    initializer, initargs)
+                                    initializer, initargs,
+                                    deinitializer, deinitargs)
         self._loops = ()
 
     def __enter__(self):
@@ -67,12 +68,24 @@ class BasePool(object):
         return self._context.state == RUNNING
 
     def close(self):
+        """
+        Closes the pool.
+        No new tasks will be accepted, enqueued ones will be completed.
+        """
         self._context.state = CLOSED
 
     def stop(self):
+        """
+        Stops the pool without performing any pending task.
+        """
         self._context.state = STOPPED
 
     def join(self, timeout=None):
+        """
+        Joins the pool waiting until all workers exited.
+        If *timeout* is set, it block until all workers are done
+        or raise TimeoutError.
+        """
         if self._context.state == RUNNING:
             raise RuntimeError('The Pool is still running')
         if self._context.state == CLOSED:
@@ -86,6 +99,20 @@ class BasePool(object):
 
     def schedule(self, function, args=(), kwargs={}, identifier=None,
                  callback=None, timeout=0):
+        """
+        Schedules *function* into the Pool, passing *args* and *kwargs*
+        respectively as arguments and keyword arguments.
+
+        If *callback* is a callable it will be executed once the function
+        execution has completed with the returned *Task* as a parameter.
+
+        *timeout* is an integer, if expires the task will be terminated
+        and *Task.get()* will raise *TimeoutError*.
+
+        The *identifier* value will be forwarded to the *Task.id* attribute.
+
+        A *Task* object is returned.
+        """
         metadata = (function, args, kwargs)
         return self._schedule_task(callback, timeout, identifier, metadata)
 
@@ -123,14 +150,14 @@ class BasePool(object):
 
 class PoolContext(object):
     def __init__(self, workers, task_limit, queue, queueargs,
-                 initializer, initargs):
+                 initializer, initargs, deinitializer, deinitargs):
         self.state = CREATED
         self.workers = workers
         self.task_counter = count()
         self.task_queue = create_queue(queue, queueargs)
         self.worker_parameters = WorkerParameters(task_limit,
                                                   initializer, initargs,
-                                                  None, None)
+                                                  deinitializer, deinitargs)
 
     @property
     def alive(self):

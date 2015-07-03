@@ -37,6 +37,10 @@ class Pool(BasePool):
     def _stop_pool(self):
         self._pool_manager.stop()
 
+    def stop(self):
+        super(Pool, self).stop()
+        self._context.task_queue.put(None)
+
 
 @spawn(daemon=True, name='pool_manager')
 def pool_manager_loop(pool_manager):
@@ -65,12 +69,12 @@ class PoolManager(object):
         expired = self.inspect_workers()
 
         for worker in expired:
-            self.workers.pop(worker)
+            self.workers.remove(worker)
 
         self.create_workers()
 
     def inspect_workers(self):
-        return [(w for w in self.workers if not w.is_alive())]
+        return tuple(w for w in self.workers if not w.is_alive())
 
     def create_workers(self):
         for _ in range(self.context.workers - len(self.workers)):
@@ -80,7 +84,7 @@ class PoolManager(object):
 @spawn(name='worker_thread', daemon=True)
 def worker_thread(context):
     """Runs the actual function in separate thread."""
-    parameters = context.parameters
+    parameters = context.worker_parameters
     task_limit = parameters.task_limit
 
     if parameters.initializer is not None:
@@ -89,7 +93,7 @@ def worker_thread(context):
 
     for task in get_next_task(context, task_limit):
         execute_next_task(task)
-        context.acknowledge()
+        context.task_queue.task_done()
 
     if parameters.deinitializer is not None:
         if not run_initializer(parameters.deinitializer, parameters.deinitargs):
@@ -107,7 +111,7 @@ def get_next_task(context, task_limit):
             task._timestamp = time.time()
             yield task
         else:
-            context.acknowledge()
+            queue.task_done()
             return
 
 

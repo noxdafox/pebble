@@ -35,10 +35,6 @@ def initializer(value):
     initarg = value
 
 
-def initializer_error():
-    raise Exception("BOOM!")
-
-
 def function(argument, keyword_argument=0):
     """A docstring."""
     return argument + keyword_argument
@@ -213,12 +209,6 @@ class TestProcessPool(unittest.TestCase):
             task = pool.schedule(initializer_function)
         self.assertEqual(task.get(), 1)
 
-    def test_process_pool_initializer_error(self):
-        """Process Pool an exception in a initializer is raised by get."""
-        with process.Pool(initializer=initializer_error) as pool:
-            task = pool.schedule(initializer_function)
-        self.assertRaises(Exception, task.get)
-
     def test_process_pool_created(self):
         """Process Pool is not active if nothing is scheduled."""
         with process.Pool() as pool:
@@ -315,12 +305,14 @@ class TestProcessPool(unittest.TestCase):
         pool.join()
 
     def test_process_pool_callback_error(self):
-        """Process Pool stop if error in callback."""
+        """Process Pool does not stop if error in callback."""
         with process.Pool() as pool:
-            pool.schedule(function, args=[1], callback=error_callback,
-                          kwargs={'keyword_argument': 1})
-        time.sleep(0.1)
-        self.assertRaises(PoolError, pool.schedule, function, args=[1])
+            try:
+                pool.schedule(function, args=[1], callback=error_callback,
+                              kwargs={'keyword_argument': 1})
+                pool.schedule(function, args=[1], kwargs={'keyword_argument': 1})
+            except Exception:
+                self.fail("Error raised")
 
     def test_process_pool_exception_isolated(self):
         """Process Pool an Exception does not affect other tasks."""

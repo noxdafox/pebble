@@ -15,7 +15,6 @@
 
 
 import os
-import sys
 import time
 
 from itertools import count
@@ -319,7 +318,7 @@ def worker_process(params, channel):
 
     if params.initializer is not None:
         if not run_initializer(params.initializer, params.initargs):
-            sys.exit()
+            os._exit(1)
 
     try:
         for task in worker_get_next_task(channel, params.task_limit):
@@ -330,7 +329,7 @@ def worker_process(params, channel):
 
     if params.deinitializer is not None:
         if not run_initializer(params.deinitializer, params.deinitargs):
-            sys.exit()
+            os._exit(1)
 
 
 def worker_get_next_task(channel, task_limit):

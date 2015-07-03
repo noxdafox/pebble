@@ -24,9 +24,11 @@ from pebble.pool import BasePool, run_initializer
 
 class Pool(BasePool):
     def __init__(self, workers=1, task_limit=0, queue=None, queueargs=None,
-                 initializer=None, initargs=()):
+                 initializer=None, initargs=(),
+                 deinitializer=None, deinitargs=()):
         super(Pool, self).__init__(workers, task_limit, queue, queueargs,
-                                   initializer, initargs)
+                                   initializer, initargs,
+                                   deinitializer, deinitargs)
         self._pool_manager = PoolManager(self._context)
 
     def _start_pool(self):

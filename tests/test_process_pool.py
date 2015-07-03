@@ -264,31 +264,13 @@ class TestProcessPool(unittest.TestCase):
         pool.join()
         self.assertFalse(pool.active)
 
-    def test_process_pool_kill_tasks(self):
-        """Process Pool not all tasks are performed on kill."""
-        tasks = []
-        pool = process.Pool()
-        for index in range(10):
-            tasks.append(pool.schedule(function, args=[index]))
-        pool.kill()
-        pool.join()
-        self.assertTrue(len([t for t in tasks if not t.ready]) > 0)
-
-    def test_process_pool_kill_stopped(self):
-        """Process Pool is killed after kill."""
-        pool = process.Pool()
-        pool.schedule(function, args=[1])
-        pool.kill()
-        pool.join()
-        self.assertFalse(pool.active)
-
     def test_process_pool_join_workers(self):
         """Process Pool no worker is running after join."""
         pool = process.Pool(workers=4)
         pool.schedule(function, args=[1])
         pool.stop()
         pool.join()
-        self.assertEqual(len(pool._context.pool), 0)
+        self.assertEqual(len(pool._pool_manager.worker_manager.workers), 0)
 
     def test_process_pool_join_running(self):
         """Process Pool RuntimeError is raised if active pool joined."""

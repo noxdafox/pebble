@@ -23,7 +23,6 @@ from collections import namedtuple
 from signal import SIG_IGN, SIGINT, signal
 
 from pebble import thread
-from pebble.task import Task
 from pebble.utils import execute
 from pebble.pool import RUNNING, SLEEP_UNIT
 from pebble.pool import BasePool, run_initializer
@@ -99,11 +98,10 @@ def pool_get_next_task(pool_manager):
     while context.alive:
         task = task_queue.get()
 
-        if isinstance(task, Task) and not task.cancelled:
+        if task is not None and not task.cancelled:
             yield task
         else:
             task_queue.task_done()
-            return
 
 
 @thread.spawn(daemon=True, name='pool_manager')

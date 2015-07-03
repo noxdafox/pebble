@@ -193,6 +193,8 @@ class TestProcessPool(unittest.TestCase):
         with process.Pool() as pool:
             task1 = pool.schedule(pid_function)
             task = pool.schedule(long_function)
+            # sleep if not the task will be cancelled before sending to worker
+            time.sleep(0.1)
             task.cancel()
             task2 = pool.schedule(pid_function)
         self.assertNotEqual(task1.get(), task2.get())

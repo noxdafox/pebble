@@ -3,6 +3,10 @@ import time
 import signal
 import unittest
 import threading
+try:
+    from queue import Queue
+except ImportError:
+    from Queue import Queue
 
 from pebble import process
 from pebble import TaskCancelled, TimeoutError, PoolError
@@ -24,6 +28,10 @@ def callback(task):
         exception = error
 
     event.set()
+
+
+def queue_factory():
+    return Queue(maxsize=5)
 
 
 def error_callback(task):
@@ -78,6 +86,11 @@ class TestProcessPool(unittest.TestCase):
             self.exception = error
         finally:
             self.event.set()
+
+    def test_process_pool_queue_factory(self):
+        """Process Pool queue factory is called."""
+        with process.Pool(queue_factory=queue_factory) as pool:
+            self.assertEqual(pool._context.task_queue.maxsize, 5)
 
     def test_process_pool_single_task(self):
         """Process Pool single task."""

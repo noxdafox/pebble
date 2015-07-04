@@ -24,7 +24,7 @@ from signal import SIG_IGN, SIGINT, signal
 from pebble import thread
 from pebble.utils import execute
 from pebble.pool import RUNNING, SLEEP_UNIT
-from pebble.pool import BasePool, run_initializer
+from pebble.pool import BasePool, run_initializer, task_limit_reached
 from pebble.process.channel import channels
 from pebble.process.decorators import spawn
 from pebble.process.utils import stop, send_results
@@ -50,18 +50,15 @@ class Pool(BasePool):
     every time a worker is started, receiving initargs as arguments.
     deinitializer must be callable, if passed, it will be called
     every time a worker ends its lifetime, receiving deinitargs as arguments.
-    queue represents a Class which, if passed, will be constructed
-    with queueargs as parameters and used internally as a task queue.
-    The queue object resulting from its construction must expose
-    same functionalities of Python standard Queue object,
-    especially for what concerns the put(), get() and join() methods.
 
+    The queue_factory callable allows to replace the internal task buffer
+    of the Pool with a custom one. The callable must return a thread safe
+    object exposing the same interface of the standard Python Queue.
     """
-    def __init__(self, workers=1, task_limit=0,
-                 queue=None, queueargs=None,
+    def __init__(self, workers=1, task_limit=0, queue_factory=None,
                  initializer=None, initargs=(),
                  deinitializer=None, deinitargs=()):
-        super(Pool, self).__init__(workers, task_limit, queue, queueargs,
+        super(Pool, self).__init__(workers, task_limit, queue_factory,
                                    initializer, initargs,
                                    deinitializer, deinitargs)
         self._pool_manager = PoolManager(self._context)
@@ -335,7 +332,7 @@ def worker_process(params, channel):
 def worker_get_next_task(channel, task_limit):
     counter = count()
 
-    while not task_limit or next(counter) < task_limit:
+    while not task_limit_reached(counter, task_limit):
         yield fetch_task(channel)
 
 

@@ -1,6 +1,10 @@
 import time
 import unittest
 import threading
+try:
+    from queue import Queue
+except ImportError:
+    from Queue import Queue
 
 from pebble import thread
 from pebble import PoolError, TaskCancelled, TimeoutError
@@ -22,6 +26,10 @@ def callback(task):
         exception = error
 
     event.set()
+
+
+def queue_factory():
+    return Queue(maxsize=5)
 
 
 def error_callback(task):
@@ -55,27 +63,6 @@ def tid_function():
     return threading.current_thread()
 
 
-# class TestThreadTaskObj(object):
-#     a = 0
-
-#     def __init__(self):
-#         self.b = 1
-
-#     @classmethod
-#     @thread.task
-#     def clsmethod(cls):
-#         return cls.a
-
-#     @thread.task
-#     def instmethod(self):
-#         return self.b
-
-#     @staticmethod
-#     @thread.task
-#     def stcmethod():
-#         return 2
-
-
 class TestThreadPool(unittest.TestCase):
     def setUp(self):
         global initarg
@@ -92,6 +79,11 @@ class TestThreadPool(unittest.TestCase):
             self.exception = error
         finally:
             self.event.set()
+
+    def test_thread_pool_queue_factory(self):
+        """Thread Pool queue factory is called."""
+        with thread.Pool(queue_factory=queue_factory) as pool:
+            self.assertEqual(pool._context.task_queue.maxsize, 5)
 
     def test_thread_pool_single_task(self):
         """Thread Pool single task."""

@@ -19,14 +19,31 @@ from itertools import count
 from pebble.utils import execute
 from pebble.thread.decorators import spawn
 from pebble.pool import RUNNING, SLEEP_UNIT
-from pebble.pool import BasePool, run_initializer
+from pebble.pool import BasePool, run_initializer, task_limit_reached
 
 
 class Pool(BasePool):
-    def __init__(self, workers=1, task_limit=0, queue=None, queueargs=None,
+    """
+    A ThreadPool allows to schedule jobs into a Pool of Threades
+    which will perform them concurrently.
+
+    workers is an integer representing the amount of desired thread workers
+    managed by the pool.
+    If worker_task_limit is a number greater than zero,
+    each worker will be restarted after performing an equal amount of tasks.
+    initializer must be callable, if passed, it will be called
+    every time a worker is started, receiving initargs as arguments.
+    deinitializer must be callable, if passed, it will be called
+    every time a worker ends its lifetime, receiving deinitargs as arguments.
+
+    The queue_factory callable allows to replace the internal task buffer
+    of the Pool with a custom one. The callable must return a thread safe
+    object exposing the same interface of the standard Python Queue.
+    """
+    def __init__(self, workers=1, task_limit=0, queue_factory=None,
                  initializer=None, initargs=(),
                  deinitializer=None, deinitargs=()):
-        super(Pool, self).__init__(workers, task_limit, queue, queueargs,
+        super(Pool, self).__init__(workers, task_limit, queue_factory,
                                    initializer, initargs,
                                    deinitializer, deinitargs)
         self._pool_manager = PoolManager(self._context)
@@ -79,8 +96,8 @@ class PoolManager(object):
             self.workers.append(worker_thread(self.context))
 
     def join_worker(self, worker):
-        self.workers.remove(worker)
         worker.join()
+        self.workers.remove(worker)
 
 
 @spawn(name='worker_thread', daemon=True)
@@ -106,7 +123,7 @@ def get_next_task(context, task_limit):
     counter = count()
     queue = context.task_queue
 
-    while context.alive and not task_limit or next(counter) < task_limit:
+    while context.alive and not task_limit_reached(counter, task_limit):
         task = queue.get()
 
         if task is not None and not task.cancelled:

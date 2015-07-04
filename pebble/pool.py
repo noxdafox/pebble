@@ -20,10 +20,10 @@ from itertools import count
 from traceback import print_exc
 from collections import namedtuple
 
-try:  # Python 2
-    from Queue import Queue
-except ImportError:  # Python 3
+try:
     from queue import Queue
+except ImportError:
+    from Queue import Queue
 
 from .task import Task
 from .exceptions import PoolError, TimeoutError
@@ -49,9 +49,9 @@ WorkerParameters = namedtuple('WorkerParameters', ('task_limit',
 
 
 class BasePool(object):
-    def __init__(self, workers, task_limit, queue, queueargs,
+    def __init__(self, workers, task_limit, queue_factory,
                  initializer, initargs, deinitializer, deinitargs):
-        self._context = PoolContext(workers, task_limit, queue, queueargs,
+        self._context = PoolContext(workers, task_limit, queue_factory,
                                     initializer, initargs,
                                     deinitializer, deinitargs)
         self._loops = ()
@@ -149,12 +149,12 @@ class BasePool(object):
 
 
 class PoolContext(object):
-    def __init__(self, workers, task_limit, queue, queueargs,
+    def __init__(self, workers, task_limit, queue_factory,
                  initializer, initargs, deinitializer, deinitargs):
         self.state = CREATED
         self.workers = workers
         self.task_counter = count()
-        self.task_queue = create_queue(queue, queueargs)
+        self.task_queue = create_queue(queue_factory)
         self.worker_parameters = WorkerParameters(task_limit,
                                                   initializer, initargs,
                                                   deinitializer, deinitargs)
@@ -181,12 +181,9 @@ def wait_queue_timeout(queue, timeout):
         raise TimeoutError("Tasks are still being executed")
 
 
-def create_queue(queue, queueargs):
-    if queue is not None:
-        if isclass(queue):
-            return queue(*queueargs)
-        else:
-            raise ValueError("Queue must be Class")
+def create_queue(queue_factory):
+    if queue_factory is not None:
+        return queue_factory()
     else:
         return Queue()
 
@@ -198,3 +195,7 @@ def run_initializer(initializer, initargs):
     except Exception:
         print_exc()
         return False
+
+
+def task_limit_reached(counter, task_limit):
+    return task_limit > 0 and next(counter) >= task_limit

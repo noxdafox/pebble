@@ -39,10 +39,6 @@ class Pool(BasePool):
     def _stop_pool(self):
         self._pool_manager.stop()
 
-    def stop(self):
-        super(Pool, self).stop()
-        self._context.task_queue.put(None)
-
 
 @spawn(daemon=True, name='pool_manager')
 def pool_manager_loop(pool_manager):
@@ -64,14 +60,14 @@ class PoolManager(object):
     def stop(self):
         for _ in self.workers:
             self.context.task_queue.put(None)
-        for worker in self.workers:
-            worker.join()
+        for worker in tuple(self.workers):
+            self.join_worker(worker)
 
     def update_status(self):
         expired = self.inspect_workers()
 
         for worker in expired:
-            self.workers.remove(worker)
+            self.join_worker(worker)
 
         self.create_workers()
 
@@ -81,6 +77,10 @@ class PoolManager(object):
     def create_workers(self):
         for _ in range(self.context.workers - len(self.workers)):
             self.workers.append(worker_thread(self.context))
+
+    def join_worker(self, worker):
+        self.workers.remove(worker)
+        worker.join()
 
 
 @spawn(name='worker_thread', daemon=True)
@@ -106,18 +106,17 @@ def get_next_task(context, task_limit):
     counter = count()
     queue = context.task_queue
 
-    while context.alive and task_limit != 0 or next(counter) < task_limit:
+    while context.alive and not task_limit or next(counter) < task_limit:
         task = queue.get()
 
         if task is not None and not task.cancelled:
-            task._timestamp = time.time()
             yield task
         else:
             queue.task_done()
-            return
 
 
 def execute_next_task(task):
     function, args, kwargs = task._metadata
+    task._timestamp = time.time()
     results = execute(function, args, kwargs)
     task.set_results(results)

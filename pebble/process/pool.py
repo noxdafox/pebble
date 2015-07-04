@@ -325,7 +325,7 @@ def worker_process(params, channel):
             results = execute_next_task(task.payload)
             send_results(channel, Results(task.id, results))
     except (EOFError, EnvironmentError) as error:
-        return error.errno
+        os._exit(error.errno)
 
     if params.deinitializer is not None:
         if not run_initializer(params.deinitializer, params.deinitargs):

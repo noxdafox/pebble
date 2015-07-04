@@ -223,9 +223,8 @@ class TestWaitForQueues(unittest.TestCase):
 
     def test_waitforqueues_restore(self):
         """Waitforqueues Queue object is restored to original one."""
-        queue_function(self.queues, 0, 0.01)
-        time.sleep(0.01)
         expected = sorted(dir(self.queues[0]))
+        queue_function(self.queues, 0, 0)
         waitforqueues(self.queues)
         self.assertEqual(sorted(dir(self.queues[0])), expected)
 

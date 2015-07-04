@@ -62,27 +62,6 @@ def sigterm_function():
     time.sleep(100)
 
 
-# class TestProcessTaskObj(object):
-#     a = 0
-
-#     def __init__(self):
-#         self.b = 1
-
-#     @classmethod
-#     @process.task
-#     def clsmethod(cls):
-#         return cls.a
-
-#     @process.task
-#     def instmethod(self):
-#         return self.b
-
-#     @staticmethod
-#     @process.task
-#     def stcmethod():
-#         return 2
-
-
 class TestProcessPool(unittest.TestCase):
     def setUp(self):
         global initarg

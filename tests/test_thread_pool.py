@@ -33,10 +33,6 @@ def initializer(value):
     initarg = value
 
 
-def initializer_error():
-    raise Exception("BOOM!")
-
-
 def function(argument, keyword_argument=0):
     """A docstring."""
     return argument + keyword_argument
@@ -176,12 +172,6 @@ class TestThreadPool(unittest.TestCase):
             task = pool.schedule(initializer_function)
         self.assertEqual(task.get(), 1)
 
-    def test_thread_pool_initializer_error(self):
-        """Thread Pool an exception in a initializer is raised by get."""
-        with thread.Pool(initializer=initializer_error) as pool:
-            task = pool.schedule(initializer_function)
-        self.assertRaises(Exception, task.get)
-
     def test_thread_pool_created(self):
         """Thread Pool is not active if nothing is scheduled."""
         with thread.Pool() as pool:
@@ -241,7 +231,7 @@ class TestThreadPool(unittest.TestCase):
         pool.schedule(function, args=[1])
         pool.stop()
         pool.join()
-        self.assertEqual(len(pool._context.pool), 0)
+        self.assertEqual(len(pool._pool_manager.workers), 0)
 
     def test_thread_pool_join_running(self):
         """Thread Pool RuntimeError is raised if active pool joined."""

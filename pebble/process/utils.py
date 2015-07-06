@@ -64,7 +64,7 @@ def poll(pipe, timeout):
     if os.name != 'nt':
         return select([pipe], [], [], timeout)[0] and True or False
     else:
-        pipe.poll(timeout)
+        return pipe.poll(timeout)
 
 
 def send_results(pipe, data):

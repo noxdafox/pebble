@@ -39,7 +39,7 @@ class Channel(object):
             return select([self.reader], [], [], timeout)[0] and True or False
 
         def windows_poll(timeout=None):
-            return self.reader.poll(timeout=timeout)
+            return self.reader.poll(timeout)
 
         return os.name != 'nt' and unix_poll or windows_poll
 
@@ -58,12 +58,12 @@ class WorkerChannel(Channel):
         self.send = self._make_send_method()
 
     def __getstate__(self):
-        return self.reader, self.writer, self.mutex.__getstate__()
+        return self.reader, self.writer, self.mutex
 
     def __setstate__(self, state):
-        self.reader, self.writer, mutex_state = state
-        self.mutex.__setstate__(mutex_state)
+        self.reader, self.writer, self.mutex = state
 
+        self.poll = self._make_poll_method()
         self.recv = self._make_recv_method()
         self.send = self._make_send_method()
 

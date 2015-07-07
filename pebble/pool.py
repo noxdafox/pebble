@@ -68,23 +68,21 @@ class BasePool(object):
         return self._context.state == RUNNING
 
     def close(self):
-        """
-        Closes the pool.
-        No new tasks will be accepted, enqueued ones will be completed.
+        """Closes the Pool preventing new tasks from being accepted.
+
+        Pending tasks will be completed.
         """
         self._context.state = CLOSED
 
     def stop(self):
-        """
-        Stops the pool without performing any pending task.
-        """
+        """Stops the pool without performing any pending task."""
         self._context.state = STOPPED
 
     def join(self, timeout=None):
-        """
-        Joins the pool waiting until all workers exited.
+        """Joins the pool waiting until all workers exited.
+
         If *timeout* is set, it block until all workers are done
-        or raise TimeoutError.
+        or raises TimeoutError.
         """
         if self._context.state == RUNNING:
             raise RuntimeError('The Pool is still running')
@@ -99,8 +97,9 @@ class BasePool(object):
 
     def schedule(self, function, args=(), kwargs={}, identifier=None,
                  callback=None, timeout=0):
-        """
-        Schedules *function* into the Pool, passing *args* and *kwargs*
+        """Schedules *function* to be run the Pool.
+
+        *args* and *kwargs* will be forwareded to the scheduled function
         respectively as arguments and keyword arguments.
 
         If *callback* is a callable it will be executed once the function

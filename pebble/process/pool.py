@@ -38,22 +38,23 @@ Acknowledgement = namedtuple('Acknowledgement', ('worker', 'task'))
 
 
 class Pool(BasePool):
-    """
-    A ProcessPool allows to schedule jobs into a Pool of Processes
-    which will perform them concurrently.
+    """Allows to schedule jobs within a Pool of Processes.
 
     workers is an integer representing the amount of desired process workers
     managed by the pool.
     If worker_task_limit is a number greater than zero,
     each worker will be restarted after performing an equal amount of tasks.
-    initializer must be callable, if passed, it will be called
-    every time a worker is started, receiving initargs as arguments.
-    deinitializer must be callable, if passed, it will be called
-    every time a worker ends its lifetime, receiving deinitargs as arguments.
 
     The queue_factory callable allows to replace the internal task buffer
     of the Pool with a custom one. The callable must return a thread safe
     object exposing the same interface of the standard Python Queue.
+
+    initializer must be callable, if passed, it will be called
+    every time a worker is started, receiving initargs as arguments.
+    deinitializer must be callable, if passed, it will be called
+    every time a worker ends its lifetime, receiving deinitargs as arguments.
+    The deinitializer callable is not ensured to be executed in case
+    timeout or cancellation of the Task or unexpected exit of the worker.
     """
     def __init__(self, workers=1, task_limit=0, queue_factory=None,
                  initializer=None, initargs=(),
@@ -74,9 +75,7 @@ class Pool(BasePool):
         self._pool_manager.stop()
 
     def stop(self):
-        """
-        Stops the pool without performing any pending task.
-        """
+        """Stops the pool without performing any pending task."""
         super(Pool, self).stop()
         self._context.task_queue.put(None)
 
@@ -127,10 +126,7 @@ def get_next_message(pool_manager):
 
 
 class PoolManager(object):
-    """
-    Combines the TaskManager and the WorkerManager
-    returning a high level manager for the Pool.
-    """
+    """Combines Task and Worker Managers providing a higher level one."""
     def __init__(self, context):
         self.context = context
         self.task_manager = TaskManager(context.task_queue.task_done)
@@ -144,16 +140,12 @@ class PoolManager(object):
         self.worker_manager.stop_workers()
 
     def schedule(self, task):
-        """
-        Schedules a new Task in the PoolManager.
-        """
+        """Schedules a new Task in the PoolManager."""
         self.task_manager.register(task)
         self.worker_manager.dispatch(task)
 
     def process_message(self, message):
-        """
-        Processes a message coming from the workers.
-        """
+        """Processes a message coming from the workers."""
         if isinstance(message, Acknowledgement):
             self.task_manager.task_start(message.task, message.worker)
         elif isinstance(message, Results):
@@ -164,9 +156,7 @@ class PoolManager(object):
         self.update_workers()
 
     def update_tasks(self):
-        """
-        Handles timing out and cancelled Tasks.
-        """
+        """Handles timing out and cancelled Tasks."""
         timeout, cancelled = self.task_manager.inspect_tasks()
 
         for task in timeout:
@@ -178,9 +168,7 @@ class PoolManager(object):
             self.worker_manager.stop_worker(worker_id)
 
     def update_workers(self):
-        """
-        Handles unexpected processes termination.
-        """
+        """Handles unexpected processes termination."""
         for expiration in self.worker_manager.inspect_workers():
             self.handle_worker_expiration(expiration)
 
@@ -198,9 +186,7 @@ class PoolManager(object):
             self.task_manager.task_done(task.number, error)
 
     def worker_id_lookup(self, worker_id):
-        """
-        Finds the task assigned to the worker.
-        """
+        """Finds the task assigned to the worker."""
         for task in tuple(self.task_manager.tasks.values()):
             if task._metadata == worker_id:
                 return task
@@ -209,8 +195,7 @@ class PoolManager(object):
 
 
 class TaskManager(object):
-    """
-    Manages the tasks flow within the Pool.
+    """Manages the tasks flow within the Pool.
 
     Tasks are registered, acknowledged and completed.
     Timing out and cancelled tasks are handled as well.
@@ -228,9 +213,7 @@ class TaskManager(object):
         task._timestamp = time.time()
 
     def task_done(self, task_id, results):
-        """
-        Set the tasks results and run the callback.
-        """
+        """Set the tasks results and run the callback."""
         try:
             task = self.tasks.pop(task_id)
         except KeyError:
@@ -240,8 +223,7 @@ class TaskManager(object):
             self.task_done_callback()
 
     def inspect_tasks(self):
-        """
-        Update the tasks status.
+        """Updates the tasks status.
 
         Returns the tasks which have been cancelled or timeod out.
         """
@@ -259,8 +241,7 @@ class TaskManager(object):
 
 
 class WorkerManager(object):
-    """
-    Manages the workers related mechanics within the Pool.
+    """Manages the workers related mechanics within the Pool.
 
     Maintains the workers active and encapsulates their communication logic.
     """
@@ -274,8 +255,7 @@ class WorkerManager(object):
         self.pool_channel.send(NewTask(task.number, task._metadata))
 
     def inspect_workers(self):
-        """
-        Update the workers status.
+        """Updates the workers status.
 
         Returns the workers which have unexpectedly ended.
         """
@@ -308,9 +288,7 @@ class WorkerManager(object):
 
 @spawn(name='worker_process', daemon=True)
 def worker_process(params, channel):
-    """
-    The worker process routines.
-    """
+    """The worker process routines."""
     signal(SIGINT, SIG_IGN)
 
     if params.initializer is not None:
@@ -345,9 +323,7 @@ def fetch_task(channel):
 
 
 def task_transaction(channel):
-    """
-    Ensures a task is fetched and acknowledged atomically.
-    """
+    """Ensures a task is fetched and acknowledged atomically."""
     with channel.lock:
         if channel.poll(0):
             task = channel.recv()

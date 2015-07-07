@@ -23,22 +23,21 @@ from pebble.pool import BasePool, run_initializer, task_limit_reached
 
 
 class Pool(BasePool):
-    """
-    A ThreadPool allows to schedule jobs into a Pool of Threades
-    which will perform them concurrently.
+    """Allows to schedule jobs within a Pool of Threads.
 
     workers is an integer representing the amount of desired thread workers
     managed by the pool.
     If worker_task_limit is a number greater than zero,
     each worker will be restarted after performing an equal amount of tasks.
-    initializer must be callable, if passed, it will be called
-    every time a worker is started, receiving initargs as arguments.
-    deinitializer must be callable, if passed, it will be called
-    every time a worker ends its lifetime, receiving deinitargs as arguments.
 
     The queue_factory callable allows to replace the internal task buffer
     of the Pool with a custom one. The callable must return a thread safe
     object exposing the same interface of the standard Python Queue.
+
+    initializer must be callable, if passed, it will be called
+    every time a worker is started, receiving initargs as arguments.
+    deinitializer must be callable, if passed, it will be called
+    every time a worker ends its lifetime, receiving deinitargs as arguments.
     """
     def __init__(self, workers=1, task_limit=0, queue_factory=None,
                  initializer=None, initargs=(),
@@ -102,7 +101,7 @@ class PoolManager(object):
 
 @spawn(name='worker_thread', daemon=True)
 def worker_thread(context):
-    """Runs the actual function in separate thread."""
+    """The worker thread routines."""
     parameters = context.worker_parameters
     task_limit = parameters.task_limit
 

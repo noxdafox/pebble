@@ -41,7 +41,6 @@ def spawn(*args, **kwargs):
        The decorator accepts the keywords *daemon* and *name* only.
        If *target* keyword is not specified, the function will act as
        a decorator.
-
     """
     return function_handler(launch_thread, decorate, *args, **kwargs)
 
@@ -73,7 +72,6 @@ def concurrent(*args, **kwargs):
        The decorator accepts the keywords *timeout* and *callback* only.
        If *target* keyword is not specified, the function will act as
        a decorator.
-
     """
     return function_handler(launch_task, decorate, *args, **kwargs)
 
@@ -82,7 +80,6 @@ def launch_task(function, callback=None, identifier=None,
                 args=None, kwargs=None):
     """Wraps the target function within a Task
     and executes it in a separate thread.
-
     """
     metadata = {'function': function, 'args': args, 'kwargs':  kwargs}
     task = Task(next(_task_counter), callback=callback,

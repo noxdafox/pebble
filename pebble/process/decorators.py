@@ -44,7 +44,6 @@ def spawn(*args, **kwargs):
        The decorator accepts the keywords *daemon* and *name* only.
        If *target* keyword is not specified, the function will act as
        a decorator.
-
     """
     return function_handler(launch_process, decorate, *args, **kwargs)
 
@@ -76,7 +75,6 @@ def concurrent(*args, **kwargs):
        The decorator accepts the keywords *timeout* and *callback* only.
        If *target* keyword is not specified, the function will act as
        a decorator.
-
     """
     return function_handler(launch_task, decorate, *args, **kwargs)
 
@@ -85,7 +83,6 @@ def launch_task(target, timeout=None, callback=None, identifier=None,
                 args=None, kwargs=None):
     """Wraps the target function within a Task
     and executes it in a separate process.
-
     """
     reader, writer = Pipe(duplex=False)
     worker = task_worker(writer, target, args, kwargs)
@@ -111,7 +108,6 @@ def task_manager(task, pipe):
 
     Waits for the *Task* to be performed,
     collects results, runs the callback and cleans up the process.
-
     """
     worker = task._worker
 

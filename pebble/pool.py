@@ -43,17 +43,14 @@ ERROR = 5
 
 WorkerParameters = namedtuple('WorkerParameters', ('task_limit',
                                                    'initializer',
-                                                   'initargs',
-                                                   'deinitializer',
-                                                   'deinitargs'))
+                                                   'initargs'))
 
 
 class BasePool(object):
     def __init__(self, workers, task_limit, queue_factory,
-                 initializer, initargs, deinitializer, deinitargs):
+                 initializer, initargs):
         self._context = PoolContext(workers, task_limit, queue_factory,
-                                    initializer, initargs,
-                                    deinitializer, deinitargs)
+                                    initializer, initargs)
         self._loops = ()
 
     def __enter__(self):
@@ -149,14 +146,13 @@ class BasePool(object):
 
 class PoolContext(object):
     def __init__(self, workers, task_limit, queue_factory,
-                 initializer, initargs, deinitializer, deinitargs):
+                 initializer, initargs):
         self.state = CREATED
         self.workers = workers
         self.task_counter = count()
         self.task_queue = create_queue(queue_factory)
         self.worker_parameters = WorkerParameters(task_limit,
-                                                  initializer, initargs,
-                                                  deinitializer, deinitargs)
+                                                  initializer, initargs)
 
     @property
     def alive(self):

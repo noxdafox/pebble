@@ -51,17 +51,11 @@ class Pool(BasePool):
 
     initializer must be callable, if passed, it will be called
     every time a worker is started, receiving initargs as arguments.
-    deinitializer must be callable, if passed, it will be called
-    every time a worker ends its lifetime, receiving deinitargs as arguments.
-    The deinitializer callable is not ensured to be executed in case
-    timeout or cancellation of the Task or unexpected exit of the worker.
     """
     def __init__(self, workers=1, task_limit=0, queue_factory=None,
-                 initializer=None, initargs=(),
-                 deinitializer=None, deinitargs=()):
+                 initializer=None, initargs=()):
         super(Pool, self).__init__(workers, task_limit, queue_factory,
-                                   initializer, initargs,
-                                   deinitializer, deinitargs)
+                                   initializer, initargs)
         self._pool_manager = PoolManager(self._context)
 
     def _start_pool(self):
@@ -301,10 +295,6 @@ def worker_process(params, channel):
             send_results(channel, Results(task.id, results))
     except (EOFError, EnvironmentError) as error:
         os._exit(error.errno)
-
-    if params.deinitializer is not None:
-        if not run_initializer(params.deinitializer, params.deinitargs):
-            os._exit(1)
 
 
 def worker_get_next_task(channel, task_limit):

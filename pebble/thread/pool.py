@@ -36,15 +36,11 @@ class Pool(BasePool):
 
     initializer must be callable, if passed, it will be called
     every time a worker is started, receiving initargs as arguments.
-    deinitializer must be callable, if passed, it will be called
-    every time a worker ends its lifetime, receiving deinitargs as arguments.
     """
     def __init__(self, workers=1, task_limit=0, queue_factory=None,
-                 initializer=None, initargs=(),
-                 deinitializer=None, deinitargs=()):
+                 initializer=None, initargs=()):
         super(Pool, self).__init__(workers, task_limit, queue_factory,
-                                   initializer, initargs,
-                                   deinitializer, deinitargs)
+                                   initializer, initargs)
         self._pool_manager = PoolManager(self._context)
 
     def _start_pool(self):
@@ -112,10 +108,6 @@ def worker_thread(context):
     for task in get_next_task(context, task_limit):
         execute_next_task(task)
         context.task_queue.task_done()
-
-    if parameters.deinitializer is not None:
-        if not run_initializer(parameters.deinitializer, parameters.deinitargs):
-            return
 
 
 def get_next_task(context, task_limit):

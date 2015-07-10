@@ -9,7 +9,7 @@ except ImportError:
     from Queue import Queue
 
 from pebble import process
-from pebble import TaskCancelled, TimeoutError, PoolError
+from pebble import TaskCancelled, TimeoutError, PoolError, ProcessExpired
 
 
 event = threading.Event()
@@ -68,6 +68,10 @@ def pid_function():
 def sigterm_function():
     signal.signal(signal.SIGTERM, signal.SIG_IGN)
     time.sleep(100)
+
+
+def suicide_function():
+    os._exit(1)
 
 
 class TestProcessPool(unittest.TestCase):
@@ -308,3 +312,9 @@ class TestProcessPool(unittest.TestCase):
         with process.Pool() as pool:
             task = pool.schedule(sigterm_function, timeout=0.2)
             self.assertRaises(TimeoutError, task.get)
+
+    def test_process_pool_expired_worker(self):
+        """Process Pool unexpect death of worker raises ProcessExpired."""
+        with process.Pool() as pool:
+            task = pool.schedule(suicide_function)
+            self.assertRaises(ProcessExpired, task.get)

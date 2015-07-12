@@ -67,10 +67,8 @@ Pools allow to execute several tasks without the need of spawning a new worker f
 
 Check the documentation for more examples.
 
-EXPERIMENTING:
+Pebble 4:
 
-  * asynchronous multiprocessing through asyncio
-
-TODO:
-
-  * waitforprocesses, waitforprocessqueues: wait for multiple Processes and multiprocessing.Queues
+ * use Futures instead of Tasks
+ * move callback and timeout assignments to Futures
+ * merge with concurrent.futures and asyncio modules API

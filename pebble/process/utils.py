@@ -16,6 +16,7 @@
 import os
 import sys
 
+from select import select
 from functools import wraps
 from traceback import format_exc
 try:  # Python 2
@@ -50,12 +51,20 @@ def stop(worker):
 def get_results(pipe, timeout):
     """Waits for results and handles communication errors."""
     try:
-        if pipe.poll(timeout):
+        if poll(pipe, timeout):
             return pipe.recv()
         else:
             return TimeoutError('Task Timeout', timeout)
     except (EnvironmentError, EOFError):
         return ProcessExpired('Abnormal termination')
+
+
+def poll(pipe, timeout):
+    """Python's Pipe.poll blocks undefinitely if data is too big."""
+    if os.name != 'nt':
+        return select([pipe], [], [], timeout)[0] and True or False
+    else:
+        return pipe.poll(timeout)
 
 
 def send_results(pipe, data):

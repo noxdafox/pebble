@@ -70,10 +70,6 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
       *timeout* is an integer, if greater than zero, once expired will force the timed out task to be interrupted and the worker will be restarted; *Task.get()* will raise *TimeoutError*, callbacks will be executed.
       If *identifier* is not None, it will be assigned as the *Task.id* value.
 
-      .. note::
-
-         Exceptions raised within callbacks will stop the Pool but won't crash the application.
-
    .. function:: close()
 
       No more job will be allowed into the Pool, queued jobs will be consumed.
@@ -83,11 +79,6 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
 
       The ongoing jobs will be performed, all the enqueued ones dropped; this is a fast way to terminate the Pool.
       To ensure the Pool to be released call *ThreadPool.join()* after stopping the Pool.
-
-   .. function:: kill()
-
-      All workers will be killed forcing the pool to terminate.
-      To ensure the Pool to be released call *ThreadPool.join()* after killing the Pool.
 
    .. function:: join(timeout=None)
 
@@ -152,10 +143,6 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
       *args* and *kwargs* will be passed to the function respectively as its arguments and keyword arguments.
       *callback* must be callable, if passed, it will be called once the task has ended with the *Task* object as parameter.
       If *identifier* is not None, it will be assigned as the *Task.id* value.
-
-      .. note::
-
-         Exceptions raised within callbacks will stop the Pool but won't crash the application.
 
    .. function:: close()
 

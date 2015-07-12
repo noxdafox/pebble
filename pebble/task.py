@@ -24,7 +24,7 @@ from .exceptions import TimeoutError, TaskCancelled
 
 class Task(object):
     """Handler to the ongoing task."""
-    def __init__(self, task_nr, callback=None, timeout=0, identifier=None,
+    def __init__(self, task_nr, callback=None, timeout=None, identifier=None,
                  metadata=None):
         self.id = identifier
         self._timeout = timeout

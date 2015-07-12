@@ -3,9 +3,13 @@ import time
 import signal
 import unittest
 import threading
+try:
+    from queue import Queue
+except ImportError:
+    from Queue import Queue
 
 from pebble import process
-from pebble import TaskCancelled, TimeoutError, PoolError
+from pebble import TaskCancelled, TimeoutError, PoolError, ProcessExpired
 
 
 event = threading.Event()
@@ -26,6 +30,10 @@ def callback(task):
     event.set()
 
 
+def queue_factory():
+    return Queue(maxsize=5)
+
+
 def error_callback(task):
     raise Exception("BOOM!")
 
@@ -33,10 +41,6 @@ def error_callback(task):
 def initializer(value):
     global initarg
     initarg = value
-
-
-def initializer_error():
-    raise Exception("BOOM!")
 
 
 def function(argument, keyword_argument=0):
@@ -66,25 +70,8 @@ def sigterm_function():
     time.sleep(100)
 
 
-# class TestProcessTaskObj(object):
-#     a = 0
-
-#     def __init__(self):
-#         self.b = 1
-
-#     @classmethod
-#     @process.task
-#     def clsmethod(cls):
-#         return cls.a
-
-#     @process.task
-#     def instmethod(self):
-#         return self.b
-
-#     @staticmethod
-#     @process.task
-#     def stcmethod():
-#         return 2
+def suicide_function():
+    os._exit(1)
 
 
 class TestProcessPool(unittest.TestCase):
@@ -103,6 +90,11 @@ class TestProcessPool(unittest.TestCase):
             self.exception = error
         finally:
             self.event.set()
+
+    def test_process_pool_queue_factory(self):
+        """Process Pool queue factory is called."""
+        with process.Pool(queue_factory=queue_factory) as pool:
+            self.assertEqual(pool._context.task_queue.maxsize, 5)
 
     def test_process_pool_single_task(self):
         """Process Pool single task."""
@@ -197,6 +189,8 @@ class TestProcessPool(unittest.TestCase):
         with process.Pool() as pool:
             task1 = pool.schedule(pid_function)
             task = pool.schedule(long_function)
+            # sleep if not the task will be cancelled before sending to worker
+            time.sleep(0.1)
             task.cancel()
             task2 = pool.schedule(pid_function)
         self.assertNotEqual(task1.get(), task2.get())
@@ -212,12 +206,6 @@ class TestProcessPool(unittest.TestCase):
         with process.Pool(initializer=initializer, initargs=[1]) as pool:
             task = pool.schedule(initializer_function)
         self.assertEqual(task.get(), 1)
-
-    def test_process_pool_initializer_error(self):
-        """Process Pool an exception in a initializer is raised by get."""
-        with process.Pool(initializer=initializer_error) as pool:
-            task = pool.schedule(initializer_function)
-        self.assertRaises(Exception, task.get)
 
     def test_process_pool_created(self):
         """Process Pool is not active if nothing is scheduled."""
@@ -272,31 +260,13 @@ class TestProcessPool(unittest.TestCase):
         pool.join()
         self.assertFalse(pool.active)
 
-    def test_process_pool_kill_tasks(self):
-        """Process Pool not all tasks are performed on kill."""
-        tasks = []
-        pool = process.Pool()
-        for index in range(10):
-            tasks.append(pool.schedule(function, args=[index]))
-        pool.kill()
-        pool.join()
-        self.assertTrue(len([t for t in tasks if not t.ready]) > 0)
-
-    def test_process_pool_kill_stopped(self):
-        """Process Pool is killed after kill."""
-        pool = process.Pool()
-        pool.schedule(function, args=[1])
-        pool.kill()
-        pool.join()
-        self.assertFalse(pool.active)
-
     def test_process_pool_join_workers(self):
         """Process Pool no worker is running after join."""
         pool = process.Pool(workers=4)
         pool.schedule(function, args=[1])
         pool.stop()
         pool.join()
-        self.assertEqual(len(pool._context.pool), 0)
+        self.assertEqual(len(pool._pool_manager.worker_manager.workers), 0)
 
     def test_process_pool_join_running(self):
         """Process Pool RuntimeError is raised if active pool joined."""
@@ -315,12 +285,14 @@ class TestProcessPool(unittest.TestCase):
         pool.join()
 
     def test_process_pool_callback_error(self):
-        """Process Pool stop if error in callback."""
+        """Process Pool does not stop if error in callback."""
         with process.Pool() as pool:
-            pool.schedule(function, args=[1], callback=error_callback,
-                          kwargs={'keyword_argument': 1})
-        time.sleep(0.1)
-        self.assertRaises(PoolError, pool.schedule, function, args=[1])
+            try:
+                pool.schedule(function, args=[1], callback=error_callback,
+                              kwargs={'keyword_argument': 1})
+                pool.schedule(function, args=[1], kwargs={'keyword_argument': 1})
+            except Exception:
+                self.fail("Error raised")
 
     def test_process_pool_exception_isolated(self):
         """Process Pool an Exception does not affect other tasks."""
@@ -340,3 +312,9 @@ class TestProcessPool(unittest.TestCase):
         with process.Pool() as pool:
             task = pool.schedule(sigterm_function, timeout=0.2)
             self.assertRaises(TimeoutError, task.get)
+
+    def test_process_pool_expired_worker(self):
+        """Process Pool unexpect death of worker raises ProcessExpired."""
+        with process.Pool() as pool:
+            task = pool.schedule(suicide_function)
+            self.assertRaises(ProcessExpired, task.get)

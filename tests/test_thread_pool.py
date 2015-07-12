@@ -204,7 +204,7 @@ class TestThreadPool(unittest.TestCase):
         tasks = []
         pool = thread.Pool()
         for index in range(10):
-            tasks.append(pool.schedule(function, args=[index]))
+            tasks.append(pool.schedule(long_function, args=[index]))
         pool.stop()
         pool.join()
         self.assertTrue(len([t for t in tasks if not t.ready]) > 0)

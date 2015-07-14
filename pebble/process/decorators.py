@@ -80,7 +80,7 @@ def concurrent(*args, **kwargs):
 
 
 def launch_task(target, timeout=None, callback=None, identifier=None,
-                args=None, kwargs=None):
+                args=(), kwargs={}):
     """Wraps the target function within a Task
     and executes it in a separate process.
     """

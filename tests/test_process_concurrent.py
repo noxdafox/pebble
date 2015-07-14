@@ -25,6 +25,10 @@ def callback(concurrent):
         event.set()
 
 
+def undecorated_simple():
+    return 0
+
+
 def undecorated(argument, keyword_argument=0):
     """A docstring."""
     return argument + keyword_argument
@@ -154,6 +158,11 @@ class TestProcessConcurrent(unittest.TestCase):
 
     def test_undecorated_results(self):
         """Process Concurrent undecorated results are produced."""
+        task = process.concurrent(target=undecorated_simple)
+        self.assertEqual(task.get(), 0)
+
+    def test_undecorated_results_arguments(self):
+        """Process Concurrent undecorated with args results are produced."""
         task = process.concurrent(target=undecorated, args=[1],
                                   kwargs={'keyword_argument': 1})
         self.assertEqual(task.get(), 2)

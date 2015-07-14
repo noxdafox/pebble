@@ -79,7 +79,7 @@ def isparametrizeddecorator(args, kwargs):
         return False
 
 
-def execute(function, args, kwargs):
+def execute(function, args=(), kwargs={}):
     """Runs the given function returning its results or exception."""
     try:
         return function(*args, **kwargs)

@@ -57,6 +57,8 @@ def get_results(pipe, timeout):
             return TimeoutError('Task Timeout', timeout)
     except (EnvironmentError, EOFError):
         return ProcessExpired('Abnormal termination')
+    except Exception as error:
+        return error
 
 
 def poll(pipe, timeout):

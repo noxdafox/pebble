@@ -124,7 +124,7 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
 
 .. class:: Pool(workers=1, task_limit=0, queue=None, queueargs=None, initializer=None, initargs=None)
 
-   A Pool allows to schedule jobs into a Pool of Threades which will perform them concurrently.
+   A Pool allows to schedule jobs into a Pool of Threads which will perform them concurrently.
    Thread pools work as well as a *context manager*.
 
    *workers* is an integer representing the amount of desired thread workers managed by the pool. If *worker_task_limit* is a number greater than zero each worker will be restarted after performing an equal amount of tasks.
@@ -293,7 +293,7 @@ Examples
 --------
 
 Use of spawn
-+++++++++++++++++
+++++++++++++
 
 The spawn function is a simple convenience method for spawning Processes and Threads, the following code snippets are all equivalent.
 

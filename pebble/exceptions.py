@@ -29,6 +29,11 @@ class TaskCancelled(PebbleError):
     pass
 
 
+class ChannelError(PebbleError):
+    """Error occurring within the process channel."""
+    pass
+
+
 class TimeoutError(PebbleError):
     """Raised when a timeout expires."""
     def __init__(self, msg, value=0):

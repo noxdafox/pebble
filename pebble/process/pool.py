@@ -28,12 +28,14 @@ from pebble.pool import BasePool, run_initializer, task_limit_reached
 from pebble.process.channel import channels
 from pebble.process.decorators import spawn
 from pebble.process.utils import stop, send_results
+from pebble.exceptions import ChannelError, PoolError
 from pebble.exceptions import TimeoutError, TaskCancelled, ProcessExpired
 
 
 NoMessage = namedtuple('NoMessage', ())
 NewTask = namedtuple('NewTask', ('id', 'payload'))
 Results = namedtuple('Results', ('task', 'results'))
+AssignedWorker = namedtuple('AssignedWorker', ('pid', ))
 Acknowledgement = namedtuple('Acknowledgement', ('worker', 'task'))
 
 
@@ -158,8 +160,8 @@ class PoolManager(object):
         for task in cancelled:
             self.task_manager.task_done(task.number, TaskCancelled('Cancelled'))
 
-        for worker_id in (t._metadata for t in timeout + cancelled):
-            self.worker_manager.stop_worker(worker_id)
+        for worker in (t._metadata for t in timeout + cancelled):
+            self.worker_manager.stop_worker(worker.pid)
 
     def update_workers(self):
         """Handles unexpected processes termination."""
@@ -172,20 +174,21 @@ class PoolManager(object):
         worker_id, exitcode = expiration
 
         try:
-            task = self.worker_id_lookup(worker_id)
+            task = self.find_expired_task(worker_id)
         except LookupError:
             return
         else:
             error = ProcessExpired('Abnormal termination', code=exitcode)
             self.task_manager.task_done(task.number, error)
 
-    def worker_id_lookup(self, worker_id):
-        """Finds the task assigned to the worker."""
-        for task in tuple(self.task_manager.tasks.values()):
-            if task._metadata == worker_id:
-                return task
+    def find_expired_task(self, worker_id):
+        running_tasks = [t for t in tuple(self.task_manager.tasks.values())
+                         if isinstance(t._metadata, AssignedWorker)]
+
+        if running_tasks:
+            return worker_lookup(running_tasks, worker_id)
         else:
-            raise LookupError("Not found")
+            raise PoolError("All workers are dead")
 
 
 class TaskManager(object):
@@ -203,7 +206,7 @@ class TaskManager(object):
 
     def task_start(self, task_id, worker_id):
         task = self.tasks[task_id]
-        task._metadata = worker_id
+        task._metadata = AssignedWorker(worker_id)
         task._timestamp = time.time()
 
     def task_done(self, task_id, results):
@@ -278,6 +281,8 @@ class WorkerManager(object):
                 stop(self.workers.pop(worker_id))
         except KeyError:
             return  # worker already expired
+        except ChannelError as error:
+            raise PoolError(error)
 
 
 @spawn(name='worker_process', daemon=True)
@@ -291,7 +296,8 @@ def worker_process(params, channel):
 
     try:
         for task in worker_get_next_task(channel, params.task_limit):
-            results = execute_next_task(task.payload)
+            payload = task.payload
+            results = execute(payload.function, payload.args, payload.kwargs)
             send_results(channel, Results(task.id, results))
     except (EOFError, EnvironmentError) as error:
         os._exit(error.errno)
@@ -324,6 +330,10 @@ def task_transaction(channel):
     return task
 
 
-def execute_next_task(task):
-    function, args, kwargs = task
-    return execute(function, args, kwargs)
+def worker_lookup(running_tasks, worker_id):
+    for task in running_tasks:
+        assigned_worker = task._metadata
+        if assigned_worker.pid == worker_id:
+            return task
+
+    raise LookupError("Not found")

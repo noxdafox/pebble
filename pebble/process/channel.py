@@ -20,6 +20,11 @@ from select import select
 from contextlib import contextmanager
 from multiprocessing import RLock, Pipe
 
+from pebble.exceptions import ChannelError
+
+
+LOCK_TIMEOUT = 60
+
 
 def channels():
     read0, write0 = Pipe(duplex=False)
@@ -107,19 +112,21 @@ class ChannelMutex(object):
         self.release = self._make_release_method()
 
     def __enter__(self):
-        self.acquire()
-        return self
+        if self.acquire():
+            return self
+        else:
+            raise ChannelError("Channel mutex time out")
 
     def __exit__(self, *_):
         self.release()
 
     def _make_acquire_method(self):
         def unix_acquire():
-            self.reader_mutex.acquire()
-            self.writer_mutex.acquire()
+            return (self.reader_mutex.acquire(timeout=LOCK_TIMEOUT) and
+                    self.writer_mutex.acquire(timeout=LOCK_TIMEOUT))
 
         def windows_acquire():
-            self.reader_mutex.acquire()
+            return self.reader_mutex.acquire(timeout=LOCK_TIMEOUT)
 
         return os.name != 'nt' and unix_acquire or windows_acquire
 
@@ -136,11 +143,21 @@ class ChannelMutex(object):
     @property
     @contextmanager
     def reader(self):
-        with self.reader_mutex:
-            yield self
+        if self.reader_mutex.acquire(timeout=LOCK_TIMEOUT):
+            try:
+                yield self
+            finally:
+                self.reader_mutex.release()
+        else:
+            raise ChannelError("Channel mutex time out")
 
     @property
     @contextmanager
     def writer(self):
-        with self.writer_mutex:
-            yield self
+        if self.writer_mutex.acquire(timeout=LOCK_TIMEOUT):
+            try:
+                yield self
+            finally:
+                self.writer_mutex.release()
+        else:
+            raise ChannelError("Channel mutex time out")

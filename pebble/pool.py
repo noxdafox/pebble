@@ -15,7 +15,6 @@
 
 import time
 
-from inspect import isclass
 from itertools import count
 from traceback import print_exc
 from collections import namedtuple
@@ -41,6 +40,9 @@ EXPIRED = 4
 ERROR = 5
 
 
+TaskParameters = namedtuple('TaskParameters', ('function',
+                                               'args',
+                                               'kwargs'))
 WorkerParameters = namedtuple('WorkerParameters', ('task_limit',
                                                    'initializer',
                                                    'initargs'))
@@ -62,7 +64,9 @@ class BasePool(object):
 
     @property
     def active(self):
-        return self._context.state == RUNNING
+        self._update_pool_state()
+
+        return self._context.state in (CLOSED, RUNNING)
 
     def close(self):
         """Closes the Pool preventing new tasks from being accepted.
@@ -84,13 +88,26 @@ class BasePool(object):
         if self._context.state == RUNNING:
             raise RuntimeError('The Pool is still running')
         if self._context.state == CLOSED:
-            wait_queue_depletion(self._context.task_queue, timeout)
+            self._wait_queue_depletion(timeout)
             self.stop()
             self.join()
         else:
             for loop in self._loops:
                 loop.join()
             self._stop_pool()
+
+    def _wait_queue_depletion(self, timeout):
+        tick = time.time()
+
+        while self.active:
+            if timeout is not None and time.time() - tick > timeout:
+                raise TimeoutError("Tasks are still being executed")
+            elif self._context.task_queue.unfinished_tasks:
+                time.sleep(SLEEP_UNIT)
+            else:
+                return
+
+        raise PoolError()
 
     def schedule(self, function, args=(), kwargs={}, identifier=None,
                  callback=None, timeout=0):
@@ -109,7 +126,7 @@ class BasePool(object):
 
         A *Task* object is returned.
         """
-        metadata = (function, args, kwargs)
+        metadata = TaskParameters(function, args, kwargs)
         return self._schedule_task(callback, timeout, identifier, metadata)
 
     def _schedule_task(self, callback, timeout, identifier, metadata):
@@ -157,23 +174,6 @@ class PoolContext(object):
     @property
     def alive(self):
         return self.state not in (ERROR, STOPPED)
-
-
-def wait_queue_depletion(queue, timeout):
-    if timeout is not None:
-        wait_queue_timeout(queue, timeout)
-    else:
-        queue.join()
-
-
-def wait_queue_timeout(queue, timeout):
-    for _ in range(int(timeout / SLEEP_UNIT)):
-        if queue.unfinished_tasks:
-            time.sleep(SLEEP_UNIT)
-        else:
-            break
-    else:
-        raise TimeoutError("Tasks are still being executed")
 
 
 def create_queue(queue_factory):

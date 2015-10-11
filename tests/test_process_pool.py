@@ -8,6 +8,7 @@ try:
 except ImportError:
     from Queue import Queue
 
+import pebble
 from pebble import process
 from pebble import TaskCancelled, TimeoutError, PoolError, ProcessExpired
 
@@ -34,13 +35,17 @@ def queue_factory():
     return Queue(maxsize=5)
 
 
-def error_callback(task):
+def error_callback(_):
     raise Exception("BOOM!")
 
 
 def initializer(value):
     global initarg
     initarg = value
+
+
+def broken_initializer():
+    raise Exception("BOOM!")
 
 
 def function(argument, keyword_argument=0):
@@ -207,10 +212,11 @@ class TestProcessPool(unittest.TestCase):
             task = pool.schedule(initializer_function)
         self.assertEqual(task.get(), 1)
 
-    def test_process_pool_created(self):
-        """Process Pool is not active if nothing is scheduled."""
-        with process.Pool() as pool:
-            self.assertFalse(pool.active)
+    def test_process_pool_broken_initializer(self):
+        """Process Pool broken initializer is notified."""
+        with self.assertRaises(PoolError):
+            with pebble.process.Pool(initializer=broken_initializer) as pool:
+                pool.schedule(function)
 
     def test_process_pool_running(self):
         """Process Pool is active if a task is scheduled."""
@@ -290,7 +296,8 @@ class TestProcessPool(unittest.TestCase):
             try:
                 pool.schedule(function, args=[1], callback=error_callback,
                               kwargs={'keyword_argument': 1})
-                pool.schedule(function, args=[1], kwargs={'keyword_argument': 1})
+                pool.schedule(function, args=[1],
+                              kwargs={'keyword_argument': 1})
             except Exception:
                 self.fail("Error raised")
 
@@ -318,3 +325,73 @@ class TestProcessPool(unittest.TestCase):
         with process.Pool() as pool:
             task = pool.schedule(suicide_function)
             self.assertRaises(ProcessExpired, task.get)
+
+
+# DEADLOCK TESTS
+
+
+@process.spawn(name='worker_process', daemon=True)
+def broken_worker_process_tasks(_, channel):
+    """Process failing in receiving new tasks."""
+    with channel.mutex.reader:
+        os._exit(1)
+
+
+@process.spawn(name='worker_process', daemon=True)
+def broken_worker_process_results(_, channel):
+    """Process failing in delivering results."""
+    for _ in pebble.process.pool.worker_get_next_task(channel, 2):
+        with channel.mutex.writer:
+            os._exit(1)
+
+
+class TestProcessPoolDeadlockOnNewTasks(unittest.TestCase):
+    def setUp(self):
+        self.worker_process = pebble.process.pool.worker_process
+        pebble.process.pool.worker_process = broken_worker_process_tasks
+        pebble.process.channel.LOCK_TIMEOUT = 0.1
+
+    def tearDown(self):
+        pebble.process.pool.worker_process = self.worker_process
+        pebble.process.channel.LOCK_TIMEOUT = 60
+
+    def test_pool_deadlock(self):
+        """Process Pool no deadlock if reading worker dies locking channel."""
+        with self.assertRaises(PoolError):
+            with pebble.process.Pool() as pool:
+                with self.assertRaises(pebble.ProcessExpired):
+                    pool.schedule(function)
+
+    def test_pool_deadlock_stop(self):
+        """Process Pool reading deadlocks are stopping the Pool."""
+        with self.assertRaises(PoolError):
+            pool = pebble.process.Pool()
+            for _ in range(10):
+                pool.schedule(function)
+                time.sleep(0.1)
+
+
+class TestProcessPoolDeadlockOnResults(unittest.TestCase):
+    def setUp(self):
+        self.worker_process = pebble.process.pool.worker_process
+        pebble.process.pool.worker_process = broken_worker_process_results
+        pebble.process.channel.LOCK_TIMEOUT = 0.1
+
+    def tearDown(self):
+        pebble.process.pool.worker_process = self.worker_process
+        pebble.process.channel.LOCK_TIMEOUT = 60
+
+    def test_pool_deadlock(self):
+        """Process Pool no deadlock if writing worker dies locking channel."""
+        with self.assertRaises(PoolError):
+            with pebble.process.Pool() as pool:
+                with self.assertRaises(pebble.ProcessExpired):
+                    pool.schedule(function).get()
+
+    def test_pool_deadlock_stop(self):
+        """Process Pool writing deadlocks are stopping the Pool."""
+        with self.assertRaises(PoolError):
+            pool = pebble.process.Pool()
+            for _ in range(10):
+                pool.schedule(function)
+                time.sleep(0.1)

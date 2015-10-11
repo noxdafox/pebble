@@ -18,7 +18,7 @@ import time
 from itertools import count
 from pebble.utils import execute
 from pebble.thread.decorators import spawn
-from pebble.pool import RUNNING, SLEEP_UNIT
+from pebble.pool import ERROR, RUNNING, SLEEP_UNIT
 from pebble.pool import BasePool, run_initializer, task_limit_reached
 
 
@@ -103,6 +103,7 @@ def worker_thread(context):
 
     if parameters.initializer is not None:
         if not run_initializer(parameters.initializer, parameters.initargs):
+            context.state = ERROR
             return
 
     for task in get_next_task(context, task_limit):
@@ -124,7 +125,7 @@ def get_next_task(context, task_limit):
 
 
 def execute_next_task(task):
-    function, args, kwargs = task._metadata
+    parameters = task._metadata
     task._timestamp = time.time()
-    results = execute(function, args, kwargs)
+    results = execute(parameters.function, parameters.args, parameters.kwargs)
     task.set_results(results)

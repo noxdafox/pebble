@@ -41,6 +41,10 @@ def initializer(value):
     initarg = value
 
 
+def broken_initializer():
+    raise Exception("BOOM!")
+
+
 def function(argument, keyword_argument=0):
     """A docstring."""
     return argument + keyword_argument
@@ -164,10 +168,11 @@ class TestThreadPool(unittest.TestCase):
             task = pool.schedule(initializer_function)
         self.assertEqual(task.get(), 1)
 
-    def test_thread_pool_created(self):
-        """Thread Pool is not active if nothing is scheduled."""
-        with thread.Pool() as pool:
-            self.assertFalse(pool.active)
+    def test_thread_pool_broken_initializer(self):
+        """Thread Pool broken initializer is notified."""
+        with self.assertRaises(PoolError):
+            with thread.Pool(initializer=broken_initializer) as pool:
+                pool.schedule(function)
 
     def test_thread_pool_running(self):
         """Thread Pool is active if a task is scheduled."""

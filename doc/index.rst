@@ -218,8 +218,8 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
 
 .. exception:: PoolError
 
-   Raised if a condition lead to an instability of the Pool.
-   This can be caused by, for example, an unmanaged exception raised in the *callback* functions.
+   Raised if the Pool encountered an error from which it cannot recover.
+   A typical example is a worker killed by the Operating System's Out Of Memory killer while it's communicating its results back to the Pool.
 
 .. exception:: ProcessExpired
 

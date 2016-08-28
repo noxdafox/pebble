@@ -23,9 +23,6 @@ from multiprocessing import RLock, Pipe
 from pebble.exceptions import ChannelError
 
 
-LOCK_TIMEOUT = 60
-
-
 def channels():
     read0, write0 = Pipe(duplex=False)
     read1, write1 = Pipe(duplex=False)
@@ -41,7 +38,7 @@ class Channel(object):
 
     def _make_poll_method(self):
         def unix_poll(timeout=None):
-            return select([self.reader], [], [], timeout)[0] and True or False
+            return bool(select([self.reader], [], [], timeout)[0])
 
         def windows_poll(timeout=None):
             return self.reader.poll(timeout)
@@ -53,6 +50,10 @@ class Channel(object):
 
     def send(self, obj):
         return self.writer.send(obj)
+
+    def close(self):
+        self.reader.close()
+        self.writer.close()
 
 
 class WorkerChannel(Channel):
@@ -161,3 +162,6 @@ class ChannelMutex(object):
                 self.writer_mutex.release()
         else:
             raise ChannelError("Channel mutex time out")
+
+
+LOCK_TIMEOUT = 60

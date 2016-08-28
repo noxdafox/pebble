@@ -78,11 +78,6 @@ class Pool(BasePool):
 
 @thread.spawn(daemon=True, name='task_scheduler')
 def task_scheduler_loop(pool_manager):
-    for task in pool_get_next_task(pool_manager):
-        pool_manager.schedule(task)
-
-
-def pool_get_next_task(pool_manager):
     context = pool_manager.context
     task_queue = context.task_queue
 
@@ -90,7 +85,7 @@ def pool_get_next_task(pool_manager):
         task = task_queue.get()
 
         if task is not None and not task.cancelled:
-            yield task
+            pool_manager.schedule(task)
         else:
             task_queue.task_done()
 
@@ -106,19 +101,10 @@ def pool_manager_loop(pool_manager):
 
 @thread.spawn(daemon=True, name='message_manager')
 def message_manager_loop(pool_manager):
-    for message in get_next_message(pool_manager):
-        pool_manager.process_message(message)
-
-
-def get_next_message(pool_manager):
     context = pool_manager.context
-    channel = pool_manager.worker_manager.pool_channel
 
     while context.alive:
-        if channel.poll(SLEEP_UNIT):
-            yield channel.recv()
-        else:
-            yield NoMessage()
+        pool_manager.process_next_message(SLEEP_UNIT)
 
 
 class PoolManager(object):
@@ -140,8 +126,10 @@ class PoolManager(object):
         self.task_manager.register(task)
         self.worker_manager.dispatch(task)
 
-    def process_message(self, message):
-        """Processes a message coming from the workers."""
+    def process_next_message(self, timeout):
+        """Processes the next message coming from the workers."""
+        message = self.worker_manager.receive(timeout)
+
         if isinstance(message, Acknowledgement):
             self.task_manager.task_start(message.task, message.worker)
         elif isinstance(message, Results):
@@ -250,6 +238,12 @@ class WorkerManager(object):
 
     def dispatch(self, task):
         self.pool_channel.send(NewTask(task.number, task._metadata))
+
+    def receive(self, timeout):
+        if self.pool_channel.poll(timeout):
+            return self.pool_channel.recv()
+        else:
+            return NoMessage()
 
     def inspect_workers(self):
         """Updates the workers status.

@@ -73,12 +73,12 @@ Pebble aims to help managing threads and processes in an easier way; it wraps Py
    .. function:: close()
 
       No more job will be allowed into the Pool, queued jobs will be consumed.
-      To ensure all the jobs are performed call *ThreadPool.join()* just after closing the Pool.
+      To ensure all the jobs are performed call *ProcessPool.join()* just after closing the Pool.
 
    .. function:: stop()
 
-      The ongoing jobs will be performed, all the enqueued ones dropped; this is a fast way to terminate the Pool.
-      To ensure the Pool to be released call *ThreadPool.join()* after stopping the Pool.
+      The Pool will be stopped abruptly. All enqueued and running jobs will be lost.
+      To ensure the Pool to be released call *ProcessPool.join()* after stopping the Pool.
 
    .. function:: join(timeout=None)
 

@@ -397,10 +397,9 @@ class TestProcessPoolDeadlockOnResults(unittest.TestCase):
 
     def test_pool_deadlock(self):
         """Process Pool no deadlock if writing worker dies locking channel."""
-        with self.assertRaises(PoolError):
-            with pebble.process.Pool() as pool:
-                with self.assertRaises(pebble.ProcessExpired):
-                    pool.schedule(function).get()
+        with pebble.process.Pool() as pool:
+            with self.assertRaises(pebble.ProcessExpired):
+                pool.schedule(function).get()
 
     def test_pool_deadlock_stop(self):
         """Process Pool writing deadlocks are stopping the Pool."""

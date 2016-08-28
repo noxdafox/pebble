@@ -32,13 +32,6 @@ from pebble.exceptions import ChannelError, PoolError
 from pebble.exceptions import TimeoutError, TaskCancelled, ProcessExpired
 
 
-NoMessage = namedtuple('NoMessage', ())
-NewTask = namedtuple('NewTask', ('id', 'payload'))
-Results = namedtuple('Results', ('task', 'results'))
-AssignedWorker = namedtuple('AssignedWorker', ('pid', ))
-Acknowledgement = namedtuple('Acknowledgement', ('worker', 'task'))
-
-
 class Pool(BasePool):
     """Allows to schedule jobs within a Pool of Processes.
 
@@ -281,16 +274,19 @@ class WorkerManager(object):
         self.workers_channel.close()
 
         for worker_id in tuple(self.workers.keys()):
-            self.stop_worker(worker_id)
+            self.stop_worker(worker_id, force=True)
 
     def new_worker(self):
         worker = worker_process(self.worker_parameters, self.workers_channel)
         self.workers[worker.pid] = worker
 
-    def stop_worker(self, worker_id):
+    def stop_worker(self, worker_id, force=False):
         try:
-            with self.workers_channel.lock:
+            if force:
                 stop(self.workers.pop(worker_id))
+            else:
+                with self.workers_channel.lock:
+                    stop(self.workers.pop(worker_id))
         except KeyError:
             return  # worker already expired
         except ChannelError as error:
@@ -349,3 +345,10 @@ def worker_lookup(running_tasks, worker_id):
             return task
 
     raise LookupError("Not found")
+
+
+NoMessage = namedtuple('NoMessage', ())
+NewTask = namedtuple('NewTask', ('id', 'payload'))
+Results = namedtuple('Results', ('task', 'results'))
+AssignedWorker = namedtuple('AssignedWorker', ('pid', ))
+Acknowledgement = namedtuple('Acknowledgement', ('worker', 'task'))

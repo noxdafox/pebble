@@ -23,7 +23,7 @@ from signal import SIG_IGN, SIGINT, signal
 
 from pebble import thread
 from pebble.utils import execute
-from pebble.pool import RUNNING, SLEEP_UNIT
+from pebble.pool import ERROR, RUNNING, SLEEP_UNIT
 from pebble.pool import BasePool, run_initializer, task_limit_reached
 from pebble.process.channel import channels
 from pebble.process.decorators import spawn
@@ -81,30 +81,39 @@ def task_scheduler_loop(pool_manager):
     context = pool_manager.context
     task_queue = context.task_queue
 
-    while context.alive:
-        task = task_queue.get()
+    try:
+        while context.alive:
+            task = task_queue.get()
 
-        if task is not None and not task.cancelled:
-            pool_manager.schedule(task)
-        else:
-            task_queue.task_done()
+            if task is not None and not task.cancelled:
+                pool_manager.schedule(task)
+            else:
+                task_queue.task_done()
+    except PoolError:
+        context.state = ERROR
 
 
 @thread.spawn(daemon=True, name='pool_manager')
 def pool_manager_loop(pool_manager):
     context = pool_manager.context
 
-    while context.alive:
-        pool_manager.update_status()
-        time.sleep(SLEEP_UNIT)
+    try:
+        while context.alive:
+            pool_manager.update_status()
+            time.sleep(SLEEP_UNIT)
+    except PoolError:
+        context.state = ERROR
 
 
 @thread.spawn(daemon=True, name='message_manager')
 def message_manager_loop(pool_manager):
     context = pool_manager.context
 
-    while context.alive:
-        pool_manager.process_next_message(SLEEP_UNIT)
+    try:
+        while context.alive:
+            pool_manager.process_next_message(SLEEP_UNIT)
+    except PoolError:
+        context.state = ERROR
 
 
 class PoolManager(object):
@@ -237,13 +246,19 @@ class WorkerManager(object):
         self.pool_channel, self.workers_channel = channels()
 
     def dispatch(self, task):
-        self.pool_channel.send(NewTask(task.number, task._metadata))
+        try:
+            self.pool_channel.send(NewTask(task.number, task._metadata))
+        except (OSError, EnvironmentError) as error:
+            raise PoolError(error)
 
     def receive(self, timeout):
-        if self.pool_channel.poll(timeout):
-            return self.pool_channel.recv()
-        else:
-            return NoMessage()
+        try:
+            if self.pool_channel.poll(timeout):
+                return self.pool_channel.recv()
+            else:
+                return NoMessage()
+        except (OSError, EnvironmentError) as error:
+            raise PoolError(error)
 
     def inspect_workers(self):
         """Updates the workers status.

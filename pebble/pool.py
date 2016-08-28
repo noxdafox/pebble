@@ -92,9 +92,10 @@ class BasePool(object):
             self.stop()
             self.join()
         else:
+            self._stop_pool()
+
             for loop in self._loops:
                 loop.join()
-            self._stop_pool()
 
     def _wait_queue_depletion(self, timeout):
         tick = time.time()

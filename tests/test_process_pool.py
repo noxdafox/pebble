@@ -44,6 +44,10 @@ def initializer(value):
     initarg = value
 
 
+def long_initializer():
+    time.sleep(60)
+
+
 def broken_initializer():
     raise Exception("BOOM!")
 
@@ -264,6 +268,16 @@ class TestProcessPool(unittest.TestCase):
         pool.schedule(function, args=[1])
         pool.stop()
         pool.join()
+        self.assertFalse(pool.active)
+
+    def test_process_pool_stop_large_data(self):
+        """Process Pool is stopped if large data is sent on the channel."""
+        data = "a" * 4098 * 1024
+        pool = process.Pool(initializer=long_initializer)
+        pool.schedule(function, args=[data])
+        pool.stop()
+        pool.join()
+
         self.assertFalse(pool.active)
 
     def test_process_pool_join_workers(self):

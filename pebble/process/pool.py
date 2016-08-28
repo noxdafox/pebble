@@ -277,6 +277,9 @@ class WorkerManager(object):
             self.new_worker()
 
     def stop_workers(self):
+        self.pool_channel.close()
+        self.workers_channel.close()
+
         for worker_id in tuple(self.workers.keys()):
             self.stop_worker(worker_id)
 
@@ -308,8 +311,8 @@ def worker_process(params, channel):
             payload = task.payload
             results = execute(payload.function, payload.args, payload.kwargs)
             send_results(channel, Results(task.id, results))
-    except (EOFError, EnvironmentError) as error:
-        os._exit(error.errno)
+    except (OSError, EnvironmentError) as error:
+        os._exit(error.errno if error.errno else 1)
 
 
 def worker_get_next_task(channel, task_limit):

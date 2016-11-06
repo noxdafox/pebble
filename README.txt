@@ -1,7 +1,6 @@
 Pebble
 ======
 
-
 Description
 -----------
 
@@ -11,40 +10,39 @@ Pebble provides a neat API to manage threads and processes within an application
 Examples
 --------
 
-Spawn a function within a thread::
+Run a job in a separate thread and wait for its results::
 
-    from pebble import thread
+    from pebble import concurrent
 
-    def function(foo, bar=0):
-    	print foo + bar
-
-    thrd = thread.spawn(target=function, args=[1], kwargs={'bar':2})
-    thrd.join()
-
-
-Most of the functions work as well as decorators::
-
-    from pebble import process
-
-    @process.spawn(daemon=True)
-    def function(foo, bar=0):
-    	print(foo + bar)
-
-    proc = function(1, bar=2)
-    proc.join()
-
-
-Run a job in a separate process and wait for its results::
-
-    from pebble import process
-
-    @process.concurrent
+    @concurrent.thread
     def function(foo, bar=0):
         return foo + bar
 
-    task = function(1, bar=2)
-    results = task.get()  # blocks until results are ready
+    future = function(1, bar=2)
 
+    result = future.result()  # blocks until results are ready
+
+Run a function with a timeout of ten seconds and deal with errors::
+
+    from pebble import concurrent
+
+    @concurrent.process
+    def function(foo, bar=0):
+        # some long running logic
+
+        return foo + bar
+
+    function.timeout = 10
+
+    future = function(1, bar=2)
+
+    try:
+        result = future.result()  # blocks until results are ready
+    except Exception as error:
+        print("Function raised %s")
+        print(error.traceback)  # traceback of the function
+    except TimeoutError as error:
+        print("Function took longer than %d seconds" % error.args[1])
 
 Pools allow to execute several tasks without the need of spawning a new worker for each one of them::
 
@@ -66,9 +64,3 @@ Pools allow to execute several tasks without the need of spawning a new worker f
 
 
 Check the documentation for more examples.
-
-Pebble 4:
-
- * use Futures instead of Tasks
- * move callback and timeout assignments to Futures
- * merge with concurrent.futures and asyncio modules API

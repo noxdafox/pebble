@@ -43,10 +43,21 @@ class process:
 
     """
     def __init__(self, function):
-        self.timeout = None
+        self._timeout = None
         self._function = function
 
         update_wrapper(self, function)
+
+    @property
+    def timeout(self):
+        return self._timeout
+
+    @timeout.setter
+    def timeout(self, value):
+        if not isinstance(value, (int, float)):
+            raise ValueError("Value must be integer of float")
+
+        self._timeout = value
 
     def __call__(self, *args, **kwargs):
         future = Future()

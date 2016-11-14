@@ -32,7 +32,7 @@ Run a function with a timeout of ten seconds and deal with errors::
 
         return foo + bar
 
-    function.timeout = 10
+    function.add_timeout(10)
 
     future = function(1, bar=2)
 

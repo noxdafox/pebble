@@ -14,68 +14,96 @@
 # along with Pebble.  If not, see <http://www.gnu.org/licenses/>.
 
 import os
+import sys
 import signal
 
+from functools import wraps
 from threading import Thread
 from traceback import format_exc
 from pickle import PicklingError
-from functools import update_wrapper
-from concurrent.futures import Future
 from multiprocessing import Pipe, Process
+from concurrent.futures import Future, TimeoutError
+try:
+    from multiprocessing import get_start_method
+except ImportError:
+    def get_start_method():
+        return 'spawn' if os.name == 'nt' else 'fork'
 
 
-class ProcessExpired(Exception):
+class ProcessExpired(OSError):
     """Raised when process dies unexpectedly."""
     def __init__(self, msg, code=0):
         super(ProcessExpired, self).__init__(msg)
         self.exitcode = code
 
 
-class process:
+def process(function):
     """Runs the decorated function in a concurrent process,
     taking care of the result and error management.
 
     Decorated functions will return a concurrent.futures.Future object
     once called.
 
-    Decorated functions will have a *timeout* attribute. If set,
-    the process will be stopped once expired returning TimeoutError as result.
+    It is possible to attach callables to the returned future
+    via the add_done_callback function.
+
+    The add_timeout function will set a maximum execution time
+    for the decorated function. If the execution exceeds the timeout,
+    the process will be stopped and the Future will raise TimeoutError.
 
     """
-    def __init__(self, function):
-        self._timeout = None
-        self._function = function
+    callbacks = []
 
-        update_wrapper(self, function)
+    # Python 2 nonlocal
+    class timeout:
+        value = None
 
-    @property
-    def timeout(self):
-        return self._timeout
+    register_function(function)
 
-    @timeout.setter
-    def timeout(self, value):
-        if not isinstance(value, (int, float)):
-            raise ValueError("Value must be integer of float")
-
-        self._timeout = value
-
-    def __call__(self, *args, **kwargs):
+    @wraps(function)
+    def wrapper(*args, **kwargs):
         future = Future()
         reader, writer = Pipe(duplex=False)
 
+        for callback in callbacks:
+            future.add_done_callback(callback)
+
+        if get_start_method() != 'fork':
+            target = trampoline
+            args = [function.__name__, function.__module__] + list(args)
+        else:
+            target = function
+
         worker = Process(target=function_handler,
-                         args=(self._function, args, kwargs, writer))
+                         args=(target, args, kwargs, writer))
         worker.daemon = True
         worker.start()
 
         future.set_running_or_notify_cancel()
 
         handler = Thread(target=worker_handler,
-                         args=(future, worker, reader, self.timeout))
+                         args=(future, worker, reader, timeout.value))
         handler.daemon = True
         handler.start()
 
         return future
+
+    def add_done_callback(callback):
+        if not callable(callback):
+            raise TypeError("Callback must be callable")
+
+        callbacks.append(callback)
+
+    def add_timeout(value):
+        if not isinstance(value, (float, int)):
+            raise TypeError("Timeout must be integer or float")
+
+        timeout.value = value
+
+    wrapper.add_done_callback = add_done_callback
+    wrapper.add_timeout = add_timeout
+
+    return wrapper
 
 
 def worker_handler(future, worker, pipe, timeout):
@@ -142,3 +170,42 @@ def stop(worker):
 
     if worker.is_alive():
         raise RuntimeError("Unable to terminate PID %d" % os.getpid())
+
+
+################################################################################
+### Spawn process start method handling logic
+################################################################################
+_registered_functions = {}
+
+
+def register_function(function):
+    global _registered_functions
+
+    _registered_functions[function.__name__] = function
+
+
+def trampoline(name, module, *args, **kwargs):
+    """Trampoline function for decorators.
+
+    Lookups the function between the registered ones;
+    if not found, forces its registering and then executes it.
+
+    """
+    function = function_lookup(name, module)
+
+    return function(*args, **kwargs)
+
+
+def function_lookup(name, module):
+    """Searches the function between the registered ones.
+    If not found, it imports the module forcing its registration.
+
+    """
+    try:
+        return _registered_functions[name]
+    except KeyError:  # force function registering
+        __import__(module)
+        mod = sys.modules[module]
+        getattr(mod, name)
+
+        return _registered_functions[name]

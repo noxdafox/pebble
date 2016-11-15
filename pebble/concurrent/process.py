@@ -20,7 +20,6 @@ import signal
 from functools import wraps
 from threading import Thread
 from traceback import format_exc
-from pickle import PicklingError
 from multiprocessing import Pipe, Process
 from concurrent.futures import Future, TimeoutError
 try:
@@ -79,6 +78,7 @@ def process(function):
         worker.daemon = True
         worker.start()
 
+        writer.close()
         future.set_running_or_notify_cancel()
 
         handler = Thread(target=worker_handler,
@@ -107,10 +107,11 @@ def process(function):
 
 
 def worker_handler(future, worker, pipe, timeout):
-    """Task's lifecycle manager.
+    """Worker lifecycle manager.
 
-    Waits for the *Task* to be performed,
+    Waits for the worker to be perform its task,
     collects result, runs the callback and cleans up the process.
+
     """
     result = get_result(pipe, timeout)
 
@@ -134,11 +135,11 @@ def function_handler(function, args, kwargs, pipe):
         result = function(*args, **kwargs)
     except BaseException as error:
         error.traceback = format_exc()
-        return error
+        result = error
 
     try:
         pipe.send(result)
-    except PicklingError as error:
+    except TypeError as error:
         error.traceback = format_exc()
         pipe.send(error)
 

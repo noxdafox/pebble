@@ -1,8 +1,10 @@
 import os
+import sys
 import time
 import signal
 import unittest
 import threading
+import multiprocessing
 from concurrent.futures import TimeoutError
 
 from pebble import concurrent, ProcessExpired
@@ -56,13 +58,14 @@ class TestProcessConcurrentObj(object):
     def instmethod(self):
         return self.b
 
-    @staticmethod
-    @concurrent.process
-    def stcmethod():
-        return 2
 
-
+@unittest.skipIf(sys.version_info.major < 3, "Python 3 is required")
 class TestProcessConcurrent(unittest.TestCase):
+    @classmethod
+    @unittest.skipIf(sys.version_info.major < 3, "Python 3 is required")
+    def setUpClass(cls):
+        multiprocessing.set_start_method('spawn')
+
     def setUp(self):
         self.results = 0
         self.exception = None
@@ -107,12 +110,6 @@ class TestProcessConcurrent(unittest.TestCase):
         """Process decorated instance methods."""
         future = self.concurrentobj.instmethod()
         self.assertEqual(future.result(), 1)
-
-    @unittest.skipIf(os.name == 'nt', "Test won't run on Windows.")
-    def test_static_method(self):
-        """Process decorated static methods (Unix only)."""
-        future = self.concurrentobj.stcmethod()
-        self.assertEqual(future.result(), 2)
 
     def test_decorated_results(self):
         """Process results are produced."""

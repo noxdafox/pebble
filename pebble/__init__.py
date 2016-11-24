@@ -1,22 +1,11 @@
-__all__ = ['process',
-           'thread',
-           'waitfortasks',
-           'waitforthreads',
+__all__ = ['waitforthreads',
            'waitforqueues',
            'synchronized',
            'sighandler',
-           'Task',
-           'PebbleError',
-           'PoolError',
-           'TimeoutError',
-           'TaskCancelled',
-           'ProcessExpired']
+           'ProcessExpired',
+           'ProcessPool']
 
-
-from . import thread
-from . import process
-from .task import Task
-from .concurrent import ProcessExpired
-from .decorators import synchronized, sighandler
-from .functions import waitforqueues, waitfortasks, waitforthreads
-from .exceptions import PebbleError, PoolError, TaskCancelled
+from pebble.common import ProcessExpired
+from pebble.pool.process import ProcessPool
+from pebble.decorators import synchronized, sighandler
+from pebble.functions import waitforqueues, waitfortasks, waitforthreads

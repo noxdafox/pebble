@@ -18,9 +18,8 @@ import sys
 import signal
 
 from functools import wraps
-from threading import Thread
 from traceback import format_exc
-from multiprocessing import Pipe, Process
+from multiprocessing import Pipe
 from concurrent.futures import Future, TimeoutError
 try:
     from multiprocessing import get_start_method
@@ -28,12 +27,8 @@ except ImportError:
     def get_start_method():
         return 'spawn' if os.name == 'nt' else 'fork'
 
-
-class ProcessExpired(OSError):
-    """Raised when process dies unexpectedly."""
-    def __init__(self, msg, code=0):
-        super(ProcessExpired, self).__init__(msg)
-        self.exitcode = code
+from pebble.common import execute, launch_thread, send_result
+from pebble.common import ProcessExpired, launch_process, stop_process
 
 
 def process(function):
@@ -73,18 +68,13 @@ def process(function):
         else:
             target = function
 
-        worker = Process(target=function_handler,
-                         args=(target, args, kwargs, writer))
-        worker.daemon = True
-        worker.start()
+        worker = launch_process(function_handler, target, args, kwargs, writer)
 
         writer.close()
         future.set_running_or_notify_cancel()
 
-        handler = Thread(target=worker_handler,
-                         args=(future, worker, reader, timeout.value))
-        handler.daemon = True
-        handler.start()
+        handler = launch_thread(
+            worker_handler, future, worker, reader, timeout.value)
 
         return future
 
@@ -124,24 +114,16 @@ def worker_handler(future, worker, pipe, timeout):
         future.set_result(result)
 
     if worker.is_alive():
-        stop(worker)
+        stop_process(worker)
 
 
 def function_handler(function, args, kwargs, pipe):
     """Runs the actual function in separate process and returns its result."""
     signal.signal(signal.SIGINT, signal.SIG_IGN)
 
-    try:
-        result = function(*args, **kwargs)
-    except BaseException as error:
-        error.traceback = format_exc()
-        result = error
+    result = execute(function, *args, **kwargs)
 
-    try:
-        pipe.send(result)
-    except TypeError as error:
-        error.traceback = format_exc()
-        pipe.send(error)
+    send_result(pipe, result)
 
 
 def get_result(pipe, timeout):
@@ -155,22 +137,6 @@ def get_result(pipe, timeout):
         return ProcessExpired('Abnormal termination')
     except Exception as error:
         return error
-
-
-def stop(worker):
-    """Does its best to stop the worker."""
-    worker.terminate()
-    worker.join(3)
-
-    if worker.is_alive() and os.name != 'nt':
-        try:
-            os.kill(worker.pid, signal.SIGINT)
-            worker.join()
-        except OSError:
-            return
-
-    if worker.is_alive():
-        raise RuntimeError("Unable to terminate PID %d" % os.getpid())
 
 
 ################################################################################

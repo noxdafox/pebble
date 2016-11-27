@@ -14,57 +14,39 @@
 # along with Pebble.  If not, see <http://www.gnu.org/licenses/>.
 
 from functools import wraps
-from threading import Thread
 from traceback import format_exc
 from concurrent.futures import Future
 
+from pebble.common import launch_thread
+
 
 def thread(function):
-    """Runs the decorated function in a concurrent thread,
+    """Runs the decorated function within a concurrent thread,
     taking care of the result and error management.
 
     Decorated functions will return a concurrent.futures.Future object
     once called.
 
-    It is possible to attach callables to the returned future
-    via the add_done_callback function.
-
     """
-    callbacks = []
-
     @wraps(function)
     def wrapper(*args, **kwargs):
         future = Future()
-        for callback in callbacks:
-            future.add_done_callback(callback)
 
-        worker = Thread(target=function_handler,
-                        args=(function, args, kwargs, future))
-        worker.daemon = True
-        worker.start()
-
-        future.set_running_or_notify_cancel()
+        launch_thread(_function_handler, function, args, kwargs, future)
 
         return future
-
-    def add_done_callback(value):
-        if not callable(value):
-            raise TypeError("Callback must be callable")
-
-        callbacks.append(value)
 
     return wrapper
 
 
-def function_handler(function, args, kwargs, future):
+def _function_handler(function, args, kwargs, future):
     """Runs the actual function in separate thread and returns its result."""
+    future.set_running_or_notify_cancel()
+
     try:
         result = function(*args, **kwargs)
     except BaseException as error:
         error.traceback = format_exc()
-        return error
-
-    if isinstance(result, BaseException):
-        future.set_exception(result)
+        future.set_exception(error)
     else:
         future.set_result(result)

@@ -26,20 +26,16 @@ Run a function with a timeout of ten seconds and deal with errors::
 
     from pebble import concurrent
 
-    @concurrent.process
+    @concurrent.process(timeout=10)
     def function(foo, bar=0):
-        # some long running logic
-
         return foo + bar
-
-    function.add_timeout(10)
 
     future = function(1, bar=2)
 
     try:
         result = future.result()  # blocks until results are ready
     except Exception as error:
-        print("Function raised %s")
+        print("Function raised %s" % error)
         print(error.traceback)  # traceback of the function
     except TimeoutError as error:
         print("Function took longer than %d seconds" % error.args[1])

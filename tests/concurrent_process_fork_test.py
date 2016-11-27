@@ -1,11 +1,26 @@
 import os
+import sys
 import time
 import signal
 import unittest
 import threading
+import multiprocessing
 from concurrent.futures import TimeoutError
 
 from pebble import concurrent, ProcessExpired
+
+
+# set start method
+supported = False
+
+if sys.version_info.major > 2:
+    methods = multiprocessing.get_all_start_methods()
+    if 'fork' in methods:
+        supported = True
+        try:
+            multiprocessing.set_start_method('fork')
+        except RuntimeError:  # child process
+            pass
 
 
 @concurrent.process
@@ -30,18 +45,18 @@ def critical_decorated():
     os._exit(123)
 
 
-@concurrent.process
+@concurrent.process(timeout=0.1)
 def long_decorated():
     time.sleep(10)
 
 
-@concurrent.process
+@concurrent.process(timeout=0.1)
 def sigterm_decorated():
     signal.signal(signal.SIGTERM, signal.SIG_IGN)
     time.sleep(10)
 
 
-class TestProcessConcurrentObj(object):
+class TestProcessConcurrentObj:
     a = 0
 
     def __init__(self):
@@ -62,6 +77,7 @@ class TestProcessConcurrentObj(object):
         return 2
 
 
+@unittest.skipIf(not supported, "Start method is not supported")
 class TestProcessConcurrent(unittest.TestCase):
     def setUp(self):
         self.results = 0
@@ -69,12 +85,6 @@ class TestProcessConcurrent(unittest.TestCase):
         self.event = threading.Event()
         self.event.clear()
         self.concurrentobj = TestProcessConcurrentObj()
-        decorated.add_done_callback(self.callback)
-        error_decorated.add_done_callback(self.callback)
-        long_decorated.add_done_callback(self.callback)
-        long_decorated.add_timeout(0.1)
-        sigterm_decorated.add_timeout(0.1)
-        critical_decorated.add_done_callback(self.callback)
 
     def callback(self, future):
         try:
@@ -85,94 +95,94 @@ class TestProcessConcurrent(unittest.TestCase):
             self.event.set()
 
     def test_docstring(self):
-        """Process docstring is preserved."""
+        """Process Fork docstring is preserved."""
         self.assertEqual(decorated.__doc__, "A docstring.")
 
-    def test_wrong_callback(self):
-        """Process TypeError is raised if callback is not callable."""
-        with self.assertRaises(TypeError):
-            decorated.add_done_callback(1)
-
     def test_wrong_timeout(self):
-        """Process TypeError is raised if timeout is not number."""
+        """Process Fork TypeError is raised if timeout is not number."""
         with self.assertRaises(TypeError):
-            decorated.add_timeout('timeout')
+            @concurrent.process(timeout='Foo')
+            def function():
+                return
 
     def test_class_method(self):
-        """Process decorated classmethods."""
+        """Process Fork decorated classmethods."""
         future = TestProcessConcurrentObj.clsmethod()
         self.assertEqual(future.result(), 0)
 
     def test_instance_method(self):
-        """Process decorated instance methods."""
+        """Process Fork decorated instance methods."""
         future = self.concurrentobj.instmethod()
         self.assertEqual(future.result(), 1)
 
-    @unittest.skipIf(os.name == 'nt', "Test won't run on Windows.")
     def test_static_method(self):
-        """Process decorated static methods (Unix only)."""
+        """Process Fork decorated static methods (Fork startmethod only)."""
         future = self.concurrentobj.stcmethod()
         self.assertEqual(future.result(), 2)
 
     def test_decorated_results(self):
-        """Process results are produced."""
+        """Process Fork results are produced."""
         future = decorated(1, 1)
         self.assertEqual(future.result(), 2)
 
     def test_decorated_results_callback(self):
-        """Process results are forwarded to the callback."""
-        decorated(1, 1)
+        """Process Fork results are forwarded to the callback."""
+        future = decorated(1, 1)
+        future.add_done_callback(self.callback)
         self.event.wait(timeout=1)
         self.assertEqual(self.results, 2)
 
     def test_error_decorated(self):
-        """Process errors are raised by future.result."""
+        """Process Fork errors are raised by future.result."""
         future = error_decorated()
         with self.assertRaises(RuntimeError):
             future.result()
 
     def test_error_decorated_callback(self):
-        """Process errors are forwarded to callback."""
-        error_decorated()
+        """Process Fork errors are forwarded to callback."""
+        future = error_decorated()
+        future.add_done_callback(self.callback)
         self.event.wait(timeout=1)
         self.assertTrue(isinstance(self.exception, RuntimeError),
                         msg=str(self.exception))
 
     def test_pickling_error_decorated(self):
-        """Process pickling errors are raised by future.result."""
+        """Process Fork pickling errors are raised by future.result."""
         future = pickling_error_decorated()
         with self.assertRaises(TypeError):
             future.result()
 
     def test_timeout_decorated(self):
-        """Process raises TimeoutError if so."""
+        """Process Fork raises TimeoutError if so."""
         future = long_decorated()
         with self.assertRaises(TimeoutError):
             future.result()
 
     def test_timeout_decorated_callback(self):
-        """Process TimeoutError is forwarded to callback."""
-        long_decorated()
+        """Process Fork TimeoutError is forwarded to callback."""
+        future = long_decorated()
+        future.add_done_callback(self.callback)
         self.event.wait(timeout=1)
         self.assertTrue(isinstance(self.exception, TimeoutError),
                         msg=str(self.exception))
 
     def test_decorated_dead_process(self):
-        """Process ProcessExpired is raised if process dies."""
+        """Process Fork ProcessExpired is raised if process dies."""
         future = critical_decorated()
         with self.assertRaises(ProcessExpired):
             future.result()
 
     def test_timeout_decorated_callback(self):
-        """Process ProcessExpired is forwarded to callback."""
-        critical_decorated()
+        """Process Fork ProcessExpired is forwarded to callback."""
+        future = critical_decorated()
+        future.add_done_callback(self.callback)
         self.event.wait(timeout=1)
         self.assertTrue(isinstance(self.exception, ProcessExpired),
                         msg=str(self.exception))
 
     @unittest.skipIf(os.name == 'nt', "Test won't run on Windows.")
     def test_decorated_ignoring_sigterm(self):
-        """Process Concurrent ignored SIGTERM signal are handled on Unix."""
+        """Process Fork Concurrent ignored SIGTERM signal are handled on Unix."""
         future = sigterm_decorated()
         with self.assertRaises(TimeoutError):
             future.result()

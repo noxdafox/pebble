@@ -169,8 +169,8 @@ class PoolManager:
             self.task_manager.task_done(task.id, error)
 
     def find_expired_task(self, worker_id):
-        running_tasks = tuple(
-            t for t in self.task_manager.tasks.values() if t.worker_id != 0)
+        tasks = tuple(self.task_manager.tasks.values())
+        running_tasks = tuple(t for t in tasks if t.worker_id != 0)
 
         if running_tasks:
             return task_worker_lookup(running_tasks, worker_id)
@@ -212,7 +212,7 @@ class TaskManager:
             self.task_done_callback()
 
     def timeout_tasks(self):
-        return tuple(t for t in self.tasks.values() if self.timeout(t))
+        return tuple(t for t in tuple(self.tasks.values()) if self.timeout(t))
 
     @staticmethod
     def timeout(task):
@@ -236,7 +236,7 @@ class WorkerManager:
     def dispatch(self, task):
         try:
             self.pool_channel.send(WorkerTask(task.id, task.payload))
-        except (OSError, EnvironmentError) as error:
+        except (OSError, EnvironmentError, TypeError) as error:
             raise BrokenProcessPool(error)
 
     def receive(self, timeout):
@@ -254,7 +254,8 @@ class WorkerManager:
         Returns the workers which have unexpectedly ended.
 
         """
-        expired = tuple(w for w in self.workers.values() if not w.is_alive())
+        workers = tuple(self.workers.values())
+        expired = tuple(w for w in workers if not w.is_alive())
 
         for worker in expired:
             self.workers.pop(worker.pid)
@@ -273,9 +274,12 @@ class WorkerManager:
             self.stop_worker(worker_id, force=True)
 
     def new_worker(self):
-        worker = launch_process(
-            worker_process, self.worker_parameters, self.workers_channel)
-        self.workers[worker.pid] = worker
+        try:
+            worker = launch_process(
+                worker_process, self.worker_parameters, self.workers_channel)
+            self.workers[worker.pid] = worker
+        except (OSError, EnvironmentError) as error:
+            raise BrokenProcessPool(error)
 
     def stop_worker(self, worker_id, force=False):
         try:
@@ -303,8 +307,10 @@ def worker_process(params, channel):
             payload = task.payload
             result = execute(payload.function, *payload.args, **payload.kwargs)
             send_result(channel, Result(task.id, result))
-    except (OSError, EnvironmentError) as error:
+    except (EnvironmentError, OSError) as error:
         os._exit(error.errno if error.errno else 1)
+    except EOFError:
+        os._exit(0)
 
 
 def worker_get_next_task(channel, max_tasks):

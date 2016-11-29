@@ -59,7 +59,7 @@ Pools support workers restart, timeout for long running tasks and more::
 
     with ProcessPool(max_workers=5, max_tasks=10) as pool:
         for i in range(0, 10):
-            future = pool.schedule(do_job, args=[i], timeout=3)
+            future = pool.schedule(function, args=[i], timeout=3)
             future.add_done_callback(task_done)
 
 Check the documentation for more examples.

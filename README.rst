@@ -40,23 +40,26 @@ Run a function with a timeout of ten seconds and deal with errors::
     except TimeoutError as error:
         print("Function took longer than %d seconds" % error.args[1])
 
-Pools allow to execute several tasks without the need of spawning a new worker for each one of them::
+Pools support workers restart, timeout for long running tasks and more::
 
-    from threading import current_thread
-    from pebble import thread
+    from pebble import ProcessPool
 
-    def task_done(task):
-        results, thread_id = task.get()
-    	print "Task %s returned %d from thread %s" % (task.id,
-                                                      results,
-                                                      thread_id)
+    def function(foo, bar=0):
+    	return foo + bar
 
-    def do_job(foo, bar=0):
-    	return foo + bar, current_thread().ident
+    def task_done(future):
+        try:
+            result = future.result()  # blocks until results are ready
+        except Exception as error:
+            print("Function raised %s" % error)
+            print(error.traceback)  # traceback of the function
+        except TimeoutError as error:
+            print("Function took longer than %d seconds" % error.args[1])
 
-    with thread.Pool(workers=5) as pool:
+
+    with ProcessPool(max_workers=5, max_tasks=10) as pool:
         for i in range(0, 10):
-            pool.schedule(do_job, args=(i, ), callback=task_done)
-
+            future = pool.schedule(do_job, args=[i], timeout=3)
+            future.add_done_callback(task_done)
 
 Check the documentation for more examples.

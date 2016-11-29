@@ -16,14 +16,14 @@ def read(fname):
 
 setup(
     name="Pebble",
-    version="3.1.16",
+    version="4.0.0",
     author="Matteo Cafasso",
     author_email="noxdafox@gmail.com",
     description=("Threading and multiprocessing eye-candy."),
     license="LGPL",
     keywords="thread process pool decorator",
     url="https://github.com/noxdafox/pebble",
-    packages=find_packages(),
+    packages=find_packages(exclude=["tests"]),
     install_requires=required_packages,
     long_description=read('README.rst'),
     classifiers=[

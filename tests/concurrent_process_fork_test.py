@@ -21,6 +21,8 @@ if sys.version_info.major > 2:
             multiprocessing.set_start_method('fork')
         except RuntimeError:  # child process
             pass
+else:
+    supported = True
 
 
 @concurrent.process

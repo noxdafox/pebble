@@ -19,7 +19,6 @@ import time
 from itertools import count
 from collections import namedtuple
 from signal import SIG_IGN, SIGINT, signal
-
 from concurrent.futures import TimeoutError
 try:
     from concurrent.futures.process import BrokenProcessPool
@@ -28,8 +27,8 @@ except ImportError:
         pass
 
 from pebble.pool.channel import ChannelError, channels
-from pebble.base_pool import BasePool, run_initializer
-from pebble.base_pool import ERROR, RUNNING, SLEEP_UNIT
+from pebble.pool.base_pool import BasePool, run_initializer
+from pebble.pool.base_pool import ERROR, RUNNING, SLEEP_UNIT
 from pebble.common import execute, launch_thread, send_result
 from pebble.common import ProcessExpired, launch_process, stop_process
 
@@ -48,7 +47,7 @@ class ProcessPool(BasePool):
     """
     def __init__(self, max_workers=1, max_tasks=0,
                  initializer=None, initargs=()):
-        super().__init__(
+        super(ProcessPool, self).__init__(
             max_workers, max_tasks, initializer, initargs)
         self._pool_manager = PoolManager(self._context)
 
@@ -60,11 +59,14 @@ class ProcessPool(BasePool):
         self._context.state = RUNNING
 
     def _stop_pool(self):
+        self._pool_manager.close()
+        for loop in self._loops:
+            loop.join()
         self._pool_manager.stop()
 
     def stop(self):
         """Stops the pool without performing any pending task."""
-        super().stop()
+        super(ProcessPool, self).stop()
         self._context.task_queue.put(None)
 
 
@@ -119,6 +121,9 @@ class PoolManager:
 
     def start(self):
         self.worker_manager.create_workers()
+
+    def close(self):
+        self.worker_manager.close_channels()
 
     def stop(self):
         self.worker_manager.stop_workers()
@@ -266,10 +271,11 @@ class WorkerManager:
         for _ in range(self.workers_number - len(self.workers)):
             self.new_worker()
 
-    def stop_workers(self):
+    def close_channels(self):
         self.pool_channel.close()
         self.workers_channel.close()
 
+    def stop_workers(self):
         for worker_id in tuple(self.workers.keys()):
             self.stop_worker(worker_id, force=True)
 

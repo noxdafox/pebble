@@ -29,7 +29,7 @@ class TaskCancelled(PebbleError):
     pass
 
 
-class ChannelError(PebbleError):
+class ChannelError(OSError):
     """Error occurring within the process channel."""
     pass
 

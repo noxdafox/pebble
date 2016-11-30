@@ -354,9 +354,12 @@ def broken_worker_process_tasks(_, channel):
 @process.spawn(name='worker_process', daemon=True)
 def broken_worker_process_results(_, channel):
     """Process failing in delivering results."""
-    for _ in pebble.process.pool.worker_get_next_task(channel, 2):
-        with channel.mutex.writer:
-            os._exit(1)
+    try:
+        for _ in pebble.process.pool.worker_get_next_task(channel, 2):
+            with channel.mutex.writer:
+                os._exit(1)
+    except OSError:
+        os._exit(1)
 
 
 class TestProcessPoolDeadlockOnNewTasks(unittest.TestCase):

@@ -61,6 +61,9 @@ class Pool(BasePool):
         self._context.state = RUNNING
 
     def _stop_pool(self):
+        self._pool_manager.close()
+        for loop in self._loops:
+            loop.join()
         self._pool_manager.stop()
 
     def stop(self):
@@ -119,6 +122,9 @@ class PoolManager(object):
 
     def start(self):
         self.worker_manager.create_workers()
+
+    def close(self):
+        self.worker_manager.close_channels()
 
     def stop(self):
         self.worker_manager.stop_workers()
@@ -269,10 +275,11 @@ class WorkerManager(object):
         for _ in range(self.workers_number - len(self.workers)):
             self.new_worker()
 
-    def stop_workers(self):
+    def close_channels(self):
         self.pool_channel.close()
         self.workers_channel.close()
 
+    def stop_workers(self):
         for worker_id in tuple(self.workers.keys()):
             self.stop_worker(worker_id, force=True)
 

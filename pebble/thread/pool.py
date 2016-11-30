@@ -49,6 +49,8 @@ class Pool(BasePool):
         self._context.state = RUNNING
 
     def _stop_pool(self):
+        for loop in self._loops:
+            loop.join()
         self._pool_manager.stop()
 
 

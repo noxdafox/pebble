@@ -56,10 +56,7 @@ Pools support workers restart, timeout for long running tasks and more::
         except TimeoutError as error:
             print("Function took longer than %d seconds" % error.args[1])
 
-
     with ProcessPool(max_workers=5, max_tasks=10) as pool:
         for i in range(0, 10):
             future = pool.schedule(function, args=[i], timeout=3)
             future.add_done_callback(task_done)
-
-Check the documentation for more examples.

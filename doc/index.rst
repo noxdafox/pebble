@@ -223,6 +223,14 @@ Is equivalent to ::
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.TERM, signal_handler)
 
+Running the tests
+-----------------
+
+On Python 3, the tests will cover all the multiprocessing starting methods supported by the platform.
+
+Due to multiprocessing limitations, it is not possible to change the starting method once set. Therefore test frameworks such as nose and pytest which run all the tests in a single process will fail.
+
+To see the tests work, it's enough to test one test file at a time.
 
 .. toctree::
    :maxdepth: 2

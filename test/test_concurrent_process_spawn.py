@@ -15,14 +15,14 @@ supported = False
 
 if sys.version_info.major > 2:
     methods = multiprocessing.get_all_start_methods()
-    if 'fork' in methods:
-        supported = True
+    if 'spawn' in methods:
         try:
-            multiprocessing.set_start_method('fork')
+            multiprocessing.set_start_method('spawn')
+
+            if multiprocessing.get_start_method() == 'spawn':
+                supported = True
         except RuntimeError:  # child process
             pass
-else:
-    supported = True
 
 
 @concurrent.process
@@ -73,11 +73,6 @@ class TestProcessConcurrentObj:
     def instmethod(self):
         return self.b
 
-    @staticmethod
-    @concurrent.process
-    def stcmethod():
-        return 2
-
 
 @unittest.skipIf(not supported, "Start method is not supported")
 class TestProcessConcurrent(unittest.TestCase):
@@ -116,11 +111,6 @@ class TestProcessConcurrent(unittest.TestCase):
         """Process Fork decorated instance methods."""
         future = self.concurrentobj.instmethod()
         self.assertEqual(future.result(), 1)
-
-    def test_static_method(self):
-        """Process Fork decorated static methods (Fork startmethod only)."""
-        future = self.concurrentobj.stcmethod()
-        self.assertEqual(future.result(), 2)
 
     def test_decorated_results(self):
         """Process Fork results are produced."""

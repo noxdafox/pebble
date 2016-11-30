@@ -18,9 +18,11 @@ supported = False
 if sys.version_info.major > 2:
     methods = multiprocessing.get_all_start_methods()
     if 'fork' in methods:
-        supported = True
         try:
             multiprocessing.set_start_method('fork')
+
+            if multiprocessing.get_start_method() == 'fork':
+                supported = True
         except RuntimeError:  # child process
             pass
 else:

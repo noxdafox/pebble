@@ -140,7 +140,7 @@ class TestWaitForThreads(unittest.TestCase):
 
     def test_waitforthreads_timeout(self):
         """Waitforthreads returns empty list if timeout."""
-        thread = launch_thread(thread_function, 0.01)
+        thread = launch_thread(thread_function, 0.1)
         self.assertEqual(list(waitforthreads([thread], timeout=0.01)), [])
 
     def test_waitforthreads_restore(self):

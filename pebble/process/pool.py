@@ -309,6 +309,8 @@ def worker_process(params, channel):
             send_results(channel, Results(task.id, results))
     except (ChannelError, OSError, EnvironmentError) as error:
         os._exit(error.errno if error.errno else 1)
+    except EOFError:
+        os._exit(0)
 
 
 def worker_get_next_task(channel, task_limit):

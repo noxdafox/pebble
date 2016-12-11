@@ -16,36 +16,33 @@
 
 import time
 from itertools import count
-from pebble.utils import execute
-from pebble.thread.decorators import spawn
-from pebble.pool import ERROR, RUNNING, SLEEP_UNIT
-from pebble.pool import BasePool, run_initializer, task_limit_reached
+from traceback import format_exc
+from pebble.common import launch_thread
+from pebble.pool.base_pool import BasePool, run_initializer
+from pebble.pool.base_pool import ERROR, RUNNING, SLEEP_UNIT
 
 
-class Pool(BasePool):
+class ThreadPool(BasePool):
     """Allows to schedule jobs within a Pool of Threads.
 
-    workers is an integer representing the amount of desired thread workers
+    max_workers is an integer representing the amount of desired process workers
     managed by the pool.
-    If worker_task_limit is a number greater than zero,
+    If max_tasks is a number greater than zero,
     each worker will be restarted after performing an equal amount of tasks.
-
-    The queue_factory callable allows to replace the internal task buffer
-    of the Pool with a custom one. The callable must return a thread safe
-    object exposing the same interface of the standard Python Queue.
 
     initializer must be callable, if passed, it will be called
     every time a worker is started, receiving initargs as arguments.
+
     """
-    def __init__(self, workers=1, task_limit=0, queue_factory=None,
+    def __init__(self, max_workers=1, max_tasks=0,
                  initializer=None, initargs=()):
-        super(Pool, self).__init__(workers, task_limit, queue_factory,
-                                   initializer, initargs)
+        super(ThreadPool, self).__init__(
+            max_workers, max_tasks, initializer, initargs)
         self._pool_manager = PoolManager(self._context)
 
     def _start_pool(self):
         self._pool_manager.start()
-        self._loops = (pool_manager_loop(self._pool_manager),)
+        self._loops = (launch_thread(pool_manager_loop, self._pool_manager),)
         self._context.state = RUNNING
 
     def _stop_pool(self):
@@ -54,7 +51,6 @@ class Pool(BasePool):
         self._pool_manager.stop()
 
 
-@spawn(daemon=True, name='pool_manager')
 def pool_manager_loop(pool_manager):
     context = pool_manager.context
 
@@ -63,16 +59,16 @@ def pool_manager_loop(pool_manager):
         time.sleep(SLEEP_UNIT)
 
 
-class PoolManager(object):
+class PoolManager:
     def __init__(self, context):
-        self.context = context
         self.workers = []
+        self.context = context
 
     def start(self):
         self.create_workers()
 
     def stop(self):
-        for _ in self.workers:
+        for worker in self.workers:
             self.context.task_queue.put(None)
         for worker in tuple(self.workers):
             self.join_worker(worker)
@@ -90,44 +86,54 @@ class PoolManager(object):
 
     def create_workers(self):
         for _ in range(self.context.workers - len(self.workers)):
-            self.workers.append(worker_thread(self.context))
+            worker = launch_thread(worker_thread, self.context)
+
+            self.workers.append(worker)
 
     def join_worker(self, worker):
         worker.join()
         self.workers.remove(worker)
 
 
-@spawn(name='worker_thread', daemon=True)
 def worker_thread(context):
     """The worker thread routines."""
+    queue = context.task_queue
     parameters = context.worker_parameters
-    task_limit = parameters.task_limit
 
     if parameters.initializer is not None:
         if not run_initializer(parameters.initializer, parameters.initargs):
             context.state = ERROR
             return
 
-    for task in get_next_task(context, task_limit):
+    for task in get_next_task(context, parameters.max_tasks):
         execute_next_task(task)
-        context.task_queue.task_done()
+        queue.task_done()
 
 
-def get_next_task(context, task_limit):
+def get_next_task(context, max_tasks):
     counter = count()
     queue = context.task_queue
 
-    while context.alive and not task_limit_reached(counter, task_limit):
+    while context.alive and (max_tasks == 0 or next(counter) < max_tasks):
         task = queue.get()
 
-        if task is not None and not task.cancelled:
-            yield task
-        else:
-            queue.task_done()
+        if task is not None:
+            if task.future.cancelled():
+                task.future.set_running_or_notify_cancel()
+                queue.task_done()
+            else:
+                yield task
 
 
 def execute_next_task(task):
-    parameters = task._metadata
-    task._timestamp = time.time()
-    results = execute(parameters.function, parameters.args, parameters.kwargs)
-    task.set_results(results)
+    payload = task.payload
+    task.timestamp = time.time()
+    task.future.set_running_or_notify_cancel()
+
+    try:
+        results = payload.function(*payload.args, **payload.kwargs)
+    except BaseException as error:
+        error.traceback = format_exc()
+        task.future.set_exception(error)
+    else:
+        task.future.set_result(results)

@@ -22,51 +22,6 @@ from types import MethodType
 _waitforthreads_lock = threading.Lock()
 
 
-def waitfortasks(tasks, timeout=None):
-    """Waits for one or more *Task* to be ready or until *timeout* expires.
-
-    *tasks* is a list containing one or more *pebble.Task* objects.
-    If *timeout* is not None the function will block
-    for the specified amount of seconds.
-
-    The function returns a list containing the ready *Tasks*.
-
-    """
-    lock = threading.Condition(threading.Lock())
-
-    prepare_tasks(tasks, lock)
-    try:
-        wait_tasks(tasks, lock, timeout)
-    finally:
-        reset_tasks(tasks)
-
-    return filter(lambda t: t.ready, tasks)
-
-
-def prepare_tasks(tasks, lock):
-    """Replaces task._set() method in order to notify the waiting Condition."""
-    for task in tasks:
-        task._pebble_lock = lock
-        with task._task_ready:
-            task._pebble_old_method = task._set
-            task._set = MethodType(new_method, task)
-
-
-def wait_tasks(tasks, lock, timeout):
-    with lock:
-        if not any(map(lambda t: t.ready, tasks)):
-            lock.wait(timeout)
-
-
-def reset_tasks(tasks):
-    """Resets original task._set() method."""
-    for task in tasks:
-        with task._task_ready:
-            task._set = task._pebble_old_method
-            delattr(task, '_pebble_old_method')
-            delattr(task, '_pebble_lock')
-
-
 def waitforqueues(queues, timeout=None):
     """Waits for one or more *Queue* to be ready or until *timeout* expires.
 

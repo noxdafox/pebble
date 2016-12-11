@@ -18,42 +18,19 @@ import time
 from itertools import count
 from traceback import print_exc
 from collections import namedtuple
-
+from concurrent.futures import Future, TimeoutError
 try:
     from queue import Queue
 except ImportError:
     from Queue import Queue
 
-from .task import Task
-from .exceptions import PoolError, TimeoutError
-
-
-SLEEP_UNIT = 0.1
-
-
-# Pool states
-STOPPED = 0
-RUNNING = 1
-CLOSED = 2
-CREATED = 3
-EXPIRED = 4
-ERROR = 5
-
-
-TaskParameters = namedtuple('TaskParameters', ('function',
-                                               'args',
-                                               'kwargs'))
-WorkerParameters = namedtuple('WorkerParameters', ('task_limit',
-                                                   'initializer',
-                                                   'initargs'))
-
 
 class BasePool(object):
-    def __init__(self, workers, task_limit, queue_factory,
-                 initializer, initargs):
-        self._context = PoolContext(workers, task_limit, queue_factory,
-                                    initializer, initargs)
+    def __init__(self, max_workers, max_tasks, initializer, initargs):
+        self._context = PoolContext(
+            max_workers, max_tasks, initializer, initargs)
         self._loops = ()
+        self._task_counter = count()
 
     def __enter__(self):
         return self
@@ -105,52 +82,42 @@ class BasePool(object):
             else:
                 return
 
-        raise PoolError()
-
-    def schedule(self, function, args=(), kwargs={}, identifier=None,
-                 callback=None, timeout=0):
+    def schedule(self, function, args=(), kwargs={}, timeout=0):
         """Schedules *function* to be run the Pool.
 
         *args* and *kwargs* will be forwareded to the scheduled function
         respectively as arguments and keyword arguments.
 
-        If *callback* is a callable it will be executed once the function
-        execution has completed with the returned *Task* as a parameter.
-
         *timeout* is an integer, if expires the task will be terminated
-        and *Task.get()* will raise *TimeoutError*.
+        and *Future.result()* will raise *TimeoutError*.
 
-        The *identifier* value will be forwarded to the *Task.id* attribute.
-
-        A *Task* object is returned.
+        A *concurrent.futures.Future* object is returned.
         """
-        metadata = TaskParameters(function, args, kwargs)
-        return self._schedule_task(callback, timeout, identifier, metadata)
-
-    def _schedule_task(self, callback, timeout, identifier, metadata):
         self._check_pool_state()
 
-        task = Task(next(self._context.task_counter), callback=callback,
-                    timeout=timeout, identifier=identifier, metadata=metadata)
+        future = Future()
+        payload = TaskPayload(function, args, kwargs)
+        task = Task(next(self._task_counter), future, timeout, payload)
+
         self._context.task_queue.put(task)
 
-        return task
+        return future
 
     def _check_pool_state(self):
         self._update_pool_state()
 
         if self._context.state == ERROR:
-            raise PoolError('Unexpected error within the Pool')
+            raise RuntimeError('Unexpected error within the Pool')
         elif self._context.state != RUNNING:
-            raise RuntimeError('The Pool is not running')
+            raise RuntimeError('The Pool is not active')
 
     def _update_pool_state(self):
         if self._context.state == CREATED:
             self._start_pool()
-        else:
-            for loop in self._loops:
-                if not loop.is_alive():
-                    self._context.state = ERROR
+
+        for loop in self._loops:
+            if not loop.is_alive():
+                self._context.state = ERROR
 
     def _start_pool(self):
         raise NotImplementedError("Not implemented")
@@ -159,26 +126,31 @@ class BasePool(object):
         raise NotImplementedError("Not implemented")
 
 
-class PoolContext(object):
-    def __init__(self, workers, task_limit, queue_factory,
-                 initializer, initargs):
+class PoolContext:
+    def __init__(self, max_workers, max_tasks, initializer, initargs):
         self.state = CREATED
-        self.workers = workers
+        self.task_queue = Queue()
+        self.workers = max_workers
         self.task_counter = count()
-        self.task_queue = create_queue(queue_factory)
-        self.worker_parameters = WorkerParameters(task_limit,
-                                                  initializer, initargs)
+        self.worker_parameters = Worker(max_tasks, initializer, initargs)
 
     @property
     def alive(self):
         return self.state not in (ERROR, STOPPED)
 
 
-def create_queue(queue_factory):
-    if queue_factory is not None:
-        return queue_factory()
-    else:
-        return Queue()
+class Task:
+    def __init__(self, identifier, future, timeout, payload):
+        self.id = identifier
+        self.future = future
+        self.timeout = timeout
+        self.payload = payload
+        self.timestamp = 0
+        self.worker_id = 0
+
+    @property
+    def started(self):
+        return bool(self.timestamp > 0)
 
 
 def run_initializer(initializer, initargs):
@@ -190,5 +162,16 @@ def run_initializer(initializer, initargs):
         return False
 
 
-def task_limit_reached(counter, task_limit):
-    return task_limit > 0 and next(counter) >= task_limit
+SLEEP_UNIT = 0.1
+
+
+# Pool states
+CREATED = 0
+RUNNING = 1
+CLOSED = 2
+STOPPED = 3
+ERROR = 4
+
+
+Worker = namedtuple('Worker', ('max_tasks', 'initializer', 'initargs'))
+TaskPayload = namedtuple('TaskPayload', ('function', 'args', 'kwargs'))

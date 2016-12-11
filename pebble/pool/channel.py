@@ -20,7 +20,10 @@ from select import select
 from contextlib import contextmanager
 from multiprocessing import RLock, Pipe
 
-from pebble.exceptions import ChannelError
+
+class ChannelError(OSError):
+    """Error occurring within the process channel."""
+    pass
 
 
 def channels():
@@ -97,7 +100,7 @@ class WorkerChannel(Channel):
             yield self
 
 
-class ChannelMutex(object):
+class ChannelMutex:
     def __init__(self):
         self.reader_mutex = RLock()
         self.writer_mutex = os.name != 'nt' and RLock() or None

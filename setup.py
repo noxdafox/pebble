@@ -1,11 +1,13 @@
 import os
-from setuptools import setup
+import sys
+from setuptools import setup, find_packages
 
 
-# Utility function to read the README file.
-# Used for the long_description.  It's nice, because now 1) we have a top level
-# README file and 2) it's easier to type in the README file than to put a raw
-# string in below ...
+required_packages = []
+
+# Python < 3 requires backported futures package
+if sys.version_info.major < 3:
+    required_packages.append('futures')
 
 
 def read(fname):
@@ -14,15 +16,16 @@ def read(fname):
 
 setup(
     name="Pebble",
-    version="3.1.17",
+    version="4.0.0",
     author="Matteo Cafasso",
     author_email="noxdafox@gmail.com",
     description=("Threading and multiprocessing eye-candy."),
     license="LGPL",
     keywords="thread process pool decorator",
     url="https://github.com/noxdafox/pebble",
-    packages=['pebble', 'pebble.process', 'pebble.thread', 'tests'],
-    long_description=read('README.txt'),
+    packages=find_packages(exclude=["tests"]),
+    install_requires=required_packages,
+    long_description=read('README.rst'),
     classifiers=[
         "Programming Language :: Python",
         "Programming Language :: Python :: 3",

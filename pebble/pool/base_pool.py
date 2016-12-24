@@ -84,7 +84,7 @@ class BasePool(object):
             else:
                 return
 
-    def schedule(self, function, args=(), kwargs={}, timeout=0):
+    def schedule(self, function, args=(), kwargs={}, timeout=None):
         """Schedules *function* to be run the Pool.
 
         *args* and *kwargs* will be forwareded to the scheduled function

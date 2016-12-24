@@ -44,7 +44,7 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
 
       True if the Pool is running, false otherwise.
 
-   .. function:: schedule(function, args=(), kwargs={} timeout=0)
+   .. function:: schedule(function, args=(), kwargs={} timeout=None)
 
       Schedule a job within the Pool.
 
@@ -52,7 +52,7 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
 
       *function* is the function which is about to be scheduled.
       *args* and *kwargs* will be passed to the function respectively as its arguments and keyword arguments.
-      *timeout* is an integer, if greater than zero, once expired will force the timed out task to be interrupted and the worker will be restarted; *Future.result()* will raise *TimeoutError*, callbacks will be executed.
+      *timeout* is an integer or a float. If given, once expired it will force the timed out task to be interrupted and the worker will be restarted. *Future.result()* will raise *TimeoutError*, callbacks will be executed.
 
    .. function:: close()
 

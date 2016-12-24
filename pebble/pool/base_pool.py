@@ -15,14 +15,16 @@
 
 import time
 
-from itertools import count
 from traceback import print_exc
+from itertools import chain, count
 from collections import namedtuple
 from concurrent.futures import Future, TimeoutError
 try:
     from queue import Queue
 except ImportError:
     from Queue import Queue
+
+from pebble.common import execute
 
 
 class BasePool(object):
@@ -103,6 +105,40 @@ class BasePool(object):
 
         return future
 
+    def map(self, function, *iterables, **kwargs):
+        """Returns an iterator equivalent to map(function, iterables).
+
+        *timeout* is an integer, if expires the task will be terminated
+        and the call to next will raise *TimeoutError*.
+
+        *chunksize* controls the size of the chunks the iterable will
+        be broken into before being passed to the function. If None
+        the size will be controlled by the Pool.
+
+        """
+        self._check_pool_state()
+
+        timeout = kwargs.get('timeout')
+        chunksize = kwargs.get('chunksize')
+        iterables = tuple(zip(*iterables))
+
+        if chunksize is None:
+            chunksize = sum(divmod(len(iterables), self._context.workers * 4))
+
+        futures = [
+            self.schedule(map_function, args=(function, chunk), timeout=timeout)
+            for chunk in zip(*[iter(iterables)] * chunksize)]
+
+        def result_iterator():
+            try:
+                for future in futures:
+                    yield future.result()
+            finally:
+                for future in futures:
+                    future.cancel()
+
+        return chain.from_iterable(result_iterator())
+
     def _check_pool_state(self):
         self._update_pool_state()
 
@@ -160,6 +196,11 @@ def run_initializer(initializer, initargs):
     except Exception:
         print_exc()
         return False
+
+
+def map_function(function, chunk):
+    """Processes a chunk of the iterable passed to map dealing with errors."""
+    return [execute(function, *args) for args in chunk]
 
 
 SLEEP_UNIT = 0.1

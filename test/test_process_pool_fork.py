@@ -58,8 +58,8 @@ def error_function():
     raise Exception("BOOM!")
 
 
-def long_function():
-    time.sleep(1)
+def long_function(value=1):
+    time.sleep(value)
 
 
 def pid_function():
@@ -302,6 +302,86 @@ class TestProcessPool(unittest.TestCase):
         with ProcessPool() as pool:
             future = pool.schedule(suicide_function)
             self.assertRaises(ProcessExpired, future.result)
+
+    def test_process_pool_map(self):
+        """Process Pool Fork map simple."""
+        elements = [1, 2, 3]
+
+        with ProcessPool() as pool:
+            generator = pool.map(function, elements)
+            self.assertEqual(list(generator), elements)
+
+    def test_process_pool_map_empty(self):
+        """Process Pool Fork map no elements."""
+        elements = []
+
+        with ProcessPool() as pool:
+            generator = pool.map(function, elements)
+            self.assertEqual(list(generator), elements)
+
+    def test_process_pool_map_single(self):
+        """Process Pool Fork map one element."""
+        elements = [0]
+
+        with ProcessPool() as pool:
+            generator = pool.map(function, elements)
+            self.assertEqual(list(generator), elements)
+
+    def test_process_pool_map_multi(self):
+        """Process Pool Fork map multiple iterables."""
+        expected = (2, 4)
+
+        with ProcessPool() as pool:
+            generator = pool.map(function, (1, 2, 3), (1, 2))
+            self.assertEqual(tuple(generator), expected)
+
+    def test_process_pool_map_one_chunk(self):
+        """Process Pool Fork map chunksize 1."""
+        elements = [1, 2, 3]
+
+        with ProcessPool() as pool:
+            generator = pool.map(function, elements, chunksize=1)
+            self.assertEqual(list(generator), elements)
+
+    def test_process_pool_map_zero_chunk(self):
+        """Process Pool Fork map chunksize 0."""
+        with ProcessPool() as pool:
+            with self.assertRaises(ValueError):
+                pool.map(function, [], chunksize=0)
+
+    def test_process_pool_map_timeout(self):
+        """Process Pool Fork map with timeout."""
+        raised = []
+        elements = [1, 2, 3]
+
+        with ProcessPool() as pool:
+            generator = pool.map(long_function, elements, timeout=0.1)
+            while True:
+                try:
+                    next(generator)
+                except TimeoutError as error:
+                    raised.append(error)
+                except StopIteration:
+                    break
+
+        self.assertTrue(all((isinstance(e, TimeoutError) for e in raised)))
+
+    def test_process_pool_map_error(self):
+        """Process Pool Fork errors do not stop the iteration."""
+        raised = None
+        elements = [1, 'a', 3]
+
+        with ProcessPool() as pool:
+            generator = pool.map(function, elements)
+            while True:
+                try:
+                    next(generator)
+                except TypeError as error:
+                    raised = error
+                except StopIteration:
+                    break
+
+        self.assertTrue(isinstance(raised, TypeError))
 
 
 # DEADLOCK TESTS

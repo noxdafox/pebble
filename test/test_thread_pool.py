@@ -224,3 +224,67 @@ class TestThreadPool(unittest.TestCase):
             future = pool.schedule(function, args=[1],
                                    kwargs={'keyword_argument': 1})
         self.assertEqual(future.result(), 2)
+
+
+    def test_thread_pool_map(self):
+        """Thread Pool map simple."""
+        elements = [1, 2, 3]
+
+        with ThreadPool() as pool:
+            generator = pool.map(function, elements)
+            self.assertEqual(list(generator), elements)
+
+    def test_thread_pool_map_empty(self):
+        """Thread Pool map no elements."""
+        elements = []
+
+        with ThreadPool() as pool:
+            generator = pool.map(function, elements)
+            self.assertEqual(list(generator), elements)
+
+    def test_thread_pool_map_single(self):
+        """Thread Pool map one element."""
+        elements = [0]
+
+        with ThreadPool() as pool:
+            generator = pool.map(function, elements)
+            self.assertEqual(list(generator), elements)
+
+    def test_thread_pool_map_multi(self):
+        """Thread Pool map multiple iterables."""
+        expected = (2, 4)
+
+        with ThreadPool() as pool:
+            generator = pool.map(function, (1, 2, 3), (1, 2))
+            self.assertEqual(tuple(generator), expected)
+
+    def test_thread_pool_map_one_chunk(self):
+        """Thread Pool map chunksize 1."""
+        elements = [1, 2, 3]
+
+        with ThreadPool() as pool:
+            generator = pool.map(function, elements, chunksize=1)
+            self.assertEqual(list(generator), elements)
+
+    def test_thread_pool_map_zero_chunk(self):
+        """Thread Pool map chunksize 0."""
+        with ThreadPool() as pool:
+            with self.assertRaises(ValueError):
+                pool.map(function, [], chunksize=0)
+
+    def test_thread_pool_map_error(self):
+        """Thread Pool errors do not stop the iteration."""
+        raised = None
+        elements = [1, 'a', 3]
+
+        with ThreadPool() as pool:
+            generator = pool.map(function, elements)
+            while True:
+                try:
+                    next(generator)
+                except TypeError as error:
+                    raised = error
+                except StopIteration:
+                    break
+
+        self.assertTrue(isinstance(raised, TypeError))

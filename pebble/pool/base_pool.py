@@ -124,20 +124,14 @@ class BasePool(object):
 
         if chunksize is None:
             chunksize = sum(divmod(len(iterables), self._context.workers * 4))
+        elif chunksize < 1:
+            raise ValueError("chunksize must be >= 1")
 
         futures = [
             self.schedule(map_function, args=(function, chunk), timeout=timeout)
             for chunk in zip(*[iter(iterables)] * chunksize)]
 
-        def result_iterator():
-            try:
-                for future in futures:
-                    yield future.result()
-            finally:
-                for future in futures:
-                    future.cancel()
-
-        return chain.from_iterable(result_iterator())
+        return chain(MapResults(futures))
 
     def _check_pool_state(self):
         self._update_pool_state()
@@ -201,6 +195,40 @@ def run_initializer(initializer, initargs):
 def map_function(function, chunk):
     """Processes a chunk of the iterable passed to map dealing with errors."""
     return [execute(function, *args) for args in chunk]
+
+
+class MapResults:
+    def __init__(self, futures):
+        self._current = None
+        self._futures = futures
+
+    def __iter__(self):
+        return self
+
+    def next(self):
+        result = self._next_result()
+
+        if isinstance(result, Exception):
+            raise result
+
+        return result
+
+    def _next_result(self):
+        while True:
+            if self._current is None:
+                try:
+                    future = self._futures.pop(0)
+                    self._current = future.result()
+                except IndexError:
+                    raise StopIteration
+
+            try:
+                return self._current.pop(0)
+            except IndexError:
+                self._current = None
+                continue
+
+    __next__ = next
 
 
 SLEEP_UNIT = 0.1

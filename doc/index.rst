@@ -44,7 +44,7 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
 
       True if the Pool is running, false otherwise.
 
-   .. function:: schedule(function, args=(), kwargs={} timeout=None)
+   .. function:: schedule(function, args=(), kwargs={}, timeout=None)
 
       Schedule a job within the Pool.
 
@@ -53,6 +53,14 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
       *function* is the function which is about to be scheduled.
       *args* and *kwargs* will be passed to the function respectively as its arguments and keyword arguments.
       *timeout* is an integer or a float. If given, once expired it will force the timed out task to be interrupted and the worker will be restarted. *Future.result()* will raise *TimeoutError*, callbacks will be executed.
+
+   .. function:: map(function, *iterables, timeout=None, chunksize=None)
+
+      Returns an iterator equivalent to map(function, iterables).
+
+      *timeout* is an integer or a float. If given, once expired it will force the timed out task to be interrupted and the worker will be restarted. The subsequent call to __next__ on the iterator will raise *TimeoutError*. The timeout is assigned per element of the iterator. Therefore, a *TimeoutError* will not prevent the iterator to continue. See example below.
+
+      *chunksize* controls the size of the chunks the iterable will be broken into before being passed to the function. If None the size will be controlled by the Pool.
 
    .. function:: close()
 
@@ -89,6 +97,11 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
 
       *function* is the function which is about to be scheduled.
       *args* and *kwargs* will be passed to the function respectively as its arguments and keyword arguments.
+
+   .. function:: map(function, *iterables, chunksize=None)
+      Returns an iterator equivalent to map(function, iterables).
+
+      *chunksize* controls the size of the chunks the iterable will be broken into before being passed to the function. If None the size will be controlled by the Pool.
 
    .. function:: close()
 
@@ -200,6 +213,37 @@ Quite often developers need to integrate in their projects third party code whic
     except Exception as error:
         print("unstable_function raised %s" % error)
         print(error.traceback)  # Python's traceback of remote process
+
+Pools
++++++
+
+The ProcessPool has been designed to support task timeouts and critical errors. If a task reaches its timeout, the worker will be interrupted immediately. Abrupt interruptions of the workers are dealt trasparently.
+
+::
+
+    from pebble import ProcessPool
+    from concurrent.futures import Timeouterror
+
+    def function(foo, bar=0):
+    	return foo + bar
+
+    elements = list(range(1000))
+
+    with ProcessPool() as pool:
+        iterator = pool.map(function, elements, timeout=10)
+        while True:
+            try:
+                results = next(iterator)
+                print(results)
+            except TimeoutError as error:
+                print("Function took longer than %d seconds" % error.args[1])
+            except ProcessExpired as error:
+                print("%s. Exit code: %d" % (error, error.exitcode))
+            except Exception as error:
+                print("function raised %s" % error)
+                print(error.traceback)  # Python's traceback of remote process
+            except StopIteration:
+                break
 
 Sighandler decorator
 ++++++++++++++++++++

@@ -118,18 +118,18 @@ class BasePool(object):
         """
         self._check_pool_state()
 
-        timeout = kwargs.get('timeout')
-        chunksize = kwargs.get('chunksize')
         iterables = tuple(zip(*iterables))
+        timeout = kwargs.get('timeout', 0)
+        chunksize = kwargs.get('chunksize')
 
         if chunksize is None:
             chunksize = sum(divmod(len(iterables), self._context.workers * 4))
         elif chunksize < 1:
             raise ValueError("chunksize must be >= 1")
 
-        futures = [
-            self.schedule(map_function, args=(function, chunk), timeout=timeout)
-            for chunk in zip(*[iter(iterables)] * chunksize)]
+        futures = [self.schedule(
+            map_function, args=(function, chunk), timeout=timeout*len(chunk))
+                   for chunk in zip(*[iter(iterables)] * chunksize)]
 
         return chain(MapResults(futures))
 

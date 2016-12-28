@@ -60,6 +60,7 @@ def error_function():
 
 def long_function(value=1):
     time.sleep(value)
+    return value
 
 
 def pid_function():
@@ -365,6 +366,17 @@ class TestProcessPool(unittest.TestCase):
                     break
 
         self.assertTrue(all((isinstance(e, TimeoutError) for e in raised)))
+
+    def test_process_pool_map_timeout_chunks(self):
+        """Process Pool Fork map timeout is assigned per chunk."""
+        elements = [0.1]*10
+
+        with ProcessPool() as pool:
+            # it takes 0.5s to process a chunk
+            # the chunk timeout should be 0.2*5s
+            generator = pool.map(
+                long_function, elements, chunksize=5, timeout=0.2)
+            self.assertEqual(list(generator), elements)
 
     def test_process_pool_map_error(self):
         """Process Pool Fork errors do not stop the iteration."""

@@ -16,7 +16,7 @@ def read(fname):
 
 setup(
     name="Pebble",
-    version="4.0.0",
+    version="4.1.0",
     author="Matteo Cafasso",
     author_email="noxdafox@gmail.com",
     description=("Threading and multiprocessing eye-candy."),

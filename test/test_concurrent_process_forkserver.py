@@ -5,7 +5,7 @@ import signal
 import unittest
 import threading
 import multiprocessing
-from concurrent.futures import TimeoutError
+from concurrent.futures import CancelledError, TimeoutError
 
 from pebble import concurrent, ProcessExpired
 
@@ -45,6 +45,11 @@ def pickling_error_decorated():
 @concurrent.process
 def critical_decorated():
     os._exit(123)
+
+
+@concurrent.process
+def decorated_cancel():
+    time.sleep(10)
 
 
 @concurrent.process(timeout=0.1)
@@ -171,6 +176,12 @@ class TestProcessConcurrent(unittest.TestCase):
         self.event.wait(timeout=1)
         self.assertTrue(isinstance(self.exception, ProcessExpired),
                         msg=str(self.exception))
+
+    def test_cancel_decorated(self):
+        """Process Forkserver raises CancelledError if future was cancelled."""
+        future = decorated_cancel()
+        future.cancel()
+        self.assertRaises(CancelledError, future.result)
 
     @unittest.skipIf(os.name == 'nt', "Test won't run on Windows.")
     def test_decorated_ignoring_sigterm(self):

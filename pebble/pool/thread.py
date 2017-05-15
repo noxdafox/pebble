@@ -15,13 +15,14 @@
 
 
 import time
-from itertools import count
 from traceback import format_exc
 from itertools import chain, count
-from pebble.common import launch_thread
-from pebble.pool.base_pool import BasePool, run_initializer
+from concurrent.futures import Future
+
+from pebble.common import launch_thread, SLEEP_UNIT
+from pebble.pool.base_pool import ERROR, RUNNING
 from pebble.pool.base_pool import MapResults, map_function
-from pebble.pool.base_pool import ERROR, RUNNING, SLEEP_UNIT
+from pebble.pool.base_pool import BasePool, Task, TaskPayload, run_initializer
 
 
 class ThreadPool(BasePool):
@@ -51,6 +52,24 @@ class ThreadPool(BasePool):
         for loop in self._loops:
             loop.join()
         self._pool_manager.stop()
+
+    def schedule(self, function, args=(), kwargs={}):
+        """Schedules *function* to be run the Pool.
+
+        *args* and *kwargs* will be forwareded to the scheduled function
+        respectively as arguments and keyword arguments.
+
+        A *concurrent.futures.Future* object is returned.
+        """
+        self._check_pool_state()
+
+        future = Future()
+        payload = TaskPayload(function, args, kwargs)
+        task = Task(next(self._task_counter), future, None, payload)
+
+        self._context.task_queue.put(task)
+
+        return future
 
     def map(self, function, *iterables, **kwargs):
         """Returns an iterator equivalent to map(function, iterables).

@@ -19,7 +19,7 @@ import time
 from itertools import chain, count
 from collections import namedtuple
 from signal import SIG_IGN, SIGINT, signal
-from concurrent.futures import TimeoutError
+from concurrent.futures import CancelledError, TimeoutError
 try:
     from concurrent.futures.process import BrokenProcessPool
 except ImportError:
@@ -27,11 +27,12 @@ except ImportError:
         pass
 
 from pebble.pool.channel import ChannelError, channels
-from pebble.pool.base_pool import BasePool, run_initializer
 from pebble.pool.base_pool import MapResults, map_function
-from pebble.pool.base_pool import ERROR, RUNNING, SLEEP_UNIT
-from pebble.common import execute, launch_thread, send_result
-from pebble.common import ProcessExpired, launch_process, stop_process
+from pebble.pool.base_pool import ERROR, RUNNING
+from pebble.pool.base_pool import BasePool, Task, TaskPayload, run_initializer
+from pebble.common import launch_process, stop_process
+from pebble.common import ProcessExpired, ProcessFuture
+from pebble.common import execute, launch_thread, send_result, SLEEP_UNIT
 
 
 class ProcessPool(BasePool):
@@ -64,6 +65,27 @@ class ProcessPool(BasePool):
         for loop in self._loops:
             loop.join()
         self._pool_manager.stop()
+
+    def schedule(self, function, args=(), kwargs={}, timeout=None):
+        """Schedules *function* to be run the Pool.
+
+        *args* and *kwargs* will be forwareded to the scheduled function
+        respectively as arguments and keyword arguments.
+
+        *timeout* is an integer, if expires the task will be terminated
+        and *Future.result()* will raise *TimeoutError*.
+
+        A *concurrent.futures.Future* object is returned.
+        """
+        self._check_pool_state()
+
+        future = ProcessFuture()
+        payload = TaskPayload(function, args, kwargs)
+        task = Task(next(self._task_counter), future, timeout, payload)
+
+        self._context.task_queue.put(task)
+
+        return future
 
     def map(self, function, *iterables, **kwargs):
         """Returns an iterator equivalent to map(function, iterables).
@@ -172,11 +194,14 @@ class PoolManager:
 
     def update_tasks(self):
         """Handles timing out Tasks."""
-        timeout = self.task_manager.timeout_tasks()
-
-        for task in timeout:
+        for task in self.task_manager.timeout_tasks():
             self.task_manager.task_done(
                 task.id, TimeoutError("Task timeout", task.timeout))
+            self.worker_manager.stop_worker(task.worker_id)
+
+        for task in self.task_manager.cancelled_tasks():
+            self.task_manager.task_done(
+                task.id, CancelledError())
             self.worker_manager.stop_worker(task.worker_id)
 
     def update_workers(self):
@@ -233,7 +258,9 @@ class TaskManager:
         except KeyError:
             return  # result of previously timeout Task
         else:
-            if isinstance(result, BaseException):
+            if task.future.cancelled():
+                task.future.set_running_or_notify_cancel()
+            elif isinstance(result, BaseException):
                 task.future.set_exception(result)
             else:
                 task.future.set_result(result)
@@ -242,6 +269,10 @@ class TaskManager:
 
     def timeout_tasks(self):
         return tuple(t for t in tuple(self.tasks.values()) if self.timeout(t))
+
+    def cancelled_tasks(self):
+        return tuple(t for t in tuple(self.tasks.values())
+                     if t.timestamp != 0 and t.future.cancelled())
 
     @staticmethod
     def timeout(task):

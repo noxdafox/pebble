@@ -15,16 +15,16 @@
 
 import time
 
+from itertools import count
 from traceback import print_exc
-from itertools import chain, count
 from collections import namedtuple
-from concurrent.futures import Future, TimeoutError
+from concurrent.futures import TimeoutError
 try:
     from queue import Queue
 except ImportError:
     from Queue import Queue
 
-from pebble.common import execute
+from pebble.common import execute, SLEEP_UNIT
 
 
 class BasePool(object):
@@ -84,27 +84,6 @@ class BasePool(object):
                 time.sleep(SLEEP_UNIT)
             else:
                 return
-
-    def schedule(self, function, args=(), kwargs={}, timeout=None):
-        """Schedules *function* to be run the Pool.
-
-        *args* and *kwargs* will be forwareded to the scheduled function
-        respectively as arguments and keyword arguments.
-
-        *timeout* is an integer, if expires the task will be terminated
-        and *Future.result()* will raise *TimeoutError*.
-
-        A *concurrent.futures.Future* object is returned.
-        """
-        self._check_pool_state()
-
-        future = Future()
-        payload = TaskPayload(function, args, kwargs)
-        task = Task(next(self._task_counter), future, timeout, payload)
-
-        self._context.task_queue.put(task)
-
-        return future
 
     def _check_pool_state(self):
         self._update_pool_state()
@@ -202,9 +181,6 @@ class MapResults:
                 continue
 
     __next__ = next
-
-
-SLEEP_UNIT = 0.1
 
 
 # Pool states

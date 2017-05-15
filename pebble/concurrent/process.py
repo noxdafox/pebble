@@ -17,17 +17,19 @@ import os
 import sys
 import signal
 
+from itertools import count
 from functools import wraps
 from multiprocessing import Pipe
-from concurrent.futures import Future, TimeoutError
+from concurrent.futures import CancelledError, TimeoutError
 try:
     from multiprocessing import get_start_method
 except ImportError:
     def get_start_method():
         return 'spawn' if os.name == 'nt' else 'fork'
 
-from pebble.common import execute, launch_thread, send_result
-from pebble.common import ProcessExpired, launch_process, stop_process
+from pebble.common import launch_process, stop_process
+from pebble.common import ProcessExpired, ProcessFuture
+from pebble.common import execute, launch_thread, send_result, SLEEP_UNIT
 
 
 def process(*args, **kwargs):
@@ -63,7 +65,7 @@ def _process_wrapper(function, timeout):
 
     @wraps(function)
     def wrapper(*args, **kwargs):
-        future = Future()
+        future = ProcessFuture()
         reader, writer = Pipe(duplex=False)
 
         if get_start_method() != 'fork':
@@ -93,7 +95,7 @@ def _worker_handler(future, worker, pipe, timeout):
     collects result, runs the callback and cleans up the process.
 
     """
-    result = _get_result(pipe, timeout)
+    result = _get_result(future, pipe, timeout)
 
     if isinstance(result, BaseException):
         if isinstance(result, ProcessExpired):
@@ -116,13 +118,18 @@ def _function_handler(function, args, kwargs, pipe):
     send_result(pipe, result)
 
 
-def _get_result(pipe, timeout):
+def _get_result(future, pipe, timeout):
     """Waits for result and handles communication errors."""
+    counter = count(step=SLEEP_UNIT)
+
     try:
-        if pipe.poll(timeout):
-            return pipe.recv()
-        else:
-            return TimeoutError('Task Timeout', timeout)
+        while not pipe.poll(SLEEP_UNIT):
+            if timeout is not None and next(counter) >= timeout:
+                return TimeoutError('Task Timeout', timeout)
+            elif future.cancelled():
+                return CancelledError()
+
+        return pipe.recv()
     except (EOFError, OSError):
         return ProcessExpired('Abnormal termination')
     except Exception as error:

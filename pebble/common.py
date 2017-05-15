@@ -1,9 +1,83 @@
+from __future__ import absolute_import
+
 import os
 import signal
 
 from threading import Thread
 from traceback import format_exc
 from multiprocessing import Process
+
+from concurrent.futures import Future
+
+
+# Borrowed from concurrent.futures
+PENDING = 'PENDING'
+RUNNING = 'RUNNING'
+CANCELLED = 'CANCELLED'
+CANCELLED_AND_NOTIFIED = 'CANCELLED_AND_NOTIFIED'
+
+
+class ProcessFuture(Future):
+    def cancel(self):
+        """Cancel the future.
+
+        Returns True if the future was cancelled, False otherwise. A future
+        cannot be cancelled if it has already completed.
+        """
+        with self._condition:
+            if self._state in (CANCELLED, CANCELLED_AND_NOTIFIED):
+                return True
+
+            self._state = CANCELLED
+            self._condition.notify_all()
+
+        self._invoke_callbacks()
+
+        return True
+
+    # The following methods should only be used by Executors and in tests.
+    def set_running_or_notify_cancel(self):
+        """Mark the future as running or process any cancel notifications.
+
+        Should only be used by Executor implementations and unit tests.
+
+        If the future has been cancelled (cancel() was called and returned
+        True) then any threads waiting on the future completing (though calls
+        to as_completed() or wait()) are notified and False is returned.
+
+        If the future was not cancelled then it is put in the running state
+        (future calls to running() will return True) and True is returned.
+
+        This method should be called by Executor implementations before
+        executing the work associated with this future. If this method returns
+        False then the work should not be executed.
+
+        Returns:
+            False if the Future was cancelled, True otherwise.
+
+        Raises:
+            RuntimeError: if set_result() or set_exception() was called.
+        """
+        with self._condition:
+            if self._state == CANCELLED:
+                self._state = CANCELLED_AND_NOTIFIED
+                for waiter in self._waiters:
+                    waiter.add_cancelled(self)
+
+                return False
+            elif self._state == PENDING:
+                self._state = RUNNING
+
+                return True
+            elif self._state not in (CANCELLED_AND_NOTIFIED, RUNNING):
+                raise RuntimeError('Future in unexpected state')
+
+
+class ProcessExpired(OSError):
+    """Raised when process dies unexpectedly."""
+    def __init__(self, msg, code=0):
+        super(ProcessExpired, self).__init__(msg)
+        self.exitcode = code
 
 
 def launch_thread(function, *args, **kwargs):
@@ -54,10 +128,3 @@ def send_result(pipe, data):
     except TypeError as error:
         error.traceback = format_exc()
         pipe.send(error)
-
-
-class ProcessExpired(OSError):
-    """Raised when process dies unexpectedly."""
-    def __init__(self, msg, code=0):
-        super(ProcessExpired, self).__init__(msg)
-        self.exitcode = code

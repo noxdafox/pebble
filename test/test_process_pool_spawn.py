@@ -6,7 +6,7 @@ import unittest
 import threading
 import multiprocessing
 
-from concurrent.futures import TimeoutError
+from concurrent.futures import CancelledError, TimeoutError
 
 import pebble
 from pebble import ProcessPool, ProcessExpired
@@ -144,6 +144,24 @@ class TestProcessPool(unittest.TestCase):
         self.event.wait()
         self.assertTrue(isinstance(self.exception, TimeoutError))
 
+    def test_process_pool_cancel(self):
+        """Process Pool Spawn future raises CancelledError if so."""
+        with ProcessPool() as pool:
+            future = pool.schedule(long_function)
+            time.sleep(0.1)  # let the process pick up the task
+            self.assertTrue(future.cancel())
+        self.assertRaises(CancelledError, future.result)
+
+    def test_process_pool_cancel_callback(self):
+        """Process Pool Spawn CancelledError is forwarded to callback."""
+        with ProcessPool() as pool:
+            future = pool.schedule(long_function)
+            future.add_done_callback(self.callback)
+            time.sleep(0.1)  # let the process pick up the task
+            self.assertTrue(future.cancel())
+        self.event.wait()
+        self.assertTrue(isinstance(self.exception, CancelledError))
+
     def test_process_pool_different_process(self):
         """Process Pool Spawn multiple futures are handled by different processes."""
         futures = []
@@ -165,6 +183,16 @@ class TestProcessPool(unittest.TestCase):
         with ProcessPool() as pool:
             future1 = pool.schedule(pid_function)
             pool.schedule(long_function, timeout=0.1)
+            future2 = pool.schedule(pid_function)
+        self.assertNotEqual(future1.result(), future2.result())
+
+    def test_process_pool_stop_cancel(self):
+        """Process Pool Spawn workers are stopped if future is cancelled."""
+        with ProcessPool() as pool:
+            future1 = pool.schedule(pid_function)
+            cancel_future = pool.schedule(long_function)
+            time.sleep(0.1)  # let the process pick up the task
+            cancel_future.cancel()
             future2 = pool.schedule(pid_function)
         self.assertNotEqual(future1.result(), future2.result())
 

@@ -105,34 +105,6 @@ class BasePool(object):
 
         return future
 
-    def map(self, function, *iterables, **kwargs):
-        """Returns an iterator equivalent to map(function, iterables).
-
-        *timeout* is an integer, if expires the task will be terminated
-        and the call to next will raise *TimeoutError*.
-
-        *chunksize* controls the size of the chunks the iterable will
-        be broken into before being passed to the function. If None
-        the size will be controlled by the Pool.
-
-        """
-        self._check_pool_state()
-
-        iterables = tuple(zip(*iterables))
-        timeout = kwargs.get('timeout', 0)
-        chunksize = kwargs.get('chunksize')
-
-        if chunksize is None:
-            chunksize = sum(divmod(len(iterables), self._context.workers * 4))
-        elif chunksize < 1:
-            raise ValueError("chunksize must be >= 1")
-
-        futures = [self.schedule(
-            map_function, args=(function, chunk), timeout=timeout*len(chunk))
-                   for chunk in zip(*[iter(iterables)] * chunksize)]
-
-        return chain(MapResults(futures))
-
     def _check_pool_state(self):
         self._update_pool_state()
 

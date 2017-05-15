@@ -17,8 +17,10 @@
 import time
 from itertools import count
 from traceback import format_exc
+from itertools import chain, count
 from pebble.common import launch_thread
 from pebble.pool.base_pool import BasePool, run_initializer
+from pebble.pool.base_pool import MapResults, map_function
 from pebble.pool.base_pool import ERROR, RUNNING, SLEEP_UNIT
 
 
@@ -49,6 +51,29 @@ class ThreadPool(BasePool):
         for loop in self._loops:
             loop.join()
         self._pool_manager.stop()
+
+    def map(self, function, *iterables, **kwargs):
+        """Returns an iterator equivalent to map(function, iterables).
+
+        *chunksize* controls the size of the chunks the iterable will
+        be broken into before being passed to the function. If None
+        the size will be controlled by the Pool.
+
+        """
+        self._check_pool_state()
+
+        iterables = tuple(zip(*iterables))
+        chunksize = kwargs.get('chunksize')
+
+        if chunksize is None:
+            chunksize = sum(divmod(len(iterables), self._context.workers * 4))
+        elif chunksize < 1:
+            raise ValueError("chunksize must be >= 1")
+
+        futures = [self.schedule(map_function, args=(function, chunk))
+                   for chunk in zip(*[iter(iterables)] * chunksize)]
+
+        return chain(MapResults(futures))
 
 
 def pool_manager_loop(pool_manager):

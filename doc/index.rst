@@ -18,7 +18,7 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
 
    Runs the decorated function in a concurrent process, taking care of the results and error management.
 
-   The decorated function returns a *concurrent.futures.Future* object.
+   The decorated function returns a *pebble.ProcessFuture* object.
 
    If *timeout* is set, the process will be stopped once expired and the *Future* object will raise a *concurrent.futures.TimeoutError* exception.
 
@@ -48,7 +48,7 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
 
       Schedule a job within the Pool.
 
-      Returns a *Future* object representing the execution of the callable.
+      Returns a *pebble.ProcessFuture* object representing the execution of the callable.
 
       *function* is the function which is about to be scheduled.
       *args* and *kwargs* will be passed to the function respectively as its arguments and keyword arguments.
@@ -117,6 +117,14 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
 
       Waits for all workers to exit, must not be called before calling either *close()*, *stop()* or *kill()*.
       If *timeout* is set and some worker is still running after it expired a TimeoutError will be raised, a timeout of 0 will return immediately.
+
+.. class:: pebble.ProcessFuture()
+
+   This class inherits from *concurrent.futures.Future*. The only difference with the parent class is the possibility to cancel running call.
+
+   .. function:: cancel()
+
+      Cancel a running or enqueued call. If the call has already completed then the method will return False, otherwise the call will be cancelled and the method will return True. If the call is running, the process executing it will be stopped allowing to reclaim its resources.
 
 .. decorator:: synchronized([lock])
 

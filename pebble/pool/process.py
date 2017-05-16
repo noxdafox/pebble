@@ -65,11 +65,6 @@ class ProcessPool(BasePool):
             loop.join()
         self._pool_manager.stop()
 
-    def stop(self):
-        """Stops the pool without performing any pending task."""
-        super(ProcessPool, self).stop()
-        self._context.task_queue.put(None)
-
     def map(self, function, *iterables, **kwargs):
         """Returns an iterator equivalent to map(function, iterables).
 

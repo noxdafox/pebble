@@ -10,13 +10,6 @@ from multiprocessing import Process
 from concurrent.futures import Future
 
 
-# Borrowed from concurrent.futures
-PENDING = 'PENDING'
-RUNNING = 'RUNNING'
-CANCELLED = 'CANCELLED'
-CANCELLED_AND_NOTIFIED = 'CANCELLED_AND_NOTIFIED'
-
-
 class ProcessFuture(Future):
     def cancel(self):
         """Cancel the future.
@@ -128,3 +121,11 @@ def send_result(pipe, data):
     except TypeError as error:
         error.traceback = format_exc()
         pipe.send(error)
+
+
+SLEEP_UNIT = 0.1
+# Borrowed from concurrent.futures
+PENDING = 'PENDING'
+RUNNING = 'RUNNING'
+CANCELLED = 'CANCELLED'
+CANCELLED_AND_NOTIFIED = 'CANCELLED_AND_NOTIFIED'

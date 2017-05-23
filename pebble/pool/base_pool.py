@@ -15,8 +15,8 @@
 
 import time
 
+from itertools import count
 from traceback import print_exc
-from itertools import chain, count
 from collections import namedtuple
 from concurrent.futures import TimeoutError
 try:
@@ -24,7 +24,7 @@ try:
 except ImportError:
     from Queue import Queue
 
-from pebble.common import execute, ProcessFuture
+from pebble.common import execute, ProcessFuture, SLEEP_UNIT
 
 
 class BasePool(object):
@@ -181,9 +181,6 @@ class MapResults:
                 continue
 
     __next__ = next
-
-
-SLEEP_UNIT = 0.1
 
 
 # Pool states

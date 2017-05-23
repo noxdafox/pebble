@@ -19,9 +19,9 @@ from traceback import format_exc
 from itertools import chain, count
 from concurrent.futures import Future
 
-from pebble.common import launch_thread, SLEEP_UNIT
-from pebble.pool.base_pool import ERROR, RUNNING
+from pebble.common import launch_thread
 from pebble.pool.base_pool import MapResults, map_function
+from pebble.pool.base_pool import ERROR, RUNNING, SLEEP_UNIT
 from pebble.pool.base_pool import BasePool, Task, TaskPayload, run_initializer
 
 

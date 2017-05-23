@@ -1,13 +1,5 @@
 import os
-import sys
 from setuptools import setup, find_packages
-
-
-required_packages = []
-
-# Python < 3 requires backported futures package
-if sys.version_info.major < 3:
-    required_packages.append('futures')
 
 
 def read(fname):
@@ -16,7 +8,7 @@ def read(fname):
 
 setup(
     name="Pebble",
-    version="4.1.0",
+    version="4.1.1",
     author="Matteo Cafasso",
     author_email="noxdafox@gmail.com",
     description=("Threading and multiprocessing eye-candy."),
@@ -24,7 +16,7 @@ setup(
     keywords="thread process pool decorator",
     url="https://github.com/noxdafox/pebble",
     packages=find_packages(exclude=["tests"]),
-    install_requires=required_packages,
+    extras_require={":python_version<'3'": ["futures"]},
     long_description=read('README.rst'),
     classifiers=[
         "Programming Language :: Python",

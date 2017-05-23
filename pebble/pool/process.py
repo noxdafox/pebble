@@ -28,11 +28,11 @@ except ImportError:
 
 from pebble.pool.channel import ChannelError, channels
 from pebble.pool.base_pool import MapResults, map_function
-from pebble.pool.base_pool import ERROR, RUNNING
+from pebble.pool.base_pool import ERROR, RUNNING, SLEEP_UNIT
 from pebble.pool.base_pool import BasePool, Task, TaskPayload, run_initializer
 from pebble.common import launch_process, stop_process
 from pebble.common import ProcessExpired, ProcessFuture
-from pebble.common import execute, launch_thread, send_result, SLEEP_UNIT
+from pebble.common import execute, launch_thread, send_result
 
 
 class ProcessPool(BasePool):

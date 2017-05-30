@@ -163,7 +163,7 @@ def get_next_task(context, max_tasks):
 
         if task is not None:
             if task.future.cancelled():
-                task.future.set_running_or_notify_cancel()
+                task.set_running_or_notify_cancel()
                 queue.task_done()
             else:
                 yield task
@@ -172,7 +172,7 @@ def get_next_task(context, max_tasks):
 def execute_next_task(task):
     payload = task.payload
     task.timestamp = time.time()
-    task.future.set_running_or_notify_cancel()
+    task.set_running_or_notify_cancel()
 
     try:
         results = payload.function(*payload.args, **payload.kwargs)

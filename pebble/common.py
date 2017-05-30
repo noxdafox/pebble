@@ -10,6 +10,13 @@ from multiprocessing import Process
 from concurrent.futures import Future
 
 
+class ProcessExpired(OSError):
+    """Raised when process dies unexpectedly."""
+    def __init__(self, msg, code=0):
+        super(ProcessExpired, self).__init__(msg)
+        self.exitcode = code
+
+
 class ProcessFuture(Future):
     def cancel(self):
         """Cancel the future.
@@ -18,6 +25,9 @@ class ProcessFuture(Future):
         cannot be cancelled if it has already completed.
         """
         with self._condition:
+            if self._state == FINISHED:
+                return False
+
             if self._state in (CANCELLED, CANCELLED_AND_NOTIFIED):
                 return True
 
@@ -28,7 +38,7 @@ class ProcessFuture(Future):
 
         return True
 
-    # The following methods should only be used by Executors and in tests.
+    # Same as base class, removed logline
     def set_running_or_notify_cancel(self):
         """Mark the future as running or process any cancel notifications.
 
@@ -62,15 +72,8 @@ class ProcessFuture(Future):
                 self._state = RUNNING
 
                 return True
-            elif self._state not in (CANCELLED_AND_NOTIFIED, RUNNING):
+            else:
                 raise RuntimeError('Future in unexpected state')
-
-
-class ProcessExpired(OSError):
-    """Raised when process dies unexpectedly."""
-    def __init__(self, msg, code=0):
-        super(ProcessExpired, self).__init__(msg)
-        self.exitcode = code
 
 
 def launch_thread(function, *args, **kwargs):
@@ -127,5 +130,6 @@ SLEEP_UNIT = 0.1
 # Borrowed from concurrent.futures
 PENDING = 'PENDING'
 RUNNING = 'RUNNING'
+FINISHED = 'FINISHED'
 CANCELLED = 'CANCELLED'
 CANCELLED_AND_NOTIFIED = 'CANCELLED_AND_NOTIFIED'

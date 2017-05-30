@@ -134,6 +134,19 @@ class Task:
     def started(self):
         return bool(self.timestamp > 0)
 
+    def set_running_or_notify_cancel(self):
+        if hasattr(self.future, 'map_future'):
+            if not self.future.map_future.done():
+                try:
+                    self.future.map_future.set_running_or_notify_cancel()
+                except RuntimeError:
+                    pass
+
+        try:
+            self.future.set_running_or_notify_cancel()
+        except RuntimeError:
+            pass
+
 
 def run_initializer(initializer, initargs):
     try:

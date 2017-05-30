@@ -126,7 +126,7 @@ def task_scheduler_loop(pool_manager):
 
             if task is not None:
                 if task.future.cancelled():
-                    task.future.set_running_or_notify_cancel()
+                    task.set_running_or_notify_cancel()
                     task_queue.task_done()
                 else:
                     pool_manager.schedule(task)
@@ -249,7 +249,7 @@ class TaskManager:
         task = self.tasks[task_id]
         task.worker_id = worker_id
         task.timestamp = time.time()
-        task.future.set_running_or_notify_cancel()
+        task.set_running_or_notify_cancel()
 
     def task_done(self, task_id, result):
         """Set the tasks result and run the callback."""
@@ -259,7 +259,7 @@ class TaskManager:
             return  # result of previously timeout Task
         else:
             if task.future.cancelled():
-                task.future.set_running_or_notify_cancel()
+                task.set_running_or_notify_cancel()
             elif isinstance(result, BaseException):
                 task.future.set_exception(result)
             else:

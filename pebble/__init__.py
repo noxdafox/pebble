@@ -3,12 +3,14 @@ __all__ = ['waitforthreads',
            'synchronized',
            'sighandler',
            'ProcessFuture',
+           'MapFuture',
+           'ProcessMapFuture',
            'ProcessExpired',
            'ProcessPool',
            'ThreadPool']
 
-from pebble.pool.thread import ThreadPool
-from pebble.pool.process import ProcessPool
+
 from pebble.decorators import synchronized, sighandler
 from pebble.common import ProcessExpired, ProcessFuture
 from pebble.functions import waitforqueues, waitforthreads
+from pebble.pool import ThreadPool, ProcessPool, MapFuture, ProcessMapFuture

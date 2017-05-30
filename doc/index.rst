@@ -11,28 +11,28 @@ Modern languages should natively support concurrency, threading and synchronizat
 Pebble aims to help managing threads and processes in an easier way. It wraps Python's standard libray threading and multiprocessing objects.
 
 
-:mod:`concurrent`
------------------
+`Concurrent Module`
+-------------------
 
-.. decorator:: process(timeout=None)
+.. decorator:: concurrent.process(timeout=None)
 
    Runs the decorated function in a concurrent process, taking care of the results and error management.
 
-   The decorated function returns a *pebble.ProcessFuture* object.
+   The decorated function returns a pebble.ProcessFuture_ object.
 
-   If *timeout* is set, the process will be stopped once expired and the *Future* object will raise a *concurrent.futures.TimeoutError* exception.
+   If *timeout* is set, the process will be stopped once expired and the future object will raise a *concurrent.futures.TimeoutError* exception.
 
-.. decorator:: thread()
+.. decorator:: concurrent.thread()
 
    Runs the decorated function in a concurrent thread, taking care of the results and error management.
 
-   The decorated function returns a *concurrent.futures.Future* object.
+   The decorated function returns a concurrent.futures.Future_ object.
 
 
-:mod:`pebble`
--------------
+`Pebble Module`
+---------------
 
-.. class:: ProcessPool(max_workers=1, max_tasks=0, initializer=None, initargs=None)
+.. class:: pebble.ProcessPool(max_workers=1, max_tasks=0, initializer=None, initargs=None)
 
    A Pool allows to schedule jobs into a Pool of Processes which will perform them concurrently.
    Process pools work as well as a *context manager*.
@@ -48,19 +48,25 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
 
       Schedule a job within the Pool.
 
-      Returns a *pebble.ProcessFuture* object representing the execution of the callable.
+      Returns a pebble.ProcessFuture_ object representing the execution of the callable.
 
       *function* is the function which is about to be scheduled.
+
       *args* and *kwargs* will be passed to the function respectively as its arguments and keyword arguments.
+
       *timeout* is an integer or a float. If given, once expired it will force the timed out task to be interrupted and the worker will be restarted. *Future.result()* will raise *TimeoutError*, callbacks will be executed.
 
-   .. function:: map(function, *iterables, timeout=None, chunksize=None)
+   .. function:: map(function, *iterables, chunksize=None, timeout=None)
 
-      Returns an iterator equivalent to map(function, iterables).
+      Concurrently compute the *function* using arguments from each of the iterables.
+      Stop when the shortest iterable is exhausted.
 
-      *timeout* is an integer or a float. If given, once expired it will force the timed out task to be interrupted and the worker will be restarted. The subsequent call to __next__ on the iterator will raise *TimeoutError*. The timeout is assigned per element of the iterator. Therefore, a *TimeoutError* will not prevent the iterator to continue. See example below.
+      *chunksize* controls the size of the chunks the iterable will be broken into before being passed to the function.
 
-      *chunksize* controls the size of the chunks the iterable will be broken into before being passed to the function. If None the size will be controlled by the Pool.
+      *timeout* is an integer or a float. If given, it will be assigned to every element or chunk of the iterables.
+      If the computation of the given element or chunk will last longer than the given *timeout*, its execution will be terminated and iterating over its result will raise *TimeoutError*.
+
+      A pebble.ProcessMapFuture_ object is returned. Its *result* method will return an iterable containing the results of the computation in the same order as they were given.
 
    .. function:: close()
 
@@ -77,7 +83,7 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
       Waits for all workers to exit, must not be called before calling either *close()*, *stop()* or *kill()*.
       If *timeout* is set and some worker is still running after it expired a TimeoutError will be raised, a timeout of 0 will return immediately.
 
-.. class:: ThreadPool(max_workers=1, max_tasks=0, initializer=None, initargs=None)
+.. class:: pebble.ThreadPool(max_workers=1, max_tasks=0, initializer=None, initargs=None)
 
    A ThreadPool allows to schedule jobs into a Pool of Threads which will perform them concurrently.
    Thread pools work as well as a *context manager*.
@@ -93,15 +99,22 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
 
       Schedule a job within the Pool.
 
-      Returns a *Future* object representing the execution of the callable.
+      Returns a concurrent.futures.Future_ object representing the execution of the callable.
 
       *function* is the function which is about to be scheduled.
       *args* and *kwargs* will be passed to the function respectively as its arguments and keyword arguments.
 
    .. function:: map(function, *iterables, chunksize=None)
-      Returns an iterator equivalent to map(function, iterables).
 
-      *chunksize* controls the size of the chunks the iterable will be broken into before being passed to the function. If None the size will be controlled by the Pool.
+      Concurrently compute the *function* using arguments from each of the iterables.
+      Stop when the shortest iterable is exhausted.
+
+      *chunksize* controls the size of the chunks the iterable will be broken into before being passed to the function.
+
+      *timeout* is an integer or a float. If given, it will be assigned to every element or chunk of the iterables.
+      If the computation of the given element or chunk will last longer than the given *timeout*, iterating over its result will raise *TimeoutError*.
+
+      A pebble.MapFuture_ object is returned. Its *result* method will return an iterable containing the results of the computation in the same order as they were given.
 
    .. function:: close()
 
@@ -118,29 +131,56 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
       Waits for all workers to exit, must not be called before calling either *close()*, *stop()* or *kill()*.
       If *timeout* is set and some worker is still running after it expired a TimeoutError will be raised, a timeout of 0 will return immediately.
 
+.. _pebble.ProcessFuture:
 .. class:: pebble.ProcessFuture()
 
-   This class inherits from *concurrent.futures.Future*. The only difference with the parent class is the possibility to cancel running call.
+   This class inherits from concurrent.futures.Future_. The sole difference with the parent class is the possibility to cancel running calls.
 
    .. function:: cancel()
 
       Cancel a running or enqueued call. If the call has already completed then the method will return False, otherwise the call will be cancelled and the method will return True. If the call is running, the process executing it will be stopped allowing to reclaim its resources.
 
-.. decorator:: synchronized([lock])
+.. _pebble.MapFuture:
+.. class:: pebble.MapFuture()
 
-    A synchronized function prevents two or more callers to interleave its execution preventing race conditions.
+   This class inherits from concurrent.futures.Future_. It is returned by the *map* function of a *ThreadPool*.
 
-    The *synchronized* decorator accepts as optional parameter a *Lock*, *RLock* or *Semaphore* from *threading* and *multiprocessing* modules.
+   .. function:: result()
 
-    If no synchronization object is given, a single *threading.Lock* will be employed. This implies that between different decorated functions only one at a time will be executed.
+      Returns an iterator over the results of the *map* function. If a call raises an exception, then that exception will be raised when its value is retrieved from the iterator. The returned iterator raises a concurrent.futures.TimeoutError if __next__() is called and the result isn’t available after timeout seconds from the original call to Executor.map().
 
-.. decorator:: sighandler(signals)
+   .. function:: cancel()
+
+      Cancel the computation of enqueued element of the iterables passed to the *map* function. If all the elements are already in progress or completed then the method will return False. True is returned otherwise.
+
+.. _pebble.ProcessMapFuture:
+.. class:: pebble.ProcessMapFuture()
+
+   This class inherits from pebble.ProcessFuture_. It is returned by the *map* function of a *ProcessPool*.
+
+   .. function:: result()
+
+      Returns an iterator over the results of the *map* function. If a call raises an exception, then that exception will be raised when its value is retrieved from the iterator.
+
+   .. function:: cancel()
+
+      Cancel the computation of running or enqueued element of the iterables passed to the *map* function. If all the elements are already completed then the method will return False. True is returned otherwise.
+
+.. decorator:: pebble.synchronized([lock])
+
+   A synchronized function prevents two or more callers to interleave its execution preventing race conditions.
+
+   The *synchronized* decorator accepts as optional parameter a *Lock*, *RLock* or *Semaphore* from *threading* and *multiprocessing* modules.
+
+   If no synchronization object is given, a single *threading.Lock* will be employed. This implies that between different decorated functions only one at a time will be executed.
+
+.. decorator:: pebble.sighandler(signals)
 
    Convenience decorator for setting the decorated *function* as signal handler for the specified *signals*.
 
    *signals* can either be a single signal or a list/tuple of signals.
 
-.. function:: waitforthreads(threads, timeout=None)
+.. function:: pebble.waitforthreads(threads, timeout=None)
 
    Waits for one or more *Thread* to exit or until *timeout* expires.
 
@@ -153,7 +193,7 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
 
       Expired *Threads* are not joined by *waitforthreads*.
 
-.. function:: waitforqueues(queues, timeout=None)
+.. function:: pebble.waitforqueues(queues, timeout=None)
 
    Waits for one or more *Queue* to be ready or until *timeout* expires.
 
@@ -162,7 +202,7 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
 
    The function returns a list containing the ready *Queues*.
 
-.. exception:: ProcessExpired
+.. exception:: pebble.ProcessExpired
 
    Raised by *Future.result()* functions if the related process died unexpectedly during the execution.
 
@@ -225,33 +265,82 @@ Quite often developers need to integrate in their projects third party code whic
 Pools
 +++++
 
-The ProcessPool has been designed to support task timeouts and critical errors. If a task reaches its timeout, the worker will be interrupted immediately. Abrupt interruptions of the workers are dealt trasparently.
+The *ProcessPool* has been designed to support task timeouts and critical errors. If a task reaches its timeout, the worker will be interrupted immediately. Abrupt interruptions of the workers are dealt trasparently.
+
+The *map* function returns a *Future* object to better control its execution. When the first result is ready, the *result* function will return an iterator. The iterator can be used to retrieve the results no matter their outcome.
 
 ::
 
-    from pebble import ProcessPool
-    from concurrent.futures import Timeouterror
+    from concurrent.futures import TimeoutError
+    from pebble import ProcessPool, ProcessExpired
 
-    def function(foo, bar=0):
-    	return foo + bar
-
-    elements = list(range(1000))
+    def function(n):
+        return n
 
     with ProcessPool() as pool:
-        iterator = pool.map(function, elements, timeout=10)
+        future = pool.map(function, range(100), timeout=10)
+
+        iterator = future.result()
+
         while True:
             try:
-                results = next(iterator)
-                print(results)
+                result = next(iterator)
+            except StopIteration:
+                break
             except TimeoutError as error:
-                print("Function took longer than %d seconds" % error.args[1])
+                print("function took longer than %d seconds" % error.args[1])
             except ProcessExpired as error:
                 print("%s. Exit code: %d" % (error, error.exitcode))
             except Exception as error:
                 print("function raised %s" % error)
                 print(error.traceback)  # Python's traceback of remote process
-            except StopIteration:
-                break
+
+The following example shows how to compute the Fibonacci sequence up to a certain duration after which, all the remaining *Futures* will be cancelled as they would timeout anyway.
+
+::
+
+    from pebble import ProcessPool
+    from concurrent.futures import TimeoutError
+
+    def fibonacci(n):
+        if n == 0: return 0
+        elif n == 1: return 1
+        else: return fibonacci(n - 1) + fibonacci(n - 2)
+
+    with ProcessPool() as pool:
+        future = pool.map(fibonacci, range(50), timeout=10)
+
+        try:
+            for n in future.result():
+                print(n)
+        except TimeoutError:
+            print("TimeoutError: aborting remaining computations")
+            future.cancel()
+
+To compute large collections of elements without incurring in IPC performance limitations it is possible to use the *chunksize* parameter of the *map* function.
+
+::
+
+    from pebble import ProcessPool
+    from multiprocessing import cpu_count
+    from concurrent.futures import TimeoutError
+
+    def function(n):
+        return n
+
+    elements = list(range(1000000))
+
+    cpus = cpu_count()
+    size = len(elements)
+    chunksize = size / cpus
+    # the timeout will be assigned to each chunk
+    # therefore, we need to consider its size
+    timeout = 10 * chunksize
+
+    with ProcessPool(max_workers=cpus) as pool:
+        future = pool.map(function, elements, chunksize=chunksize, timeout=timeout)
+
+        assert [e for e in future.result()] == elements
 
 Sighandler decorator
 ++++++++++++++++++++
@@ -283,6 +372,8 @@ On Python 3, the tests will cover all the multiprocessing starting methods suppo
 Due to multiprocessing limitations, it is not possible to change the starting method once set. Therefore test frameworks such as nose and pytest which run all the tests in a single process will fail.
 
 To see the tests work, it's enough to test one test file at a time.
+
+.. _concurrent.futures.Future: https://docs.python.org/3/library/concurrent.futures.html#future-objects
 
 .. toctree::
    :maxdepth: 2

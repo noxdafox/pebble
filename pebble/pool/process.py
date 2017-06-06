@@ -16,7 +16,7 @@
 import os
 import time
 
-from itertools import chain, count
+from itertools import count
 from collections import namedtuple
 from signal import SIG_IGN, SIGINT, signal
 from concurrent.futures import CancelledError, TimeoutError
@@ -27,9 +27,10 @@ except ImportError:
         pass
 
 from pebble.pool.channel import ChannelError, channels
-from pebble.pool.base_pool import MapResults, map_function
 from pebble.pool.base_pool import ERROR, RUNNING, SLEEP_UNIT
-from pebble.pool.base_pool import BasePool, Task, TaskPayload, run_initializer
+from pebble.pool.base_pool import BasePool, Task, TaskPayload
+from pebble.pool.base_pool import ProcessMapFuture, MapResults
+from pebble.pool.base_pool import iter_chunks, process_chunk, run_initializer
 from pebble.common import launch_process, stop_process
 from pebble.common import ProcessExpired, ProcessFuture
 from pebble.common import execute, launch_thread, send_result
@@ -75,7 +76,8 @@ class ProcessPool(BasePool):
         *timeout* is an integer, if expires the task will be terminated
         and *Future.result()* will raise *TimeoutError*.
 
-        A *concurrent.futures.Future* object is returned.
+        A *pebble.ProcessFuture* object is returned.
+
         """
         self._check_pool_state()
 
@@ -88,32 +90,45 @@ class ProcessPool(BasePool):
         return future
 
     def map(self, function, *iterables, **kwargs):
-        """Returns an iterator equivalent to map(function, iterables).
+        """Computes the *function* using arguments from
+        each of the iterables. Stops when the shortest iterable is exhausted.
 
         *timeout* is an integer, if expires the task will be terminated
         and the call to next will raise *TimeoutError*.
+        The *timeout* is applied to each chunk of the iterable.
 
         *chunksize* controls the size of the chunks the iterable will
-        be broken into before being passed to the function. If None
-        the size will be controlled by the Pool.
+        be broken into before being passed to the function.
+
+        A *pebble.ProcessFuture* object is returned.
 
         """
         self._check_pool_state()
 
-        iterables = tuple(zip(*iterables))
-        timeout = kwargs.get('timeout', 0)
-        chunksize = kwargs.get('chunksize')
+        timeout = kwargs.get('timeout')
+        chunksize = kwargs.get('chunksize', 1)
 
-        if chunksize is None:
-            chunksize = sum(divmod(len(iterables), self._context.workers * 4))
-        elif chunksize < 1:
+        if chunksize < 1:
             raise ValueError("chunksize must be >= 1")
 
         futures = [self.schedule(
-            map_function, args=(function, chunk), timeout=timeout*len(chunk))
-                   for chunk in zip(*[iter(iterables)] * chunksize)]
+            process_chunk, args=(function, chunk), timeout=timeout)
+                   for chunk in iter_chunks(chunksize, *iterables)]
 
-        return chain(MapResults(futures))
+        map_future = ProcessMapFuture(futures)
+        if not futures:
+            map_future.set_result(MapResults(futures))
+            return map_future
+
+        def done_map(_):
+            if not map_future.done():
+                map_future.set_result(MapResults(futures))
+
+        for future in futures:
+            future.add_done_callback(done_map)
+            setattr(future, 'map_future', map_future)
+
+        return map_future
 
 
 def task_scheduler_loop(pool_manager):

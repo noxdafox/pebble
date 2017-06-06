@@ -15,16 +15,16 @@
 
 import time
 
-from itertools import count
 from traceback import print_exc
 from collections import namedtuple
-from concurrent.futures import TimeoutError
+from itertools import chain, count, islice
+from concurrent.futures import Future, TimeoutError
 try:
     from queue import Queue
 except ImportError:
     from Queue import Queue
 
-from pebble.common import execute, ProcessFuture, SLEEP_UNIT
+from pebble.common import ProcessFuture, execute, SLEEP_UNIT
 
 
 class BasePool(object):
@@ -148,52 +148,91 @@ class Task:
             pass
 
 
-def run_initializer(initializer, initargs):
-    try:
-        initializer(*initargs)
-        return True
-    except Exception:
-        print_exc()
-        return False
+class MapFuture(Future):
+    def __init__(self, futures):
+        super(MapFuture, self).__init__()
+        self._futures = futures
+
+    def cancel(self):
+        """Cancel the future.
+
+        Returns True if any of the elements of the iterables is cancelled.
+        False otherwise.
+        """
+        super(MapFuture, self).cancel()
+
+        return any(tuple(f.cancel() for f in self._futures))
 
 
-def map_function(function, chunk):
-    """Processes a chunk of the iterable passed to map dealing with errors."""
-    return [execute(function, *args) for args in chunk]
+class ProcessMapFuture(ProcessFuture):
+    def __init__(self, futures):
+        super(ProcessMapFuture, self).__init__()
+        self._futures = futures
+
+    def cancel(self):
+        """Cancel the future.
+
+        Returns True if any of the elements of the iterables is cancelled.
+        False otherwise.
+        """
+        super(ProcessMapFuture, self).cancel()
+
+        return any(tuple(f.cancel() for f in self._futures))
 
 
 class MapResults:
-    def __init__(self, futures):
-        self._current = None
-        self._futures = futures
+    def __init__(self, futures, timeout=None):
+        self._timeout = timeout
+        self._results = chain.from_iterable(chunk_result(f) for f in futures)
 
     def __iter__(self):
         return self
 
     def next(self):
-        result = self._next_result()
+        result = next(self._results)
 
         if isinstance(result, Exception):
             raise result
 
         return result
 
-    def _next_result(self):
-        while True:
-            if self._current is None:
-                try:
-                    future = self._futures.pop(0)
-                    self._current = future.result()
-                except IndexError:
-                    raise StopIteration
-
-            try:
-                return self._current.pop(0)
-            except IndexError:
-                self._current = None
-                continue
-
     __next__ = next
+
+
+def iter_chunks(chunksize, *iterables):
+    """Iterates over zipped iterables in chunks."""
+    iterables = iter(zip(*iterables))
+
+    while 1:
+        chunk = tuple(islice(iterables, chunksize))
+
+        if not chunk:
+            return
+
+        yield chunk
+
+
+def process_chunk(function, chunk):
+    """Processes a chunk of the iterable passed to map dealing with errors."""
+    return [execute(function, *args) for args in chunk]
+
+
+def chunk_result(future):
+    """Returns the results of a processed chunk."""
+    try:
+        return future.result()
+    except Exception as error:
+        return (error, )
+
+
+def run_initializer(initializer, initargs):
+    """Runs the Pool initializer dealing with errors."""
+    try:
+        initializer(*initargs)
+        return True
+    except Exception:
+        print_exc()
+        return False
 
 
 # Pool states

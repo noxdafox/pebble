@@ -36,8 +36,9 @@ def error_function():
     raise Exception("BOOM!")
 
 
-def long_function():
+def long_function(value=0):
     time.sleep(1)
+    return value
 
 
 def tid_function():
@@ -105,10 +106,12 @@ class TestThreadPool(unittest.TestCase):
     def test_thread_pool_cancel_callback(self):
         """Thread Pool FutureCancelled is forwarded to callback."""
         with ThreadPool() as pool:
+            pool.schedule(long_function)
             future = pool.schedule(long_function)
             future.add_done_callback(self.callback)
             future.cancel()
         self.event.wait()
+
         self.assertTrue(isinstance(self.exception, CancelledError))
 
     def test_thread_pool_different_thread(self):
@@ -225,13 +228,13 @@ class TestThreadPool(unittest.TestCase):
                                    kwargs={'keyword_argument': 1})
         self.assertEqual(future.result(), 2)
 
-
     def test_thread_pool_map(self):
         """Thread Pool map simple."""
         elements = [1, 2, 3]
 
         with ThreadPool() as pool:
-            generator = pool.map(function, elements)
+            future = pool.map(function, elements)
+            generator = future.result()
             self.assertEqual(list(generator), elements)
 
     def test_thread_pool_map_empty(self):
@@ -239,7 +242,8 @@ class TestThreadPool(unittest.TestCase):
         elements = []
 
         with ThreadPool() as pool:
-            generator = pool.map(function, elements)
+            future = pool.map(function, elements)
+            generator = future.result()
             self.assertEqual(list(generator), elements)
 
     def test_thread_pool_map_single(self):
@@ -247,7 +251,8 @@ class TestThreadPool(unittest.TestCase):
         elements = [0]
 
         with ThreadPool() as pool:
-            generator = pool.map(function, elements)
+            future = pool.map(function, elements)
+            generator = future.result()
             self.assertEqual(list(generator), elements)
 
     def test_thread_pool_map_multi(self):
@@ -255,7 +260,8 @@ class TestThreadPool(unittest.TestCase):
         expected = (2, 4)
 
         with ThreadPool() as pool:
-            generator = pool.map(function, (1, 2, 3), (1, 2))
+            future = pool.map(function, (1, 2, 3), (1, 2))
+            generator = future.result()
             self.assertEqual(tuple(generator), expected)
 
     def test_thread_pool_map_one_chunk(self):
@@ -263,7 +269,8 @@ class TestThreadPool(unittest.TestCase):
         elements = [1, 2, 3]
 
         with ThreadPool() as pool:
-            generator = pool.map(function, elements, chunksize=1)
+            future = pool.map(function, elements, chunksize=1)
+            generator = future.result()
             self.assertEqual(list(generator), elements)
 
     def test_thread_pool_map_zero_chunk(self):
@@ -278,7 +285,8 @@ class TestThreadPool(unittest.TestCase):
         elements = [1, 'a', 3]
 
         with ThreadPool() as pool:
-            generator = pool.map(function, elements)
+            future = pool.map(function, elements)
+            generator = future.result()
             while True:
                 try:
                     next(generator)
@@ -288,3 +296,23 @@ class TestThreadPool(unittest.TestCase):
                     break
 
         self.assertTrue(isinstance(raised, TypeError))
+
+    def test_thread_pool_map_cancel(self):
+        """Thread Pool cancel iteration."""
+        with ThreadPool() as pool:
+            future = pool.map(long_function, range(5))
+            generator = future.result()
+
+            self.assertEqual(next(generator), 0)
+
+            future.cancel()
+
+            # either gets computed or it gets cancelled
+            try:
+                self.assertEqual(next(generator), 1)
+            except CancelledError:
+                pass
+
+            for _ in range(3):
+                with self.assertRaises(CancelledError):
+                    next(generator)

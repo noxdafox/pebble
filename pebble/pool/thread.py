@@ -15,14 +15,15 @@
 
 
 import time
+from itertools import count
 from traceback import format_exc
-from itertools import chain, count
 from concurrent.futures import Future
 
 from pebble.common import launch_thread
-from pebble.pool.base_pool import MapResults, map_function
 from pebble.pool.base_pool import ERROR, RUNNING, SLEEP_UNIT
-from pebble.pool.base_pool import BasePool, Task, TaskPayload, run_initializer
+from pebble.pool.base_pool import MapFuture, MapResults
+from pebble.pool.base_pool import BasePool, Task, TaskPayload
+from pebble.pool.base_pool import iter_chunks, process_chunk, run_initializer
 
 
 class ThreadPool(BasePool):
@@ -81,18 +82,29 @@ class ThreadPool(BasePool):
         """
         self._check_pool_state()
 
-        iterables = tuple(zip(*iterables))
-        chunksize = kwargs.get('chunksize')
+        timeout = kwargs.get('timeout')
+        chunksize = kwargs.get('chunksize', 1)
 
-        if chunksize is None:
-            chunksize = sum(divmod(len(iterables), self._context.workers * 4))
-        elif chunksize < 1:
+        if chunksize < 1:
             raise ValueError("chunksize must be >= 1")
 
-        futures = [self.schedule(map_function, args=(function, chunk))
-                   for chunk in zip(*[iter(iterables)] * chunksize)]
+        futures = [self.schedule(process_chunk, args=(function, chunk))
+                   for chunk in iter_chunks(chunksize, *iterables)]
 
-        return chain(MapResults(futures))
+        map_future = MapFuture(futures)
+        if not futures:
+            map_future.set_result(MapResults(futures))
+            return map_future
+
+        def done_map(_):
+            if not map_future.done():
+                map_future.set_result(MapResults(futures, timeout=timeout))
+
+        for future in futures:
+            future.add_done_callback(done_map)
+            setattr(future, 'map_future', map_future)
+
+        return map_future
 
 
 def pool_manager_loop(pool_manager):

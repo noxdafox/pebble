@@ -236,6 +236,7 @@ Run a function in a separate process and wait for its results.
         return arg + kwarg
 
     future = function(1, kwarg=1)
+
     print(future.result())
 
 Quite often developers need to integrate in their projects third party code which appears to be unstable, to leak memory or to hang. The concurrent function allows to easily take advantage of the isolation offered by processes without the need of handling any multiprocessing primitive.
@@ -243,7 +244,7 @@ Quite often developers need to integrate in their projects third party code whic
 ::
 
     from pebble import concurrent
-    from concurrent.futures import Timeouterror
+    from concurrent.futures import TimeoutError
     from third_party_lib import unstable_function
 
     @concurrent.process(timeout=10)

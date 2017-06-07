@@ -14,8 +14,8 @@
 # along with Pebble.  If not, see <http://www.gnu.org/licenses/>.
 
 import time
+import logging
 
-from traceback import print_exc
 from collections import namedtuple
 from itertools import chain, count, islice
 from concurrent.futures import Future, TimeoutError
@@ -230,8 +230,8 @@ def run_initializer(initializer, initargs):
     try:
         initializer(*initargs)
         return True
-    except Exception:
-        print_exc()
+    except Exception as error:
+        logging.exception(error)
         return False
 
 

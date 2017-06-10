@@ -259,6 +259,21 @@ class TestProcessPool(unittest.TestCase):
         pool.join()
         self.assertFalse(pool.active)
 
+    def test_process_pool_stop_stopped_callback(self):
+        """Process Pool Spawn is stopped in callback."""
+        with ProcessPool() as pool:
+            def stop_pool_callback(_):
+                pool.stop()
+
+            future = pool.schedule(function, args=[1])
+            future.add_done_callback(stop_pool_callback)
+            with self.assertRaises(RuntimeError):
+                for index in range(10):
+                    time.sleep(0.1)
+                    pool.schedule(long_function, args=[index])
+
+        self.assertFalse(pool.active)
+
     # def test_process_pool_stop_large_data(self):
     #     """Process Pool Spawn is stopped if large data is sent on the channel."""
     #     data = "a" * 4098 * 1024

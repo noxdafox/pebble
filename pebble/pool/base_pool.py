@@ -16,6 +16,7 @@
 import time
 import logging
 
+from threading import RLock
 from collections import namedtuple
 from itertools import chain, count, islice
 from concurrent.futures import Future, TimeoutError
@@ -57,7 +58,6 @@ class BasePool(object):
     def stop(self):
         """Stops the pool without performing any pending task."""
         self._context.state = STOPPED
-        self._context.task_queue.put(None)
 
     def join(self, timeout=None):
         """Joins the pool waiting until all workers exited.
@@ -72,6 +72,7 @@ class BasePool(object):
             self.stop()
             self.join()
         else:
+            self._context.task_queue.put(None)
             self._stop_pool()
 
     def _wait_queue_depletion(self, timeout):
@@ -108,13 +109,25 @@ class BasePool(object):
         raise NotImplementedError("Not implemented")
 
 
-class PoolContext:
+class PoolContext(object):
     def __init__(self, max_workers, max_tasks, initializer, initargs):
-        self.state = CREATED
+        self._state = CREATED
+        self._state_mutex = RLock()
+
         self.task_queue = Queue()
         self.workers = max_workers
         self.task_counter = count()
         self.worker_parameters = Worker(max_tasks, initializer, initargs)
+
+    @property
+    def state(self):
+        return self._state
+
+    @state.setter
+    def state(self, state):
+        with self._state_mutex:
+            if self.alive:
+                self._state = state
 
     @property
     def alive(self):

@@ -83,6 +83,8 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
       Waits for all workers to exit, must not be called before calling either *close()*, *stop()* or *kill()*.
       If *timeout* is set and some worker is still running after it expired a TimeoutError will be raised, a timeout of 0 will return immediately.
 
+      The *join* function must be called only in the main loop. Calling it in a pebble.ProcessFuture_ callback will result in a deadlock.
+
 .. class:: pebble.ThreadPool(max_workers=1, max_tasks=0, initializer=None, initargs=None)
 
    A ThreadPool allows to schedule jobs into a Pool of Threads which will perform them concurrently.
@@ -130,6 +132,8 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
 
       Waits for all workers to exit, must not be called before calling either *close()*, *stop()* or *kill()*.
       If *timeout* is set and some worker is still running after it expired a TimeoutError will be raised, a timeout of 0 will return immediately.
+
+      The *join* function must be called only in the main loop. Calling it in a concurrent.futures.Future_ callback or in a scheduled function will result in a deadlock.
 
 .. _pebble.ProcessFuture:
 .. class:: pebble.ProcessFuture()

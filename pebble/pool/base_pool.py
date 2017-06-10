@@ -58,7 +58,6 @@ class BasePool(object):
     def stop(self):
         """Stops the pool without performing any pending task."""
         self._context.state = STOPPED
-        self._context.task_queue.put(None)
 
     def join(self, timeout=None):
         """Joins the pool waiting until all workers exited.
@@ -73,6 +72,7 @@ class BasePool(object):
             self.stop()
             self.join()
         else:
+            self._context.task_queue.put(None)
             self._stop_pool()
 
     def _wait_queue_depletion(self, timeout):

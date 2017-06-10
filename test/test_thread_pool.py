@@ -192,6 +192,31 @@ class TestThreadPool(unittest.TestCase):
         pool.join()
         self.assertFalse(pool.active)
 
+    def test_thread_pool_stop_stopped_function(self):
+        """Thread Pool is stopped in function."""
+        with ThreadPool() as pool:
+            def function():
+                pool.stop()
+
+            pool.schedule(function)
+
+        self.assertFalse(pool.active)
+
+    def test_thread_pool_stop_stopped_callback(self):
+        """Thread Pool is stopped in callback."""
+        with ThreadPool() as pool:
+            def stop_pool_callback(_):
+                pool.stop()
+
+            future = pool.schedule(function, args=[1])
+            future.add_done_callback(stop_pool_callback)
+            with self.assertRaises(RuntimeError):
+                for index in range(10):
+                    time.sleep(0.1)
+                    pool.schedule(long_function, args=[index])
+
+        self.assertFalse(pool.active)
+
     def test_thread_pool_join_workers(self):
         """Thread Pool no worker is running after join."""
         pool = ThreadPool(max_workers=4)

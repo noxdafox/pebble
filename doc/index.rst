@@ -56,7 +56,7 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
 
       *timeout* is an integer or a float. If given, once expired it will force the timed out task to be interrupted and the worker will be restarted. *Future.result()* will raise *TimeoutError*, callbacks will be executed.
 
-   .. function:: map(function, *iterables, chunksize=None, timeout=None)
+   .. function:: map(function, *iterables, chunksize=1, timeout=None)
 
       Concurrently compute the *function* using arguments from each of the iterables.
       Stop when the shortest iterable is exhausted.
@@ -80,7 +80,7 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
 
    .. function:: join(timeout=None)
 
-      Waits for all workers to exit, must not be called before calling either *close()*, *stop()* or *kill()*.
+      Waits for all workers to exit, must not be called before calling either *close()* or *stop()*.
       If *timeout* is set and some worker is still running after it expired a TimeoutError will be raised, a timeout of 0 will return immediately.
 
       The *join* function must be called only in the main loop. Calling it in a pebble.ProcessFuture_ callback will result in a deadlock.
@@ -106,7 +106,7 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
       *function* is the function which is about to be scheduled.
       *args* and *kwargs* will be passed to the function respectively as its arguments and keyword arguments.
 
-   .. function:: map(function, *iterables, chunksize=None)
+   .. function:: map(function, *iterables, chunksize=1)
 
       Concurrently compute the *function* using arguments from each of the iterables.
       Stop when the shortest iterable is exhausted.
@@ -130,45 +130,10 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
 
    .. function:: join(timeout=None)
 
-      Waits for all workers to exit, must not be called before calling either *close()*, *stop()* or *kill()*.
+      Waits for all workers to exit, must not be called before calling either *close()* or *stop()*.
       If *timeout* is set and some worker is still running after it expired a TimeoutError will be raised, a timeout of 0 will return immediately.
 
       The *join* function must be called only in the main loop. Calling it in a concurrent.futures.Future_ callback or in a scheduled function will result in a deadlock.
-
-.. _pebble.ProcessFuture:
-.. class:: pebble.ProcessFuture()
-
-   This class inherits from concurrent.futures.Future_. The sole difference with the parent class is the possibility to cancel running calls.
-
-   .. function:: cancel()
-
-      Cancel a running or enqueued call. If the call has already completed then the method will return False, otherwise the call will be cancelled and the method will return True. If the call is running, the process executing it will be stopped allowing to reclaim its resources.
-
-.. _pebble.MapFuture:
-.. class:: pebble.MapFuture()
-
-   This class inherits from concurrent.futures.Future_. It is returned by the *map* function of a *ThreadPool*.
-
-   .. function:: result()
-
-      Returns an iterator over the results of the *map* function. If a call raises an exception, then that exception will be raised when its value is retrieved from the iterator. The returned iterator raises a concurrent.futures.TimeoutError if __next__() is called and the result isn’t available after timeout seconds from the original call to Executor.map().
-
-   .. function:: cancel()
-
-      Cancel the computation of enqueued element of the iterables passed to the *map* function. If all the elements are already in progress or completed then the method will return False. True is returned otherwise.
-
-.. _pebble.ProcessMapFuture:
-.. class:: pebble.ProcessMapFuture()
-
-   This class inherits from pebble.ProcessFuture_. It is returned by the *map* function of a *ProcessPool*.
-
-   .. function:: result()
-
-      Returns an iterator over the results of the *map* function. If a call raises an exception, then that exception will be raised when its value is retrieved from the iterator.
-
-   .. function:: cancel()
-
-      Cancel the computation of running or enqueued element of the iterables passed to the *map* function. If all the elements are already completed then the method will return False. True is returned otherwise.
 
 .. decorator:: pebble.synchronized([lock])
 
@@ -205,6 +170,41 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
    If *timeout* is not None the function will block for the specified amount of seconds returning an empty list if no *Queue* is ready.
 
    The function returns a list containing the ready *Queues*.
+
+.. _pebble.ProcessFuture:
+.. class:: pebble.ProcessFuture()
+
+   This class inherits from concurrent.futures.Future_. The sole difference with the parent class is the possibility to cancel running calls.
+
+   .. function:: cancel()
+
+      Cancel a running or enqueued call. If the call has already completed then the method will return False, otherwise the call will be cancelled and the method will return True. If the call is running, the process executing it will be stopped allowing to reclaim its resources.
+
+.. _pebble.MapFuture:
+.. class:: pebble.MapFuture()
+
+   This class inherits from concurrent.futures.Future_. It is returned by the *map* function of a *ThreadPool*.
+
+   .. function:: result()
+
+      Returns an iterator over the results of the *map* function. If a call raises an exception, then that exception will be raised when its value is retrieved from the iterator. The returned iterator raises a concurrent.futures.TimeoutError if __next__() is called and the result isn’t available after timeout seconds from the original call to Executor.map().
+
+   .. function:: cancel()
+
+      Cancel the computation of enqueued element of the iterables passed to the *map* function. If all the elements are already in progress or completed then the method will return False. True is returned otherwise.
+
+.. _pebble.ProcessMapFuture:
+.. class:: pebble.ProcessMapFuture()
+
+   This class inherits from pebble.ProcessFuture_. It is returned by the *map* function of a *ProcessPool*.
+
+   .. function:: result()
+
+      Returns an iterator over the results of the *map* function. If a call raises an exception, then that exception will be raised when its value is retrieved from the iterator.
+
+   .. function:: cancel()
+
+      Cancel the computation of running or enqueued element of the iterables passed to the *map* function. If all the elements are already completed then the method will return False. True is returned otherwise.
 
 .. exception:: pebble.ProcessExpired
 
@@ -300,7 +300,7 @@ The *map* function returns a *Future* object to better control its execution. Wh
                 print("function raised %s" % error)
                 print(error.traceback)  # Python's traceback of remote process
 
-The following example shows how to compute the Fibonacci sequence up to a certain duration after which, all the remaining *Futures* will be cancelled as they would timeout anyway.
+The following example shows how to compute the Fibonacci sequence up to a certain duration after which, all the remaining computations will be cancelled as they would timeout anyway.
 
 ::
 
@@ -322,7 +322,7 @@ The following example shows how to compute the Fibonacci sequence up to a certai
             print("TimeoutError: aborting remaining computations")
             future.cancel()
 
-To compute large collections of elements without incurring in IPC performance limitations it is possible to use the *chunksize* parameter of the *map* function.
+To compute large collections of elements without incurring in IPC performance limitations, it is possible to use the *chunksize* parameter of the *map* function.
 
 ::
 
@@ -345,7 +345,7 @@ To compute large collections of elements without incurring in IPC performance li
     with ProcessPool(max_workers=cpus) as pool:
         future = pool.map(function, elements, chunksize=chunksize, timeout=timeout)
 
-        assert [e for e in future.result()] == elements
+        assert list(future.result()) == elements
 
 Sighandler decorator
 ++++++++++++++++++++

@@ -18,7 +18,7 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
 
    Runs the decorated function in a concurrent process, taking care of the results and error management.
 
-   The decorated function returns a pebble.ProcessFuture_ object.
+   The decorated function will a pebble.ProcessFuture_ object.
 
    If *timeout* is set, the process will be stopped once expired and the future object will raise a *concurrent.futures.TimeoutError* exception.
 
@@ -26,7 +26,7 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
 
    Runs the decorated function in a concurrent thread, taking care of the results and error management.
 
-   The decorated function returns a concurrent.futures.Future_ object.
+   The decorated function will a concurrent.futures.Future_ object.
 
 
 `Pebble Module`
@@ -37,7 +37,7 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
    A Pool allows to schedule jobs into a Pool of Processes which will perform them concurrently.
    Process pools work as well as a *context manager*.
 
-   *max_workers* is an integer representing the amount of desired process workers managed by the pool. If *max_tasks* is a number greater than zero each worker will be restarted after performing an equal amount of tasks.
+   *max_workers* is an integer representing the amount of desired process workers managed by the pool. If *max_tasks* is a number greater than zero, each worker will be restarted after performing an equal amount of tasks.
    *initializer* must be callable, if passed, it will be called every time a worker is started, receiving *initargs* as arguments.
 
    .. data:: active
@@ -61,10 +61,10 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
       Concurrently compute the *function* using arguments from each of the iterables.
       Stop when the shortest iterable is exhausted.
 
-      *chunksize* controls the size of the chunks the iterable will be broken into before being passed to the function.
+      *chunksize* controls the size of the chunks the iterables will be broken into before being passed to the function.
 
-      *timeout* is an integer or a float. If given, it will be assigned to every element or chunk of the iterables.
-      If the computation of the given element or chunk will last longer than the given *timeout*, its execution will be terminated and iterating over its result will raise *TimeoutError*.
+      *timeout* is an integer or a float. If given, it will be assigned to chunk of the iterables.
+      If the computation of the given chunk will last longer than *timeout*, its execution will be terminated and iterating over its result will raise *TimeoutError*.
 
       A pebble.ProcessMapFuture_ object is returned. Its *result* method will return an iterable containing the results of the computation in the same order as they were given.
 
@@ -81,7 +81,7 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
    .. function:: join(timeout=None)
 
       Waits for all workers to exit, must not be called before calling either *close()* or *stop()*.
-      If *timeout* is set and some worker is still running after it expired a TimeoutError will be raised, a timeout of 0 will return immediately.
+      If *timeout* is set and some worker is still running after it expired, a TimeoutError will be raised.
 
       The *join* function must be called only in the main loop. Calling it in a pebble.ProcessFuture_ callback will result in a deadlock.
 
@@ -90,7 +90,7 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
    A ThreadPool allows to schedule jobs into a Pool of Threads which will perform them concurrently.
    Thread pools work as well as a *context manager*.
 
-   *max_workers* is an integer representing the amount of desired thread workers managed by the pool. If *max_tasks* is a number greater than zero each worker will be restarted after performing an equal amount of tasks.
+   *max_workers* is an integer representing the amount of desired process workers managed by the pool. If *max_tasks* is a number greater than zero, each worker will be restarted after performing an equal amount of tasks.
    *initializer* must be callable, if passed, it will be called every time a worker is started, receiving *initargs* as arguments.
 
    .. data:: active
@@ -111,10 +111,10 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
       Concurrently compute the *function* using arguments from each of the iterables.
       Stop when the shortest iterable is exhausted.
 
-      *chunksize* controls the size of the chunks the iterable will be broken into before being passed to the function.
+      *chunksize* controls the size of the chunks the iterables will be broken into before being passed to the function.
 
-      *timeout* is an integer or a float. If given, it will be assigned to every element or chunk of the iterables.
-      If the computation of the given element or chunk will last longer than the given *timeout*, iterating over its result will raise *TimeoutError*.
+      *timeout* is an integer or a float. If given, it will be assigned to every chunk of the iterables.
+      If the computation of the given chunk will last longer than *timeout*, iterating over its result will raise *TimeoutError*.
 
       A pebble.MapFuture_ object is returned. Its *result* method will return an iterable containing the results of the computation in the same order as they were given.
 
@@ -131,9 +131,9 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
    .. function:: join(timeout=None)
 
       Waits for all workers to exit, must not be called before calling either *close()* or *stop()*.
-      If *timeout* is set and some worker is still running after it expired a TimeoutError will be raised, a timeout of 0 will return immediately.
+      If *timeout* is set and some worker is still running after it expired, a TimeoutError will be raised.
 
-      The *join* function must be called only in the main loop. Calling it in a concurrent.futures.Future_ callback or in a scheduled function will result in a deadlock.
+      The *join* function must be called only in the main loop. Calling it in a pebble.ProcessFuture_ callback will result in a deadlock.
 
 .. decorator:: pebble.synchronized([lock])
 
@@ -141,7 +141,7 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
 
    The *synchronized* decorator accepts as optional parameter a *Lock*, *RLock* or *Semaphore* from *threading* and *multiprocessing* modules.
 
-   If no synchronization object is given, a single *threading.Lock* will be employed. This implies that between different decorated functions only one at a time will be executed.
+   If no synchronization object is given, a *threading.Lock* will be employed. This implies that between different decorated functions only one at a time will be executed.
 
 .. decorator:: pebble.sighandler(signals)
 
@@ -187,7 +187,7 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
 
    .. function:: result()
 
-      Returns an iterator over the results of the *map* function. If a call raises an exception, then that exception will be raised when its value is retrieved from the iterator. The returned iterator raises a concurrent.futures.TimeoutError if __next__() is called and the result isn’t available after timeout seconds from the original call to Executor.map().
+      Returns an iterator over the results of the *map* function. If a call raises an exception, then that exception will be raised when its value is retrieved from the iterator. The returned iterator raises a concurrent.futures.TimeoutError if __next__() is called and the result isn’t available after timeout seconds from the original call to Pool.map().
 
    .. function:: cancel()
 
@@ -200,7 +200,7 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
 
    .. function:: result()
 
-      Returns an iterator over the results of the *map* function. If a call raises an exception, then that exception will be raised when its value is retrieved from the iterator.
+      Returns an iterator over the results of the *map* function. If a call raises an exception, then that exception will be raised when its value is retrieved from the iterator. The returned iterator raises a concurrent.futures.TimeoutError if __next__() is called and the result isn’t available after timeout seconds from the original call to Pool.map().
 
    .. function:: cancel()
 

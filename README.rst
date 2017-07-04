@@ -1,6 +1,10 @@
 Pebble
 ======
 
+.. image:: https://travis-ci.org/noxdafox/pebble.svg?branch=master
+   :target: https://travis-ci.org/noxdafox/pebble
+
+
 Pebble provides a neat API to manage threads and processes within an application.
 
 

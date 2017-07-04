@@ -274,15 +274,25 @@ class TestProcessPool(unittest.TestCase):
 
         self.assertFalse(pool.active)
 
-    # def test_process_pool_stop_large_data(self):
-    #     """Process Pool Spawn is stopped if large data is sent on the channel."""
-    #     data = "a" * 4098 * 1024
-    #     pool = ProcessPool(initializer=long_initializer)
-    #     pool.schedule(function, args=[data])
-    #     pool.stop()
-    #     pool.join()
+    def test_process_pool_large_data(self):
+        """Process Pool Spawn large data is sent on the channel."""
+        data = "a" * 1098 * 1024 * 50  # 50 Mb
 
-        # self.assertFalse(pool.active)
+        with ProcessPool() as pool:
+            future = pool.schedule(
+                function, args=[data], kwargs={'keyword_argument': ''})
+
+        self.assertEqual(data, future.result())
+
+    def test_process_pool_stop_large_data(self):
+        """Process Pool Spawn is stopped if large data is sent on the channel."""
+        data = "a" * 1098 * 1024 * 50  # 50 Mb
+        pool = ProcessPool()
+        pool.schedule(function, args=[data])
+        pool.stop()
+        pool.join()
+
+        self.assertFalse(pool.active)
 
     def test_process_pool_join_workers(self):
         """Process Pool Spawn no worker is running after join."""

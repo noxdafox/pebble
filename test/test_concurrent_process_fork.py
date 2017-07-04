@@ -13,7 +13,7 @@ from pebble import concurrent, ProcessExpired
 # set start method
 supported = False
 
-if sys.version_info.major > 2:
+if sys.version_info.major > 2 and sys.version_info.minor > 3:
     methods = multiprocessing.get_all_start_methods()
     if 'fork' in methods:
         try:
@@ -65,7 +65,7 @@ def sigterm_decorated():
     time.sleep(10)
 
 
-class TestProcessConcurrentObj:
+class ProcessConcurrentObj:
     a = 0
 
     def __init__(self):
@@ -93,7 +93,7 @@ class TestProcessConcurrent(unittest.TestCase):
         self.exception = None
         self.event = threading.Event()
         self.event.clear()
-        self.concurrentobj = TestProcessConcurrentObj()
+        self.concurrentobj = ProcessConcurrentObj()
 
     def callback(self, future):
         try:
@@ -116,7 +116,7 @@ class TestProcessConcurrent(unittest.TestCase):
 
     def test_class_method(self):
         """Process Fork decorated classmethods."""
-        future = TestProcessConcurrentObj.clsmethod()
+        future = ProcessConcurrentObj.clsmethod()
         self.assertEqual(future.result(), 0)
 
     def test_instance_method(self):

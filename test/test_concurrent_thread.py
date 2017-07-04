@@ -15,7 +15,7 @@ def error_decorated():
     raise RuntimeError("BOOM!")
 
 
-class TestThreadConcurrentObj:
+class ThreadConcurrentObj:
     a = 0
 
     def __init__(self):
@@ -42,7 +42,7 @@ class TestThreadConcurrent(unittest.TestCase):
         self.exception = None
         self.event = threading.Event()
         self.event.clear()
-        self.concurrentobj = TestThreadConcurrentObj()
+        self.concurrentobj = ThreadConcurrentObj()
 
     def callback(self, future):
         try:
@@ -58,7 +58,7 @@ class TestThreadConcurrent(unittest.TestCase):
 
     def test_class_method(self):
         """Thread  decorated classmethods."""
-        future = TestThreadConcurrentObj.clsmethod()
+        future = ThreadConcurrentObj.clsmethod()
         self.assertEqual(future.result(), 0)
 
     def test_instance_method(self):

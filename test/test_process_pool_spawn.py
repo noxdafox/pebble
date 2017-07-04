@@ -15,7 +15,7 @@ from pebble import ProcessPool, ProcessExpired
 # set start method
 supported = False
 
-if sys.version_info.major > 2:
+if sys.version_info.major > 2 and sys.version_info.minor > 3:
     methods = multiprocessing.get_all_start_methods()
     if 'spawn' in methods:
         try:

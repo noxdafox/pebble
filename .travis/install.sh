@@ -3,7 +3,7 @@
 if [[ $TRAVIS_OS_NAME == 'osx' ]]; then
     python setup.py install
 else
-    sudo apt-get update -qq
-    sudo apt-get install -qq python-setuptools python3-setuptools
+    pip install -U pip
+    pip3 install -U pip3
     python setup.py install
 fi

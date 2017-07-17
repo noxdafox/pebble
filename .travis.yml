@@ -31,8 +31,8 @@ install: |
       source venv/bin/activate;
       python3 setup.py install
   else
-      pip install --upgrade pip
-      pip install --upgrade setuptools
+      sudo pip install --upgrade pip
+      sudo pip install --upgrade setuptools
       python setup.py install
   fi
 script: |

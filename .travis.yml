@@ -1,52 +1,16 @@
-matrix:
-  include:
-    - os: linux
-      sudo: required
-      python: 2.7
-    - os: linux
-      sudo: required
-      python: 3.3
-    - os: linux
-      sudo: required
-      python: 3.4
-    - os: linux
-      sudo: required
-      python: 3.5
-    - os: linux
-      sudo: required
-      python: 3.6
-    - os: linux
-      sudo: required
-      python: pypy
-    - os: osx
-      sudo: required
-      language: generic
-install: |
-  #!/bin/bash
-
-  if [[ $TRAVIS_OS_NAME == 'osx' ]]; then
-      brew update;
-      brew install python3;
-      python3 -m venv venv;
-      source venv/bin/activate;
-      python3 setup.py install
-  else
-      sudo pip install --upgrade pip
-      sudo pip install --upgrade setuptools
-      python setup.py install
-  fi
-script: |
-  #!/bin/bash
-
-  # This script runs the tests singularly to overcome Python 3
-  # multiprocessing Process start methods limitations
-
-  set -e
-
-  for testfile in $(find test/ -name "test_*.py")
-  do
-      py.test $testfile -v
-  done
+language: python
+os:
+  - linux
+  - osx
+python:
+  - "2.7"
+  - "3.3"
+  - "3.4"
+  - "3.5"
+  - "3.6"
+  - "pypy"
+install: ./.travis/install.sh
+script: ./test/run-tests.sh
 branches:
   only:
   - osx

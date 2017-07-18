@@ -1,14 +1,30 @@
 language: python
-os:
-  - linux
-  - osx
-python:
-  - "2.7"
-  - "3.3"
-  - "3.4"
-  - "3.5"
-  - "3.6"
-  - "pypy"
+matrix:
+  include:
+    - os: linux
+      sudo: required
+      python: 2.7
+    - os: linux
+      sudo: required
+      python: 3.3
+    - os: linux
+      sudo: required
+      python: 3.4
+    - os: linux
+      sudo: required
+      python: 3.5
+    - os: linux
+      sudo: required
+      python: 3.6
+    - os: linux
+      sudo: required
+      python: pypy
+    - os: osx
+      language: generic
+      env: TOXENV=py2
+    - os: osx
+      language: generic
+      env: TOXENV=py3
 install: ./.travis/install.sh
 script: ./test/run-tests.sh
 branches:

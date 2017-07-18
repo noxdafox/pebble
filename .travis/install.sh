@@ -2,12 +2,26 @@
 
 if [[ $TRAVIS_OS_NAME == 'osx' ]]; then
     brew update
-    brew install python3
-    virtualenv venv -p python3
+
+    case "${TOXENV}" in
+        py2)
+            brew install python
+            virtualenv venv -p python
+            ;;
+        py3)
+            brew install python3
+            virtualenv venv -p python3
+            ;;
+    esac
+
     source venv/bin/activate
+    pip install --upgrade pip
+    pip install --upgrade setuptools
+    pip install --upgrade pytest
     python setup.py install
 else
     sudo pip install --upgrade pip
     sudo pip install --upgrade setuptools
+    sudo pip install --upgrade pytest
     python setup.py install
 fi

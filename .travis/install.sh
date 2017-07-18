@@ -15,9 +15,9 @@ if [[ $TRAVIS_OS_NAME == 'osx' ]]; then
     esac
 
     source venv/bin/activate
-    pip install --upgrade pip
-    pip install --upgrade setuptools
-    pip install --upgrade pytest
+    sudo pip install --upgrade pip
+    sudo pip install --upgrade setuptools
+    sudo pip install --upgrade pytest
     python setup.py install
 else
     sudo pip install --upgrade pip

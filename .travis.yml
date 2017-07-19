@@ -21,11 +21,23 @@ matrix:
       python: pypy
     - os: osx
       language: generic
-      env: TOXENV=py2
+      before_install:
+        - brew update
+        - brew install python
+        - virtualenv env -p python
+        - source env/bin/activate
     - os: osx
       language: generic
-      env: TOXENV=py3
-install: ./.travis/install.sh
+      before_install:
+        - brew update
+        - brew install python3
+        - virtualenv env -p python3
+        - source env/bin/activate
+install:
+  - sudo pip install --upgrade pip
+  - sudo pip install --upgrade setuptools
+  - sudo pip install --upgrade pytest
+  - python setup.py install
 script: ./test/run-tests.sh
 branches:
   only:

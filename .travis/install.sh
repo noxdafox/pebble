@@ -19,6 +19,9 @@ if [[ $TRAVIS_OS_NAME == 'osx' ]]; then
     sudo pip install --upgrade setuptools
     sudo pip install --upgrade pytest
     python setup.py install
+
+    sudo find / -name "py.test"
+    sudo find / -name "pytest"
 else
     sudo pip install --upgrade pip
     sudo pip install --upgrade setuptools

@@ -22,18 +22,15 @@ matrix:
     - os: osx
       language: generic
       before_install:
-        - brew update
-        - brew install python
         - virtualenv env -p python
-        - source env/bin/activate
     - os: osx
       language: generic
       before_install:
         - brew update
         - brew install python3
         - virtualenv env -p python3
-        - source env/bin/activate
 install:
+  - source env/bin/activate
   - sudo pip install --upgrade pip
   - sudo pip install --upgrade setuptools
   - sudo pip install --upgrade pytest

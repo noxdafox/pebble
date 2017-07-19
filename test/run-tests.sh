@@ -7,5 +7,5 @@ set -e
 
 for testfile in $(find test/ -name "test_*.py")
 do
-    py.test $testfile -v
+    python -m pytest $testfile -v
 done

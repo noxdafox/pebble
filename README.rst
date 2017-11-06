@@ -1,17 +1,27 @@
 Pebble
 ======
 
-.. image:: https://travis-ci.org/noxdafox/pebble.svg?branch=master
-   :target: https://travis-ci.org/noxdafox/pebble
-
-
 Pebble provides a neat API to manage threads and processes within an application.
 
+:Source: https://github.com/noxdafox/pebble
+:Documentation: https://pebble.readthedocs.io
+:Download: https://pypi.python.org/pypi/pebble
+
+|travis badge| |docs badge|
+
+.. |travis badge| image:: https://travis-ci.org/noxdafox/pebble.svg?branch=master
+   :target: https://travis-ci.org/noxdafox/pebble
+   :alt: Build Status
+.. |docs badge| image:: https://readthedocs.org/projects/pebble/badge/?version=latest
+   :target: https://readthedocs.org/projects/pebble
+   :alt: Documentation Status
 
 Examples
 --------
 
-Run a job in a separate thread and wait for its results::
+Run a job in a separate thread and wait for its results.
+
+.. code:: python
 
     from pebble import concurrent
 
@@ -23,7 +33,9 @@ Run a job in a separate thread and wait for its results::
 
     result = future.result()  # blocks until results are ready
 
-Run a function with a timeout of ten seconds and deal with errors::
+Run a function with a timeout of ten seconds and deal with errors.
+
+.. code:: python
 
     from pebble import concurrent
     from concurrent.futures import TimeoutError
@@ -42,7 +54,9 @@ Run a function with a timeout of ten seconds and deal with errors::
         print("Function raised %s" % error)
         print(error.traceback)  # traceback of the function
 
-Pools support workers restart, timeout for long running tasks and more::
+Pools support workers restart, timeout for long running tasks and more.
+
+.. code:: python
 
     from pebble import ProcessPool
     from concurrent.futures import TimeoutError
@@ -63,7 +77,3 @@ Pools support workers restart, timeout for long running tasks and more::
         for i in range(0, 10):
             future = pool.schedule(function, args=[i], timeout=3)
             future.add_done_callback(task_done)
-
-More examples in the documentation_.
-
-.. _documentation: http://pythonhosted.org/Pebble/

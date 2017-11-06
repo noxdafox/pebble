@@ -17,27 +17,7 @@ class ProcessExpired(OSError):
         self.exitcode = code
 
 
-class ProcessFuture(Future):
-    def cancel(self):
-        """Cancel the future.
-
-        Returns True if the future was cancelled, False otherwise. A future
-        cannot be cancelled if it has already completed.
-        """
-        with self._condition:
-            if self._state == FINISHED:
-                return False
-
-            if self._state in (CANCELLED, CANCELLED_AND_NOTIFIED):
-                return True
-
-            self._state = CANCELLED
-            self._condition.notify_all()
-
-        self._invoke_callbacks()
-
-        return True
-
+class PebbleFuture(Future):
     # Same as base class, removed logline
     def set_running_or_notify_cancel(self):
         """Mark the future as running or process any cancel notifications.
@@ -74,6 +54,28 @@ class ProcessFuture(Future):
                 return True
             else:
                 raise RuntimeError('Future in unexpected state')
+
+
+class ProcessFuture(PebbleFuture):
+    def cancel(self):
+        """Cancel the future.
+
+        Returns True if the future was cancelled, False otherwise. A future
+        cannot be cancelled if it has already completed.
+        """
+        with self._condition:
+            if self._state == FINISHED:
+                return False
+
+            if self._state in (CANCELLED, CANCELLED_AND_NOTIFIED):
+                return True
+
+            self._state = CANCELLED
+            self._condition.notify_all()
+
+        self._invoke_callbacks()
+
+        return True
 
 
 def launch_thread(function, *args, **kwargs):

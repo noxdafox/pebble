@@ -19,13 +19,13 @@ import logging
 from threading import RLock
 from collections import namedtuple
 from itertools import chain, count, islice
-from concurrent.futures import Future, TimeoutError
+from concurrent.futures import TimeoutError
 try:
     from queue import Queue
 except ImportError:
     from Queue import Queue
 
-from pebble.common import ProcessFuture, execute, SLEEP_UNIT
+from pebble.common import PebbleFuture, ProcessFuture, execute, SLEEP_UNIT
 
 
 class BasePool(object):
@@ -161,7 +161,7 @@ class Task:
             pass
 
 
-class MapFuture(Future):
+class MapFuture(PebbleFuture):
     def __init__(self, futures):
         super(MapFuture, self).__init__()
         self._futures = futures

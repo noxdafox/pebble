@@ -17,6 +17,7 @@
 import time
 from itertools import count
 from traceback import format_exc
+from multiprocessing import cpu_count
 from concurrent.futures import Future
 
 from pebble.common import launch_thread
@@ -38,7 +39,7 @@ class ThreadPool(BasePool):
     every time a worker is started, receiving initargs as arguments.
 
     """
-    def __init__(self, max_workers=1, max_tasks=0,
+    def __init__(self, max_workers=cpu_count(), max_tasks=0,
                  initializer=None, initargs=()):
         super(ThreadPool, self).__init__(
             max_workers, max_tasks, initializer, initargs)

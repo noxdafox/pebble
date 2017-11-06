@@ -15,8 +15,8 @@
 
 
 import os
+import select
 
-from select import select
 from contextlib import contextmanager
 from multiprocessing import RLock, Pipe
 
@@ -41,7 +41,13 @@ class Channel(object):
 
     def _make_poll_method(self):
         def unix_poll(timeout=None):
-            return bool(select([self.reader], [], [], timeout)[0])
+            try:
+                return bool(select.select([self.reader], [], [], timeout)[0])
+            except select.error as err:
+                error = OSError(err.args[1])
+                error.errno = err.args[0]
+
+                raise error
 
         def windows_poll(timeout=None):
             return self.reader.poll(timeout)

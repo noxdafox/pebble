@@ -32,7 +32,7 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
 `Pebble Module`
 ---------------
 
-.. class:: pebble.ProcessPool(max_workers=1, max_tasks=0, initializer=None, initargs=None)
+.. class:: pebble.ProcessPool(max_workers=multiprocessing.cpu_count(), max_tasks=0, initializer=None, initargs=None)
 
    A Pool allows to schedule jobs into a Pool of Processes which will perform them concurrently.
    Process pools work as well as a *context manager*.
@@ -85,7 +85,7 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
 
       The *join* function must be called only in the main loop. Calling it in a pebble.ProcessFuture_ callback will result in a deadlock.
 
-.. class:: pebble.ThreadPool(max_workers=1, max_tasks=0, initializer=None, initargs=None)
+.. class:: pebble.ThreadPool(max_workers=multiprocessing.cpu_count(), max_tasks=0, initializer=None, initargs=None)
 
    A ThreadPool allows to schedule jobs into a Pool of Threads which will perform them concurrently.
    Thread pools work as well as a *context manager*.

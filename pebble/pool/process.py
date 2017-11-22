@@ -19,6 +19,7 @@ import time
 from itertools import count
 from collections import namedtuple
 from multiprocessing import cpu_count
+from multiprocessing.pool import RemoteTraceback
 from signal import SIG_IGN, SIGINT, signal
 from concurrent.futures import CancelledError, TimeoutError
 try:
@@ -277,6 +278,8 @@ class TaskManager:
             if task.future.cancelled():
                 task.set_running_or_notify_cancel()
             elif isinstance(result, BaseException):
+                if hasattr(result, 'traceback'):
+                    result.__cause__ = RemoteTraceback(result.traceback)
                 task.future.set_exception(result)
             else:
                 task.future.set_result(result)

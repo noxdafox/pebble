@@ -19,7 +19,6 @@ import time
 from itertools import count
 from collections import namedtuple
 from multiprocessing import cpu_count
-from multiprocessing.pool import RemoteTraceback
 from signal import SIG_IGN, SIGINT, signal
 from concurrent.futures import CancelledError, TimeoutError
 try:
@@ -247,6 +246,17 @@ class PoolManager:
             return task_worker_lookup(running_tasks, worker_id)
         else:
             raise BrokenProcessPool("All workers expired")
+
+
+class RemoteTraceback(Exception):
+    """Hack to embed stringification of remote traceback in local traceback
+    Copied from multiprocessing.pool in Python >=3.4
+    """
+    def __init__(self, tb):
+        self.tb = tb
+
+    def __str__(self):
+        return self.tb
 
 
 class TaskManager:

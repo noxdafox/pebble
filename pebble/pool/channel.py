@@ -43,7 +43,9 @@ class Channel(object):
         def unix_poll(timeout=None):
             try:
                 return bool(select.select([self.reader], [], [], timeout)[0])
-            except select.error as err:
+            except OSError:
+                raise
+            except select.error as err:  # Python 2
                 error = OSError(err.args[1])
                 error.errno = err.args[0]
 

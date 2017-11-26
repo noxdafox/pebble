@@ -248,6 +248,17 @@ class PoolManager:
             raise BrokenProcessPool("All workers expired")
 
 
+class RemoteTraceback(Exception):
+    """Hack to embed stringification of remote traceback in local traceback
+    Copied from multiprocessing.pool in Python >=3.4
+    """
+    def __init__(self, tb):
+        self.tb = tb
+
+    def __str__(self):
+        return self.tb
+
+
 class TaskManager:
     """Manages the tasks flow within the Pool.
 
@@ -277,6 +288,8 @@ class TaskManager:
             if task.future.cancelled():
                 task.set_running_or_notify_cancel()
             elif isinstance(result, BaseException):
+                if hasattr(result, 'traceback'):
+                    result.__cause__ = RemoteTraceback(result.traceback)
                 task.future.set_exception(result)
             else:
                 task.future.set_result(result)

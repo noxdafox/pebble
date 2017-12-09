@@ -431,7 +431,7 @@ class TestProcessPool(unittest.TestCase):
         with ProcessPool(max_workers=1) as pool:
             # it takes 0.5s to process a chunk
             future = pool.map(
-                long_function, elements, chunksize=5, timeout=0.6)
+                long_function, elements, chunksize=5, timeout=0.8)
             generator = future.result()
             self.assertEqual(list(generator), elements)
 

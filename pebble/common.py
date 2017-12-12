@@ -91,20 +91,20 @@ class RemoteTraceback(Exception):
         return self.traceback
 
 
-class RemoteException:
+class RemoteException(object):
     """Pickling wrapper for exceptions in remote process."""
     def __init__(self, exception, traceback):
         self.exception = exception
         self.traceback = traceback
 
     def __reduce__(self):
-        return self.rebuild_exception, (self.exception, self.traceback)
+        return rebuild_exception, (self.exception, self.traceback)
 
-    @staticmethod
-    def rebuild_exception(exception, traceback):
-        exception.__cause__ = RemoteTraceback(traceback)
 
-        return exception
+def rebuild_exception(exception, traceback):
+    exception.__cause__ = RemoteTraceback(traceback)
+
+    return exception
 
 
 def launch_thread(function, *args, **kwargs):

@@ -16,15 +16,14 @@
 
 import time
 from itertools import count
-from traceback import format_exc
 from multiprocessing import cpu_count
 from concurrent.futures import Future
 
-from pebble.common import launch_thread
+from pebble.common import execute, launch_thread
 from pebble.pool.base_pool import ERROR, RUNNING, SLEEP_UNIT
 from pebble.pool.base_pool import MapFuture, MapResults
 from pebble.pool.base_pool import BasePool, Task, TaskPayload
-from pebble.pool.base_pool import iter_chunks, process_chunk, run_initializer
+from pebble.pool.base_pool import iter_chunks, run_initializer
 
 
 class ThreadPool(BasePool):
@@ -187,10 +186,14 @@ def execute_next_task(task):
     task.timestamp = time.time()
     task.set_running_or_notify_cancel()
 
-    try:
-        results = payload.function(*payload.args, **payload.kwargs)
-    except BaseException as error:
-        error.traceback = format_exc()
-        task.future.set_exception(error)
+    result = execute(payload.function, *payload.args, **payload.kwargs)
+
+    if isinstance(result, BaseException):
+        task.future.set_exception(result)
     else:
-        task.future.set_result(results)
+        task.future.set_result(result)
+
+
+def process_chunk(function, chunk):
+    """Processes a chunk of the iterable passed to map dealing with errors."""
+    return [execute(function, *args) for args in chunk]

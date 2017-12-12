@@ -31,7 +31,7 @@ from pebble.pool.channel import ChannelError, channels
 from pebble.pool.base_pool import ERROR, RUNNING, SLEEP_UNIT
 from pebble.pool.base_pool import BasePool, Task, TaskPayload
 from pebble.pool.base_pool import ProcessMapFuture, MapResults
-from pebble.pool.base_pool import iter_chunks, process_chunk, run_initializer
+from pebble.pool.base_pool import iter_chunks, run_initializer
 from pebble.common import launch_process, stop_process
 from pebble.common import ProcessExpired, ProcessFuture
 from pebble.common import process_execute, launch_thread, send_result
@@ -424,6 +424,11 @@ def task_worker_lookup(running_tasks, worker_id):
             return task
 
     raise LookupError("Not found")
+
+
+def process_chunk(function, chunk):
+    """Processes a chunk of the iterable passed to map dealing with errors."""
+    return [process_execute(function, *args) for args in chunk]
 
 
 NoMessage = namedtuple('NoMessage', ())

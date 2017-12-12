@@ -226,11 +226,6 @@ def iter_chunks(chunksize, *iterables):
         yield chunk
 
 
-def process_chunk(function, chunk):
-    """Processes a chunk of the iterable passed to map dealing with errors."""
-    return [process_execute(function, *args) for args in chunk]
-
-
 def chunk_result(future):
     """Returns the results of a processed chunk."""
     try:

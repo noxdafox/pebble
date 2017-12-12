@@ -34,7 +34,7 @@ from pebble.pool.base_pool import ProcessMapFuture, MapResults
 from pebble.pool.base_pool import iter_chunks, process_chunk, run_initializer
 from pebble.common import launch_process, stop_process
 from pebble.common import ProcessExpired, ProcessFuture
-from pebble.common import execute, launch_thread, send_result
+from pebble.common import process_execute, launch_thread, send_result
 
 
 class ProcessPool(BasePool):
@@ -248,17 +248,6 @@ class PoolManager:
             raise BrokenProcessPool("All workers expired")
 
 
-class RemoteTraceback(Exception):
-    """Hack to embed stringification of remote traceback in local traceback
-    Copied from multiprocessing.pool in Python >=3.4
-    """
-    def __init__(self, tb):
-        self.tb = tb
-
-    def __str__(self):
-        return self.tb
-
-
 class TaskManager:
     """Manages the tasks flow within the Pool.
 
@@ -288,8 +277,6 @@ class TaskManager:
             if task.future.cancelled():
                 task.set_running_or_notify_cancel()
             elif isinstance(result, BaseException):
-                if hasattr(result, 'traceback'):
-                    result.__cause__ = RemoteTraceback(result.traceback)
                 task.future.set_exception(result)
             else:
                 task.future.set_result(result)
@@ -395,7 +382,8 @@ def worker_process(params, channel):
     try:
         for task in worker_get_next_task(channel, params.max_tasks):
             payload = task.payload
-            result = execute(payload.function, *payload.args, **payload.kwargs)
+            result = process_execute(
+                payload.function, *payload.args, **payload.kwargs)
             send_result(channel, Result(task.id, result))
     except (EnvironmentError, OSError) as error:
         os._exit(error.errno if error.errno else 1)

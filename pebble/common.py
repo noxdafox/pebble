@@ -78,6 +78,35 @@ class ProcessFuture(PebbleFuture):
         return True
 
 
+class RemoteTraceback(Exception):
+    """Traceback wrapper for exceptions in remote process.
+
+    Exception.__cause__ requires a BaseException subclass.
+
+    """
+    def __init__(self, traceback):
+        self.traceback = traceback
+
+    def __str__(self):
+        return self.traceback
+
+
+class RemoteException:
+    """Pickling wrapper for exceptions in remote process."""
+    def __init__(self, exception, traceback):
+        self.exception = exception
+        self.traceback = traceback
+
+    def __reduce__(self):
+        return self.rebuild_exception, (self.exception, self.traceback)
+
+    @staticmethod
+    def rebuild_exception(exception, traceback):
+        exception.__cause__ = RemoteTraceback(traceback)
+
+        return exception
+
+
 def launch_thread(function, *args, **kwargs):
     thread = Thread(target=function, args=args, kwargs=kwargs)
     thread.daemon = True
@@ -119,13 +148,22 @@ def execute(function, *args, **kwargs):
         return error
 
 
+def process_execute(function, *args, **kwargs):
+    """Runs the given function returning its results or exception."""
+    try:
+        return function(*args, **kwargs)
+    except Exception as error:
+        error.traceback = format_exc()
+        return RemoteException(error, error.traceback)
+
+
 def send_result(pipe, data):
-    """Send result handling communication errors."""
+    """Send result handling pickling and communication errors."""
     try:
         pipe.send(data)
     except TypeError as error:
         error.traceback = format_exc()
-        pipe.send(error)
+        pipe.send(RemoteException(error, error.traceback))
 
 
 SLEEP_UNIT = 0.1

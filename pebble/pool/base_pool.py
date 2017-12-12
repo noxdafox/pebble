@@ -25,7 +25,8 @@ try:
 except ImportError:
     from Queue import Queue
 
-from pebble.common import PebbleFuture, ProcessFuture, execute, SLEEP_UNIT
+from pebble.common import PebbleFuture, ProcessFuture
+from pebble.common import process_execute, SLEEP_UNIT
 
 
 class BasePool(object):
@@ -227,7 +228,7 @@ def iter_chunks(chunksize, *iterables):
 
 def process_chunk(function, chunk):
     """Processes a chunk of the iterable passed to map dealing with errors."""
-    return [execute(function, *args) for args in chunk]
+    return [process_execute(function, *args) for args in chunk]
 
 
 def chunk_result(future):

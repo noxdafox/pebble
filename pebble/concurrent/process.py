@@ -137,7 +137,7 @@ def _get_result(future, pipe, timeout):
 
 
 ################################################################################
-### Spawn process start method handling logic
+# Spawn process start method handling logic
 ################################################################################
 _registered_functions = {}
 

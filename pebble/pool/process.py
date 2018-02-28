@@ -385,7 +385,7 @@ def worker_process(params, channel):
             result = process_execute(
                 payload.function, *payload.args, **payload.kwargs)
             send_result(channel, Result(task.id, result))
-    except (EnvironmentError, OSError) as error:
+    except (EnvironmentError, OSError, RuntimeError) as error:
         os._exit(error.errno if error.errno else 1)
     except EOFError:
         os._exit(0)

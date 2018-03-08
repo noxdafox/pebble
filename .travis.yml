@@ -25,15 +25,16 @@ matrix:
       language: generic
       before_install:
         - brew update
-        - brew install python3
-        - virtualenv env -p python3
+        - brew upgrade python
+        - pip install --upgrade virtualenv
+        - virtualenv env -p python
         - source env/bin/activate
 install:
-  - sudo pip install --upgrade pip
-  - sudo pip install --upgrade setuptools
-  - sudo pip install --upgrade pytest
-  - python setup.py install
+  - pip install --upgrade pip
+  - pip install --upgrade setuptools
+  - pip install --upgrade pytest
+  - pip install .
 script: ./test/run-tests.sh
 branches:
   only:
-  - master
+    - master

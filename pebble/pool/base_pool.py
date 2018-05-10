@@ -95,8 +95,9 @@ class BasePool(object):
             raise RuntimeError('The Pool is not active')
 
     def _update_pool_state(self):
-        if self._context.state == CREATED:
-            self._start_pool()
+        with self._context.state_mutex:
+            if self._context.state == CREATED:
+                self._start_pool()
 
         for loop in self._loops:
             if not loop.is_alive():
@@ -112,7 +113,7 @@ class BasePool(object):
 class PoolContext(object):
     def __init__(self, max_workers, max_tasks, initializer, initargs):
         self._state = CREATED
-        self._state_mutex = RLock()
+        self.state_mutex = RLock()
 
         self.task_queue = Queue()
         self.workers = max_workers
@@ -125,7 +126,7 @@ class PoolContext(object):
 
     @state.setter
     def state(self, state):
-        with self._state_mutex:
+        with self.state_mutex:
             if self.alive:
                 self._state = state
 

@@ -16,19 +16,19 @@ matrix:
     - os: linux
       sudo: required
       python: pypy
-    - os: osx
-      language: generic
-      before_install:
-        - virtualenv env -p python
-        - source env/bin/activate
-    - os: osx
-      language: generic
-      before_install:
-        - brew update
-        - brew upgrade python
-        - pip install --upgrade virtualenv
-        - virtualenv env -p python
-        - source env/bin/activate
+    # - os: osx
+    #   language: generic
+    #   before_install:
+    #     - virtualenv env -p python
+    #     - source env/bin/activate
+    # - os: osx
+    #   language: generic
+    #   before_install:
+    #     - brew update
+    #     - brew upgrade python
+    #     - pip install --upgrade virtualenv
+    #     - virtualenv env -p python
+    #     - source env/bin/activate
 install:
   - pip install --upgrade pip
   - pip install --upgrade setuptools

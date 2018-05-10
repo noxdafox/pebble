@@ -25,8 +25,7 @@ try:
 except ImportError:
     from Queue import Queue
 
-from pebble.common import PebbleFuture, ProcessFuture
-from pebble.common import process_execute, SLEEP_UNIT
+from pebble.common import PebbleFuture, ProcessFuture, SLEEP_UNIT
 
 
 class BasePool(object):

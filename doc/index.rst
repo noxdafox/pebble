@@ -8,7 +8,7 @@ Welcome to Pebble's documentation!
 
 Modern languages should natively support concurrency, threading and synchronization primitives. Their usage should be the most intuitive possible, yet allowing all the required flexibility.
 
-Pebble aims to help managing threads and processes in an easier way. It wraps Python's standard libray threading and multiprocessing objects.
+Pebble aims to help managing threads and processes in an easier way. It wraps Python's standard library threading and multiprocessing objects.
 
 
 `Concurrent Module`

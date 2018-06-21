@@ -13,7 +13,7 @@ Pebble provides a neat API to manage threads and processes within an application
    :target: https://travis-ci.org/noxdafox/pebble
    :alt: Build Status
 .. |docs badge| image:: https://readthedocs.org/projects/pebble/badge/?version=latest
-   :target: https://readthedocs.org/projects/pebble
+   :target: https://pebble.readthedocs.io
    :alt: Documentation Status
 
 Examples

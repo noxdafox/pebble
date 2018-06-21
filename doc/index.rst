@@ -3,8 +3,13 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Welcome to Pebble's documentation!
-==================================
+Pebble
+======
+
+.. only:: html
+
+   :Release: |release|
+   :Date: |today|
 
 Modern languages should natively support concurrency, threading and synchronization primitives. Their usage should be the most intuitive possible, yet allowing all the required flexibility.
 

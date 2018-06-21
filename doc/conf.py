@@ -49,7 +49,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'Pebble'
-copyright = u'2016-2017, Matteo Cafasso'
+copyright = u'2013-2018, Matteo Cafasso'
 author = u'Matteo Cafasso'
 
 # The version info for the project you're documenting, acts as replacement for

@@ -115,14 +115,13 @@ def prepare_threads(new_function):
 
 def wait_threads(threads, lock, timeout):
     timestamp = time()
-    time_left = lambda: timeout - (time() - timestamp)
 
     with lock:
         while not any(map(lambda t: not t.is_alive(), threads)):
             if timeout is None:
                 lock.wait()
-            elif time_left() > 0:
-                lock.wait(time_left())
+            elif timeout - (time() - timestamp) > 0:
+                lock.wait(timeout - (time() - timestamp))
             else:
                 return
 

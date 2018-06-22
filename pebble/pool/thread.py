@@ -21,10 +21,10 @@ from multiprocessing import cpu_count
 from concurrent.futures import Future
 
 from pebble.common import execute, launch_thread
-from pebble.pool.base_pool import ERROR, RUNNING, SLEEP_UNIT
 from pebble.pool.base_pool import MapFuture, MapResults
 from pebble.pool.base_pool import BasePool, Task, TaskPayload
 from pebble.pool.base_pool import iter_chunks, run_initializer
+from pebble.pool.base_pool import CREATED, ERROR, RUNNING, SLEEP_UNIT
 
 
 class ThreadPool(BasePool):
@@ -46,9 +46,13 @@ class ThreadPool(BasePool):
         self._pool_manager = PoolManager(self._context)
 
     def _start_pool(self):
-        self._pool_manager.start()
-        self._loops = (launch_thread(pool_manager_loop, self._pool_manager),)
-        self._context.state = RUNNING
+        with self._context.state_mutex:
+            if self._context.state == CREATED:
+                self._pool_manager.start()
+                self._loops = (launch_thread(pool_manager_loop,
+                                             self._pool_manager),)
+
+                self._context.state = RUNNING
 
     def _stop_pool(self):
         for loop in self._loops:

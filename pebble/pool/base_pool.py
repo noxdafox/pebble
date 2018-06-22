@@ -96,9 +96,8 @@ class BasePool(object):
             raise RuntimeError('The Pool is not active')
 
     def _update_pool_state(self):
-        with self._context.state_mutex:
-            if self._context.state == CREATED:
-                self._start_pool()
+        if self._context.state == CREATED:
+            self._start_pool()
 
         for loop in self._loops:
             if not loop.is_alive():

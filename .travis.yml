@@ -19,7 +19,10 @@ matrix:
       python: 3.7      
     - os: linux
       sudo: required
-      python: pypy
+      python: &pypy2 pypy2.7-6.0
+    - os: linux
+      sudo: required
+      python: &pypy3 pypy3.5-6.0      
     # - os: osx
     #   language: generic
     #   before_install:

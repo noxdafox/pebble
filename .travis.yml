@@ -15,6 +15,9 @@ matrix:
       python: 3.6
     - os: linux
       sudo: required
+      python: 3.7      
+    - os: linux
+      sudo: required
       python: pypy
     # - os: osx
     #   language: generic

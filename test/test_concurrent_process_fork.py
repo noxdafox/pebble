@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import pickle
 import signal
 import unittest
 import threading
@@ -158,12 +159,8 @@ class TestProcessConcurrent(unittest.TestCase):
     def test_pickling_error_decorated(self):
         """Process Fork pickling errors are raised by future.result."""
         future = pickling_error_decorated()
-        try:
-            with self.assertRaises(TypeError):
-                future.result()
-        except ProcessExpired:
-            # on PyPy and Python 3.3, Pickle errors seems to crash the process
-            return
+        with self.assertRaises((pickle.PicklingError, TypeError)):
+            future.result()
 
     def test_timeout_decorated(self):
         """Process Fork raises TimeoutError if so."""

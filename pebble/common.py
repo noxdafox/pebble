@@ -17,6 +17,7 @@
 from __future__ import absolute_import
 
 import os
+import pickle
 import signal
 
 from threading import Thread
@@ -177,7 +178,7 @@ def send_result(pipe, data):
     """Send result handling pickling and communication errors."""
     try:
         pipe.send(data)
-    except TypeError as error:
+    except (pickle.PicklingError, TypeError) as error:
         error.traceback = format_exc()
         pipe.send(RemoteException(error, error.traceback))
 

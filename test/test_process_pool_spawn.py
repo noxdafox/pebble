@@ -164,7 +164,7 @@ class TestProcessPool(unittest.TestCase):
         self.assertTrue(isinstance(self.exception, CancelledError))
 
     def test_process_pool_different_process(self):
-        """Process Pool Spawn multiple futures are handled by different processes."""
+        """Process Pool Spawn futures are handled by different processes."""
         futures = []
         with ProcessPool(max_workers=2) as pool:
             for _ in range(0, 5):
@@ -208,7 +208,7 @@ class TestProcessPool(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             with ProcessPool(initializer=broken_initializer) as pool:
                 pool.active
-                time.sleep(1)
+                time.sleep(2)
                 pool.schedule(function)
 
     def test_process_pool_running(self):
@@ -285,7 +285,7 @@ class TestProcessPool(unittest.TestCase):
         self.assertEqual(data, future.result())
 
     def test_process_pool_stop_large_data(self):
-        """Process Pool Spawn is stopped if large data is sent on the channel."""
+        """Process Pool Spawn stopped if large data is sent on the channel."""
         data = "a" * 1098 * 1024 * 50  # 50 Mb
         pool = ProcessPool(max_workers=1)
         pool.schedule(function, args=[data])

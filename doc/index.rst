@@ -352,6 +352,37 @@ To compute large collections of elements without incurring in IPC performance li
 
         assert list(future.result()) == elements
 
+Control process resources usage
+*******************************
+
+By combining the *resource* module and the *ProcessPool* initializer function, it is possible to control the amount of resources each process can consume.
+
+In the following example, the memory consumption of each worker process is limited to 1 Kb.
+
+::
+
+    import resource
+    from pebble import ProcessPool
+
+    MAX_MEM = 1024
+
+    def initializer(limit):
+        """Set maximum amount of memory each worker process can allocate."""
+        soft, hard = resource.getrlimit(resource.RLIMIT_AS)
+        resource.setrlimit(resource.RLIMIT_AS, (limit, hard))
+
+    def function():
+        """This function tries to allocate 1Mb worth of string."""
+        string = ''
+
+        for _ in range(1024):
+            string += 1024 * 'A'
+
+    pool = ProcessPool(initializer=initializer, initargs=(MAX_MEM,))
+    future = pool.schedule(function)
+
+    assert isinstance(future.exception(), MemoryError)
+
 Sighandler decorator
 ++++++++++++++++++++
 
@@ -379,9 +410,9 @@ Running the tests
 
 On Python 3, the tests will cover all the multiprocessing starting methods supported by the platform.
 
-Due to multiprocessing limitations, it is not possible to change the starting method once set. Therefore test frameworks such as nose and pytest which run all the tests in a single process will fail.
+Due to multiprocessing limitations, it is not possible to change the starting method once set. Therefore, test frameworks such as nose and pytest which run all the tests in a single process will fail.
 
-To see the tests work, it's enough to test one test file at a time.
+Please refer to the `test/run-test.sh` bash script to see how to run the tests.
 
 .. _concurrent.futures.Future: https://docs.python.org/3/library/concurrent.futures.html#future-objects
 

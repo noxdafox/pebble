@@ -21,7 +21,7 @@ from concurrent.futures import Future
 from pebble.common import launch_thread
 
 
-def thread(function):
+def thread(function, name=None):
     """Runs the decorated function within a concurrent thread,
     taking care of the result and error management.
 
@@ -33,7 +33,7 @@ def thread(function):
     def wrapper(*args, **kwargs):
         future = Future()
 
-        launch_thread(_function_handler, function, args, kwargs, future)
+        launch_thread(_function_handler, name, function, args, kwargs, future)
 
         return future
 

@@ -46,6 +46,7 @@ def process(*args, **kwargs):
 
     """
     timeout = kwargs.get('timeout')
+    name = kwargs.get('name')
 
     # decorator without parameters
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
@@ -54,14 +55,16 @@ def process(*args, **kwargs):
         # decorator with parameters
         if timeout is not None and not isinstance(timeout, (int, float)):
             raise TypeError('Timeout expected to be None or integer or float')
+        if name is not None and not isinstance(name, str):
+            raise TypeError('Name expected to be None or string')
 
         def decorating_function(function):
-            return _process_wrapper(function, timeout)
+            return _process_wrapper(function, timeout, name)
 
         return decorating_function
 
 
-def _process_wrapper(function, timeout):
+def _process_wrapper(function, timeout, name):
     _register_function(function)
 
     @wraps(function)
@@ -76,7 +79,7 @@ def _process_wrapper(function, timeout):
             target = function
 
         worker = launch_process(
-            _function_handler, target, args, kwargs, writer)
+            _function_handler, name, target, args, kwargs, writer)
 
         writer.close()
 

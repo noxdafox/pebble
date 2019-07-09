@@ -79,7 +79,7 @@ def _process_wrapper(function, timeout, name=None):
             target = function
 
         worker = launch_process(
-            _function_handler, name, target, args, kwargs, writer)
+            _function_handler, target, args, kwargs, writer, name=name)
 
         writer.close()
 

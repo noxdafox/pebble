@@ -59,12 +59,12 @@ def process(*args, **kwargs):
             raise TypeError('Name expected to be None or string')
 
         def decorating_function(function):
-            return _process_wrapper(function, timeout, name)
+            return _process_wrapper(function, timeout, name=name)
 
         return decorating_function
 
 
-def _process_wrapper(function, timeout, name):
+def _process_wrapper(function, timeout, name=None):
     _register_function(function)
 
     @wraps(function)

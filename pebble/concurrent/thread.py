@@ -33,7 +33,7 @@ def thread(function, name=None):
     def wrapper(*args, **kwargs):
         future = Future()
 
-        launch_thread(_function_handler, name, function, args, kwargs, future)
+        launch_thread(_function_handler, function, args, kwargs, future, name=name)
 
         return future
 

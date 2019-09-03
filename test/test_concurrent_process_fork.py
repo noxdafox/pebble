@@ -65,6 +65,9 @@ def sigterm_decorated():
     signal.signal(signal.SIGTERM, signal.SIG_IGN)
     time.sleep(10)
 
+@concurrent.process(name='decorator_kwarg')
+def name_keyword_decorated(name='bar'):
+    return (multiprocessing.current_process().name, name)
 
 class ProcessConcurrentObj:
     a = 0
@@ -202,3 +205,10 @@ class TestProcessConcurrent(unittest.TestCase):
         future = sigterm_decorated()
         with self.assertRaises(TimeoutError):
             future.result()
+    
+    def test_name_keyword_decorated_result(self):
+        """ name kwarg is handled  without modifying the function kwargs"""
+        f = name_keyword_decorated(name="function_kwarg")
+        dec_out, fn_out = f.result()
+        self.assertEqual(dec_out, "decorator_kwarg")
+        self.assertEqual(fn_out, "function_kwarg")

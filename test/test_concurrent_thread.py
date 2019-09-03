@@ -15,6 +15,11 @@ def error_decorated():
     raise RuntimeError("BOOM!")
 
 
+@concurrent.thread(name='decorator_kwarg')
+def name_keyword_decorated(name='bar'):
+    return (threading.current_thread().name, name)
+
+
 class ThreadConcurrentObj:
     a = 0
 
@@ -96,3 +101,10 @@ class TestThreadConcurrent(unittest.TestCase):
         self.event.wait(timeout=1)
         self.assertTrue(isinstance(self.exception, RuntimeError),
                         msg=str(self.exception))
+
+    def test_name_keyword_decorated_result(self):
+        """ name kwarg is handled  without modifying the function kwargs"""
+        f = name_keyword_decorated(name="function_kwarg")
+        dec_out, fn_out = f.result()
+        self.assertEqual(dec_out, "decorator_kwarg")
+        self.assertEqual(fn_out, "function_kwarg")

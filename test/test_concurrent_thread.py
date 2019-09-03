@@ -108,13 +108,13 @@ class TestThreadConcurrent(unittest.TestCase):
                         msg=str(self.exception))
 
     def test_name_keyword_argument(self):
-        """ name keyword can be passed to a decorated function process without name """
+        """name keyword can be passed to a decorated function process without name """
         f = name_keyword_argument()
         fn_out = f.result()
         self.assertEqual(fn_out, "function_kwarg")
 
     def test_name_keyword_decorated_result(self):
-        """ name kwarg is handled  without modifying the function kwargs"""
+        """name kwarg is handled  without modifying the function kwargs"""
         f = name_keyword_decorated_and_argument(name="function_kwarg")
         dec_out, fn_out = f.result()
         self.assertEqual(dec_out, "decorator_kwarg")

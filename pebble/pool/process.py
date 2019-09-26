@@ -61,13 +61,12 @@ class ProcessPool(BasePool):
         with self._context.state_mutex:
             if self._context.state == CREATED:
                 self._pool_manager.start()
-                self._loops = (launch_thread(task_scheduler_loop,
+                self._loops = (launch_thread(None, task_scheduler_loop,
                                              self._pool_manager),
-                               launch_thread(pool_manager_loop,
+                               launch_thread(None, pool_manager_loop,
                                              self._pool_manager),
-                               launch_thread(message_manager_loop,
+                               launch_thread(None, message_manager_loop,
                                              self._pool_manager))
-
                 self._context.state = RUNNING
 
     def schedule(self, function, args=(), kwargs={}, timeout=None):
@@ -116,7 +115,7 @@ class ProcessPool(BasePool):
 
         futures = [self.schedule(
             process_chunk, args=(function, chunk), timeout=timeout)
-                   for chunk in iter_chunks(chunksize, *iterables)]
+            for chunk in iter_chunks(chunksize, *iterables)]
 
         map_future = ProcessMapFuture(futures)
         if not futures:
@@ -255,6 +254,7 @@ class TaskManager:
     Tasks are registered, acknowledged and completed.
     Timing out and cancelled tasks are handled as well.
     """
+
     def __init__(self, task_done_callback):
         self.tasks = {}
         self.task_done_callback = task_done_callback
@@ -304,6 +304,7 @@ class WorkerManager:
 
     Maintains the workers active and encapsulates their communication logic.
     """
+
     def __init__(self, workers, worker_parameters):
         self.workers = {}
         self.workers_number = workers
@@ -354,7 +355,7 @@ class WorkerManager:
     def new_worker(self):
         try:
             worker = launch_process(
-                worker_process, self.worker_parameters, self.workers_channel)
+                None, worker_process, self.worker_parameters, self.workers_channel)
             self.workers[worker.pid] = worker
         except (OSError, EnvironmentError) as error:
             raise BrokenProcessPool(error)

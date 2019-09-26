@@ -50,7 +50,7 @@ class ThreadPool(BasePool):
         with self._context.state_mutex:
             if self._context.state == CREATED:
                 self._pool_manager.start()
-                self._loops = (launch_thread(pool_manager_loop,
+                self._loops = (launch_thread(None, pool_manager_loop,
                                              self._pool_manager),)
 
                 self._context.state = RUNNING
@@ -143,7 +143,7 @@ class PoolManager:
 
     def create_workers(self):
         for _ in range(self.context.workers - len(self.workers)):
-            worker = launch_thread(worker_thread, self.context)
+            worker = launch_thread(None, worker_thread, self.context)
 
             self.workers.append(worker)
 

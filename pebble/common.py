@@ -127,8 +127,7 @@ def rebuild_exception(exception, traceback):
     return exception
 
 
-def launch_thread(function, *args, **kwargs):
-    name = kwargs.pop("name", None)
+def launch_thread(name, function, *args, **kwargs):
     thread = Thread(target=function, name=name, args=args, kwargs=kwargs)
     thread.daemon = True
     thread.start()
@@ -136,8 +135,7 @@ def launch_thread(function, *args, **kwargs):
     return thread
 
 
-def launch_process(function, *args, **kwargs):
-    name = kwargs.pop("name", None)
+def launch_process(name, function, *args, **kwargs):
     process = Process(target=function, name=name, args=args, kwargs=kwargs)
     process.daemon = True
     process.start()

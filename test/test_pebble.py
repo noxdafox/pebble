@@ -127,20 +127,20 @@ class TestSigHandler(unittest.TestCase):
 class TestWaitForThreads(unittest.TestCase):
     def test_waitforthreads_single(self):
         """Waitforthreads waits for a single thread."""
-        thread = launch_thread(thread_function, 0.01)
+        thread = launch_thread(None, thread_function, 0.01)
         self.assertEqual(list(waitforthreads([thread]))[0], thread)
 
     def test_waitforthreads_multiple(self):
         """Waitforthreads waits for multiple threads."""
         threads = []
         for _ in range(5):
-            threads.append(launch_thread(thread_function, 0.01))
+            threads.append(launch_thread(None, thread_function, 0.01))
         time.sleep(0.1)
         self.assertEqual(list(waitforthreads(threads)), threads)
 
     def test_waitforthreads_timeout(self):
         """Waitforthreads returns empty list if timeout."""
-        thread = launch_thread(thread_function, 0.1)
+        thread = launch_thread(None, thread_function, 0.1)
         self.assertEqual(list(waitforthreads([thread], timeout=0.01)), [])
 
     def test_waitforthreads_restore(self):
@@ -149,7 +149,7 @@ class TestWaitForThreads(unittest.TestCase):
             expected = threading.get_ident
         else:
             expected = threading._get_ident
-        thread = launch_thread(thread_function, 0)
+        thread = launch_thread(None, thread_function, 0)
         time.sleep(0.01)
         waitforthreads([thread])
         if hasattr(threading, 'get_ident'):
@@ -160,7 +160,7 @@ class TestWaitForThreads(unittest.TestCase):
     def test_waitforthreads_spurious(self):
         """Waitforthreads tolerates spurious wakeups."""
         lock = threading.RLock()
-        thread = launch_thread(spurious_wakeup_function, 0.1, lock)
+        thread = launch_thread(None, spurious_wakeup_function, 0.1, lock)
         self.assertEqual(list(waitforthreads([thread])), [thread])
 
 
@@ -170,24 +170,24 @@ class TestWaitForQueues(unittest.TestCase):
 
     def test_waitforqueues_single(self):
         """Waitforqueues waits for a single queue."""
-        launch_thread(queue_function, self.queues, 0, 0.01)
+        launch_thread(None, queue_function, self.queues, 0, 0.01)
         self.assertEqual(list(waitforqueues(self.queues))[0], self.queues[0])
 
     def test_waitforqueues_multiple(self):
         """Waitforqueues waits for multiple queues."""
         for index in range(3):
-            launch_thread(queue_function, self.queues, index, 0.01)
+            launch_thread(None, queue_function, self.queues, index, 0.01)
         time.sleep(0.1)
         self.assertEqual(list(waitforqueues(self.queues)), self.queues)
 
     def test_waitforqueues_timeout(self):
         """Waitforqueues returns empty list if timeout."""
-        launch_thread(queue_function, self.queues, 0, 0.1)
+        launch_thread(None, queue_function, self.queues, 0, 0.1)
         self.assertEqual(list(waitforqueues(self.queues, timeout=0.01)), [])
 
     def test_waitforqueues_restore(self):
         """Waitforqueues Queue object is restored to original one."""
         expected = sorted(dir(self.queues[0]))
-        launch_thread(queue_function, self.queues, 0, 0)
+        launch_thread(None, queue_function, self.queues, 0, 0)
         waitforqueues(self.queues)
         self.assertEqual(sorted(dir(self.queues[0])), expected)

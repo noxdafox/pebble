@@ -79,13 +79,13 @@ def _process_wrapper(function, timeout, name):
             target = function
 
         worker = launch_process(
-            _function_handler, target, args, kwargs, writer, name=name)
+            name, _function_handler, target, args, kwargs, writer)
 
         writer.close()
 
         future.set_running_or_notify_cancel()
 
-        launch_thread(_worker_handler, future, worker, reader, timeout)
+        launch_thread(name, _worker_handler, future, worker, reader, timeout)
 
         return future
 

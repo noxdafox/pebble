@@ -43,25 +43,28 @@ def process(*args, **kwargs):
     The timeout parameter will set a maximum execution time
     for the decorated function. If the execution exceeds the timeout,
     the process will be stopped and the Future will raise TimeoutError.
-
+    The name parameter will set the process name.
     """
     timeout = kwargs.get('timeout')
+    name = kwargs.get('name')
 
     # decorator without parameters
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
-        return _process_wrapper(args[0], timeout)
+        return _process_wrapper(args[0], timeout, name)
     else:
         # decorator with parameters
         if timeout is not None and not isinstance(timeout, (int, float)):
             raise TypeError('Timeout expected to be None or integer or float')
+        if name is not None and not isinstance(name, str):
+            raise TypeError('Name expected to be None or string')
 
         def decorating_function(function):
-            return _process_wrapper(function, timeout)
+            return _process_wrapper(function, timeout, name)
 
         return decorating_function
 
 
-def _process_wrapper(function, timeout):
+def _process_wrapper(function, timeout, name):
     _register_function(function)
 
     @wraps(function)
@@ -76,13 +79,13 @@ def _process_wrapper(function, timeout):
             target = function
 
         worker = launch_process(
-            _function_handler, target, args, kwargs, writer)
+            name, _function_handler, target, args, kwargs, writer)
 
         writer.close()
 
         future.set_running_or_notify_cancel()
 
-        launch_thread(_worker_handler, future, worker, reader, timeout)
+        launch_thread(name, _worker_handler, future, worker, reader, timeout)
 
         return future
 

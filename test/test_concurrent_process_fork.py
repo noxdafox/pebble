@@ -65,7 +65,18 @@ def sigterm_decorated():
     signal.signal(signal.SIGTERM, signal.SIG_IGN)
     time.sleep(10)
 
+@concurrent.process()
+def name_keyword_argument(name='function_kwarg'):
+    return name
 
+@concurrent.process(name='concurrent_process_name')
+def name_keyword_decorated():
+    return multiprocessing.current_process().name
+
+
+@concurrent.process(name='decorator_kwarg')
+def name_keyword_decorated_and_argument(name='bar'):
+    return (multiprocessing.current_process().name, name)
 class ProcessConcurrentObj:
     a = 0
 
@@ -202,3 +213,25 @@ class TestProcessConcurrent(unittest.TestCase):
         future = sigterm_decorated()
         with self.assertRaises(TimeoutError):
             future.result()
+
+    def test_name_keyword_argument(self):
+        """name keyword can be passed to a decorated function process without name"""
+        f = name_keyword_argument()
+        fn_out = f.result()
+        self.assertEqual(fn_out, "function_kwarg")
+
+    def test_name_keyword_decorated(self):
+        """
+        Check that a simple use case of the name keyword passed to the decorator works
+        """
+        f = name_keyword_decorated()
+        dec_out = f.result()
+        self.assertEqual(dec_out, "concurrent_process_name")
+
+    def test_name_keyword_decorated_result_colision(self):
+        """name kwarg is handled  without modifying the function kwargs"""
+        f = name_keyword_decorated_and_argument(name="function_kwarg")
+        dec_out, fn_out = f.result()
+        self.assertEqual(dec_out, "decorator_kwarg")
+        self.assertEqual(fn_out, "function_kwarg")
+    

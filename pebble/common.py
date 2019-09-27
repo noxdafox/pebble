@@ -29,6 +29,7 @@ from concurrent.futures import Future
 
 class ProcessExpired(OSError):
     """Raised when process dies unexpectedly."""
+
     def __init__(self, msg, code=0):
         super(ProcessExpired, self).__init__(msg)
         self.exitcode = code
@@ -101,6 +102,7 @@ class RemoteTraceback(Exception):
     Exception.__cause__ requires a BaseException subclass.
 
     """
+
     def __init__(self, traceback):
         self.traceback = traceback
 
@@ -110,6 +112,7 @@ class RemoteTraceback(Exception):
 
 class RemoteException(object):
     """Pickling wrapper for exceptions in remote process."""
+
     def __init__(self, exception, traceback):
         self.exception = exception
         self.traceback = traceback
@@ -124,16 +127,16 @@ def rebuild_exception(exception, traceback):
     return exception
 
 
-def launch_thread(function, *args, **kwargs):
-    thread = Thread(target=function, args=args, kwargs=kwargs)
+def launch_thread(name, function, *args, **kwargs):
+    thread = Thread(target=function, name=name, args=args, kwargs=kwargs)
     thread.daemon = True
     thread.start()
 
     return thread
 
 
-def launch_process(function, *args, **kwargs):
-    process = Process(target=function, args=args, kwargs=kwargs)
+def launch_process(name, function, *args, **kwargs):
+    process = Process(target=function, name=name, args=args, kwargs=kwargs)
     process.daemon = True
     process.start()
 

@@ -19,7 +19,7 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
 `Concurrent Module`
 -------------------
 
-.. decorator:: concurrent.process(timeout=None)
+.. decorator:: concurrent.process(timeout=None, name=None)
 
    Runs the decorated function in a concurrent process, taking care of the results and error management.
 
@@ -27,11 +27,15 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
 
    If *timeout* is set, the process will be stopped once expired and the future object will raise a *concurrent.futures.TimeoutError* exception.
 
-.. decorator:: concurrent.thread()
+   The *name* parameter let you define the process name.
+
+.. decorator:: concurrent.thread(name=None)
 
    Runs the decorated function in a concurrent thread, taking care of the results and error management.
 
    The decorated function will a concurrent.futures.Future_ object.
+
+   The *name* parameter let you define the thread name.
 
 
 `Pebble Module`

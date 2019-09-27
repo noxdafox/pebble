@@ -15,6 +15,21 @@ def error_decorated():
     raise RuntimeError("BOOM!")
 
 
+@concurrent.thread()
+def name_keyword_argument(name='function_kwarg'):
+    return name
+
+
+@concurrent.thread(name='concurrent_thread_name')
+def name_keyword_decorated():
+    return threading.current_thread().name
+
+
+@concurrent.thread(name='decorator_kwarg')
+def name_keyword_decorated_and_argument(name='bar'):
+    return (threading.current_thread().name, name)
+
+
 class ThreadConcurrentObj:
     a = 0
 
@@ -96,3 +111,24 @@ class TestThreadConcurrent(unittest.TestCase):
         self.event.wait(timeout=1)
         self.assertTrue(isinstance(self.exception, RuntimeError),
                         msg=str(self.exception))
+
+    def test_name_keyword_argument(self):
+        """name keyword can be passed to a decorated function process without name """
+        f = name_keyword_argument()
+        fn_out = f.result()
+        self.assertEqual(fn_out, "function_kwarg")
+
+    def test_name_keyword_decorated(self):
+        """
+        Check that a simple use case of the name keyword passed to the decorator works
+        """
+        f = name_keyword_decorated()
+        dec_out = f.result()
+        self.assertEqual(dec_out, "concurrent_thread_name")
+
+    def test_name_keyword_decorated_result(self):
+        """name kwarg is handled  without modifying the function kwargs"""
+        f = name_keyword_decorated_and_argument(name="function_kwarg")
+        dec_out, fn_out = f.result()
+        self.assertEqual(dec_out, "decorator_kwarg")
+        self.assertEqual(fn_out, "function_kwarg")

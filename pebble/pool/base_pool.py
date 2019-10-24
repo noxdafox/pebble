@@ -16,6 +16,7 @@
 
 import time
 import logging
+import weakref
 
 from threading import RLock
 from collections import namedtuple
@@ -139,6 +140,7 @@ class PoolContext(object):
 
 class Task:
     def __init__(self, identifier, future, timeout, payload):
+        future.task = weakref.ref(self)
         self.id = identifier
         self.future = future
         self.timeout = timeout

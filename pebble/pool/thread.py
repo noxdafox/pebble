@@ -16,6 +16,7 @@
 
 
 import time
+import threading
 from itertools import count
 from multiprocessing import cpu_count
 from concurrent.futures import Future
@@ -107,6 +108,10 @@ class ThreadPool(BasePool):
 
         return map_future
 
+    def stop_worker(self, worker_id, force=False):
+        """Stops worker (if it's hung for example)."""
+        self._pool_manager.stop_worker(worker_id, force)
+
 
 def pool_manager_loop(pool_manager):
     context = pool_manager.context
@@ -118,16 +123,16 @@ def pool_manager_loop(pool_manager):
 
 class PoolManager:
     def __init__(self, context):
-        self.workers = []
+        self.workers = {}
         self.context = context
 
     def start(self):
         self.create_workers()
 
     def stop(self):
-        for worker in self.workers:
+        for worker in self.workers.values():
             self.context.task_queue.put(None)
-        for worker in tuple(self.workers):
+        for worker in tuple(self.workers.values()):
             self.join_worker(worker)
 
     def update_status(self):
@@ -139,17 +144,22 @@ class PoolManager:
         self.create_workers()
 
     def inspect_workers(self):
-        return tuple(w for w in self.workers if not w.is_alive())
+        return tuple(w for w in self.workers.values() if not w.is_alive())
 
     def create_workers(self):
         for _ in range(self.context.workers - len(self.workers)):
             worker = launch_thread(None, worker_thread, self.context)
 
-            self.workers.append(worker)
+            self.workers[worker.ident] = worker
 
     def join_worker(self, worker):
         worker.join()
-        self.workers.remove(worker)
+        del self.workers[worker.ident]
+
+    def stop_worker(self, worker_id, force=False):
+        # `force` isn't supported for threads
+        # but exists for API compatibility with `ProcessPool`
+        self.workers.pop(worker_id).is_shutdown = True
 
 
 def worker_thread(context):
@@ -162,7 +172,13 @@ def worker_thread(context):
             context.state = ERROR
             return
 
+    current_thread = threading.current_thread()
     for task in get_next_task(context, parameters.max_tasks):
+
+        if current_thread.is_shutdown:
+            break
+
+        task.worker_id = current_thread.ident
         execute_next_task(task)
         queue.task_done()
 

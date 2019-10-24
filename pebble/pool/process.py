@@ -132,6 +132,10 @@ class ProcessPool(BasePool):
 
         return map_future
 
+    def stop_worker(self, worker_id, force=False):
+        """Stops worker (if it's hung for example)."""
+        self._pool_manager.worker_manager.stop_worker(worker_id, force)
+
 
 def task_scheduler_loop(pool_manager):
     context = pool_manager.context

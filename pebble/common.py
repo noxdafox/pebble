@@ -121,6 +121,14 @@ class RemoteException(object):
         return rebuild_exception, (self.exception, self.traceback)
 
 
+class PebbleThread(Thread):
+    """Thread wrapper with flag to shutdown worker."""
+
+    def __init__(self, *args, **kwgs):
+        super(PebbleThread, self).__init__(*args, **kwgs)
+        self.is_shutdown = False
+
+
 def rebuild_exception(exception, traceback):
     exception.__cause__ = RemoteTraceback(traceback)
 
@@ -128,7 +136,7 @@ def rebuild_exception(exception, traceback):
 
 
 def launch_thread(name, function, *args, **kwargs):
-    thread = Thread(target=function, name=name, args=args, kwargs=kwargs)
+    thread = PebbleThread(target=function, name=name, args=args, kwargs=kwargs)
     thread.daemon = True
     thread.start()
 

@@ -75,6 +75,10 @@ class PebbleFuture(Future):
 
 
 class ProcessFuture(PebbleFuture):
+    def __init__(self, process=None):
+        super(ProcessFuture, self).__init__()
+        self._process = process
+
     def cancel(self):
         """Cancel the future.
 

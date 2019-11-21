@@ -69,7 +69,6 @@ def _process_wrapper(function, timeout, name):
 
     @wraps(function)
     def wrapper(*args, **kwargs):
-        future = ProcessFuture()
         reader, writer = Pipe(duplex=False)
 
         if get_start_method() != 'fork':
@@ -82,6 +81,8 @@ def _process_wrapper(function, timeout, name):
             name, _function_handler, target, args, kwargs, writer)
 
         writer.close()
+
+        future = ProcessFuture(worker)
 
         future.set_running_or_notify_cancel()
 

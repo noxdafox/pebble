@@ -190,3 +190,8 @@ class TestProcessConcurrent(unittest.TestCase):
         future = sigterm_decorated()
         with self.assertRaises(TimeoutError):
             future.result()
+
+    def test_decorated_future_holds_process(self):
+        """Process Spawn future holds a reference to the spawned process."""
+        future = decorated(1, 1)
+        self.assertTrue(isinstance(future._process, multiprocessing.Process))

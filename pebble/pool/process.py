@@ -14,13 +14,14 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with Pebble.  If not, see <http://www.gnu.org/licenses/>.
 
+import errno
 import os
 import time
 
 from itertools import count
 from collections import namedtuple
 from multiprocessing import cpu_count
-from signal import SIG_IGN, SIGINT, signal
+from signal import SIGCHLD, SIG_IGN, SIGINT, signal
 from concurrent.futures import CancelledError, TimeoutError
 try:
     from concurrent.futures.process import BrokenProcessPool
@@ -183,7 +184,11 @@ class PoolManager:
         self.worker_manager = WorkerManager(context.workers,
                                             context.worker_parameters)
 
+    def init_signals(self):
+        signal(SIGCHLD, self._handle_chld)
+
     def start(self):
+        self.init_signals()
         self.worker_manager.create_workers()
 
     def stop(self):
@@ -246,6 +251,25 @@ class PoolManager:
             return task_worker_lookup(running_tasks, worker_id)
         else:
             raise BrokenProcessPool("All workers expired")
+
+    def _handle_chld(self, signum, frame):
+        self._reap_workers()
+
+    def _reap_workers(self):
+        """Avoid zombies with next approach:
+        http://www.microhowto.info/howto/reap_zombie_processes_using_a_sigchld_handler.html
+        Python part is copied from:
+        https://github.com/benoitc/gunicorn/blob/20.0.4/gunicorn/arbiter.py#L507
+        """
+        try:
+            while True:
+                wpid, status = os.waitpid(-1, os.WNOHANG)
+                if not wpid:
+                    break
+                self.worker_manager.workers.pop(wpid, None)
+        except OSError as e:
+            if e.errno != errno.ECHILD:
+                raise e
 
 
 class TaskManager:

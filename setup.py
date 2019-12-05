@@ -44,6 +44,9 @@ setup(
     keywords="thread process pool decorator",
     url="https://github.com/noxdafox/pebble",
     packages=find_packages(exclude=["tests"]),
+    install_requires=[
+        "psutil==5.6.7",
+    ],
     extras_require={":python_version<'3'": ["futures"]},
     long_description=read('README.rst'),
     classifiers=[

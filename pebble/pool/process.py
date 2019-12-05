@@ -18,10 +18,12 @@ import errno
 import os
 import time
 
+import psutil
+
 from itertools import count
 from collections import namedtuple
 from multiprocessing import cpu_count
-from signal import SIGCHLD, SIG_IGN, SIGINT, signal
+from signal import SIGCHLD, SIG_IGN, SIGINT, SIGTERM, signal
 from concurrent.futures import CancelledError, TimeoutError
 try:
     from concurrent.futures.process import BrokenProcessPool
@@ -397,13 +399,23 @@ class WorkerManager:
             return  # worker already expired
 
 
+def _exit(exit_code):
+    """Kill all child processes before exit.
+    Helps to avoid slept children if worker exited.
+    """
+    for child in psutil.Process(os.getpid()).children(recursive=True):
+        child.kill()
+    os._exit(exit_code)
+
+
 def worker_process(params, channel):
     """The worker process routines."""
     signal(SIGINT, SIG_IGN)
+    signal(SIGTERM, lambda signum, frame: _exit(0))
 
     if params.initializer is not None:
         if not run_initializer(params.initializer, params.initargs):
-            os._exit(1)
+            _exit(1)
 
     try:
         for task in worker_get_next_task(channel, params.max_tasks):
@@ -412,9 +424,9 @@ def worker_process(params, channel):
                 payload.function, *payload.args, **payload.kwargs)
             send_result(channel, Result(task.id, result))
     except (EnvironmentError, OSError, RuntimeError) as error:
-        os._exit(error.errno if error.errno else 1)
+        _exit(error.errno if error.errno else 1)
     except EOFError:
-        os._exit(0)
+        _exit(0)
 
 
 def worker_get_next_task(channel, max_tasks):

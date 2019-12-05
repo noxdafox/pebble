@@ -16,6 +16,7 @@
 
 import errno
 import os
+import signal
 import time
 
 import psutil
@@ -23,7 +24,6 @@ import psutil
 from itertools import count
 from collections import namedtuple
 from multiprocessing import cpu_count
-from signal import SIGCHLD, SIG_IGN, SIGINT, SIGTERM, signal
 from concurrent.futures import CancelledError, TimeoutError
 try:
     from concurrent.futures.process import BrokenProcessPool
@@ -187,7 +187,8 @@ class PoolManager:
                                             context.worker_parameters)
 
     def init_signals(self):
-        signal(SIGCHLD, self._handle_chld)
+        if hasattr(signal, 'SIGCHLD'):
+            signal.signal(signal.SIGCHLD, self._handle_chld)
 
     def start(self):
         self.init_signals()
@@ -260,18 +261,11 @@ class PoolManager:
     def _reap_workers(self):
         """Avoid zombies with next approach:
         http://www.microhowto.info/howto/reap_zombie_processes_using_a_sigchld_handler.html
-        Python part is copied from:
+        Python part is inspired from:
         https://github.com/benoitc/gunicorn/blob/20.0.4/gunicorn/arbiter.py#L507
         """
-        try:
-            while True:
-                wpid, status = os.waitpid(-1, os.WNOHANG)
-                if not wpid:
-                    break
-                self.worker_manager.workers.pop(wpid, None)
-        except OSError as e:
-            if e.errno != errno.ECHILD:
-                raise e
+        for w in list(self.worker_manager.workers.values()):
+            w._popen and w._popen.poll()  # uses `os.waitpid` internal
 
 
 class TaskManager:
@@ -360,7 +354,6 @@ class WorkerManager:
         """
         workers = tuple(self.workers.values())
         expired = tuple(w for w in workers if not w.is_alive())
-
         for worker in expired:
             self.workers.pop(worker.pid)
 
@@ -410,8 +403,8 @@ def _exit(exit_code):
 
 def worker_process(params, channel):
     """The worker process routines."""
-    signal(SIGINT, SIG_IGN)
-    signal(SIGTERM, lambda signum, frame: _exit(0))
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+    signal.signal(signal.SIGTERM, lambda signum, frame: _exit(0))
 
     if params.initializer is not None:
         if not run_initializer(params.initializer, params.initargs):

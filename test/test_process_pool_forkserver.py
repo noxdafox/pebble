@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import pickle
 import signal
 import unittest
 import threading
@@ -23,6 +24,8 @@ if sys.version_info.major > 2 and sys.version_info.minor > 3:
 
             if multiprocessing.get_start_method() == 'forkserver':
                 supported = True
+            else:
+                raise Exception(multiprocessing.get_start_method())
         except RuntimeError:  # child process
             pass
 
@@ -54,6 +57,10 @@ def initializer_function():
 
 def error_function():
     raise Exception("BOOM!")
+
+
+def pickle_error_function():
+    return threading.Lock()
 
 
 def long_function(value=1):
@@ -130,6 +137,20 @@ class TestProcessPool(unittest.TestCase):
         future.add_done_callback(self.callback)
         self.event.wait()
         self.assertTrue(isinstance(self.exception, Exception))
+
+    def test_process_pool_pickling_error_task(self):
+        """Process Pool Forkserver task pickling errors
+        are raised by future.result."""
+        with ProcessPool(max_workers=1) as pool:
+            future = pool.schedule(function, args=[threading.Lock()])
+            self.assertRaises((pickle.PicklingError, TypeError), future.result)
+
+    def test_process_pool_pickling_error_result(self):
+        """Process Pool Forkserver result pickling errors
+        are raised by future.result."""
+        with ProcessPool(max_workers=1) as pool:
+            future = pool.schedule(pickle_error_function)
+            self.assertRaises((pickle.PicklingError, TypeError), future.result)
 
     def test_process_pool_timeout(self):
         """Process Pool Forkserver future raises TimeoutError if so."""

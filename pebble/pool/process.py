@@ -16,6 +16,7 @@
 
 import os
 import time
+import pickle
 
 from itertools import count
 from collections import namedtuple
@@ -35,7 +36,7 @@ from pebble.pool.base_pool import iter_chunks, run_initializer
 from pebble.pool.base_pool import CREATED, ERROR, RUNNING, SLEEP_UNIT
 from pebble.common import launch_process, stop_process
 from pebble.common import ProcessExpired, ProcessFuture
-from pebble.common import process_execute, launch_thread, send_result
+from pebble.common import process_execute, launch_thread
 
 
 class ProcessPool(BasePool):
@@ -193,7 +194,10 @@ class PoolManager:
     def schedule(self, task):
         """Schedules a new Task in the PoolManager."""
         self.task_manager.register(task)
-        self.worker_manager.dispatch(task)
+        try:
+            self.worker_manager.dispatch(task)
+        except (pickle.PicklingError, TypeError) as error:
+            self.task_manager.task_problem(task.id, error)
 
     def process_next_message(self, timeout):
         """Processes the next message coming from the workers."""
@@ -203,6 +207,8 @@ class PoolManager:
             self.task_manager.task_start(message.task, message.worker)
         elif isinstance(message, Result):
             self.task_manager.task_done(message.task, message.result)
+        elif isinstance(message, Problem):
+            self.task_manager.task_problem(message.task, message.error)
 
     def update_status(self):
         self.update_tasks()
@@ -284,6 +290,11 @@ class TaskManager:
 
             self.task_done_callback()
 
+    def task_problem(self, task_id, error):
+        """Set the task with the error it caused within the Pool."""
+        self.task_start(task_id, None)
+        self.task_done(task_id, error)
+
     def timeout_tasks(self):
         return tuple(t for t in tuple(self.tasks.values()) if self.timeout(t))
 
@@ -314,7 +325,9 @@ class WorkerManager:
     def dispatch(self, task):
         try:
             self.pool_channel.send(WorkerTask(task.id, task.payload))
-        except (OSError, EnvironmentError, TypeError) as error:
+        except (pickle.PicklingError, TypeError) as error:
+            raise error
+        except (OSError, EnvironmentError) as error:
             raise BrokenProcessPool(error)
 
     def receive(self, timeout):
@@ -400,6 +413,14 @@ def worker_get_next_task(channel, max_tasks):
         yield fetch_task(channel)
 
 
+def send_result(pipe, result):
+    """Send result handling pickling and communication errors."""
+    try:
+        pipe.send(result)
+    except (pickle.PicklingError, TypeError) as error:
+        pipe.send(Problem(result.task, error))
+
+
 def fetch_task(channel):
     while channel.poll():
         try:
@@ -435,5 +456,6 @@ def process_chunk(function, chunk):
 
 NoMessage = namedtuple('NoMessage', ())
 Result = namedtuple('Result', ('task', 'result'))
+Problem = namedtuple('Problem', ('task', 'error'))
 WorkerTask = namedtuple('WorkerTask', ('id', 'payload'))
 Acknowledgement = namedtuple('Acknowledgement', ('worker', 'task'))

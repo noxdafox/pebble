@@ -51,7 +51,7 @@ def process(*args, **kwargs):
 
     # decorator without parameters
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
-        return _process_wrapper(args[0], timeout, name, True)
+        return _process_wrapper(args[0], timeout, name, daemon)
     else:
         # decorator with parameters
         if timeout is not None and not isinstance(timeout, (int, float)):

@@ -34,7 +34,7 @@ def thread(*args, **kwargs):
     daemon = kwargs.get('daemon', True)
 
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
-        return _thread_wrapper(args[0], name, True)
+        return _thread_wrapper(args[0], name, daemon)
     else:
         # decorator with parameters
         if name is not None and not isinstance(name, str):

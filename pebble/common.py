@@ -127,17 +127,17 @@ def rebuild_exception(exception, traceback):
     return exception
 
 
-def launch_thread(name, function, *args, **kwargs):
+def launch_thread(name, function, daemon, *args, **kwargs):
     thread = Thread(target=function, name=name, args=args, kwargs=kwargs)
-    thread.daemon = True
+    thread.daemon = daemon
     thread.start()
 
     return thread
 
 
-def launch_process(name, function, *args, **kwargs):
+def launch_process(name, function, daemon, *args, **kwargs):
     process = Process(target=function, name=name, args=args, kwargs=kwargs)
-    process.daemon = True
+    process.daemon = daemon
     process.start()
 
     return process

@@ -31,27 +31,30 @@ def thread(*args, **kwargs):
     The name parameter will set the process name.    
     """
     name = kwargs.get('name')
+    daemon = kwargs.get('daemon', True)
 
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
-        return _thread_wrapper(args[0], name)
+        return _thread_wrapper(args[0], name, daemon)
     else:
         # decorator with parameters
         if name is not None and not isinstance(name, str):
             raise TypeError('Name expected to be None or string')
+        if daemon is not None and not isinstance(daemon, bool):
+            raise TypeError('Daemon expected to be None or bool')
 
         def decorating_function(function):
-            return _thread_wrapper(function, name)
+            return _thread_wrapper(function, name, daemon)
 
         return decorating_function
     
 
 
-def _thread_wrapper(function, name):
+def _thread_wrapper(function, name, daemon):
     @wraps(function)
     def wrapper(*args, **kwargs):
         future = Future()
 
-        launch_thread(name, _function_handler, function, args, kwargs, future)
+        launch_thread(name, _function_handler, daemon, function, args, kwargs, future)
 
         return future
 

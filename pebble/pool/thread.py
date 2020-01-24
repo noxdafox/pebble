@@ -51,7 +51,7 @@ class ThreadPool(BasePool):
             if self._context.state == CREATED:
                 self._pool_manager.start()
                 self._loops = (launch_thread(None, pool_manager_loop,
-                                             self._pool_manager),)
+                                             True, self._pool_manager),)
 
                 self._context.state = RUNNING
 
@@ -143,7 +143,7 @@ class PoolManager:
 
     def create_workers(self):
         for _ in range(self.context.workers - len(self.workers)):
-            worker = launch_thread(None, worker_thread, self.context)
+            worker = launch_thread(None, worker_thread, True, self.context)
 
             self.workers.append(worker)
 

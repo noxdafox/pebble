@@ -77,6 +77,13 @@ def name_keyword_decorated():
 @concurrent.process(name='decorator_kwarg')
 def name_keyword_decorated_and_argument(name='bar'):
     return (multiprocessing.current_process().name, name)
+
+
+@concurrent.process(daemon=False)
+def daemon_keyword_decorated():
+    return multiprocessing.current_process().daemon
+
+
 class ProcessConcurrentObj:
     a = 0
 
@@ -234,4 +241,9 @@ class TestProcessConcurrent(unittest.TestCase):
         dec_out, fn_out = f.result()
         self.assertEqual(dec_out, "decorator_kwarg")
         self.assertEqual(fn_out, "function_kwarg")
-    
+
+    def test_daemon_keyword_decorated(self):
+        """Daemon keyword can be passed to a decorated function and spawns correctly."""
+        f = daemon_keyword_decorated()
+        dec_out = f.result()
+        self.assertEqual(dec_out, False)

@@ -47,24 +47,27 @@ def process(*args, **kwargs):
     """
     timeout = kwargs.get('timeout')
     name = kwargs.get('name')
+    daemon = kwargs.get('daemon', True)
 
     # decorator without parameters
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
-        return _process_wrapper(args[0], timeout, name)
+        return _process_wrapper(args[0], timeout, name, daemon)
     else:
         # decorator with parameters
         if timeout is not None and not isinstance(timeout, (int, float)):
             raise TypeError('Timeout expected to be None or integer or float')
         if name is not None and not isinstance(name, str):
             raise TypeError('Name expected to be None or string')
+        if daemon is not None and not isinstance(daemon, bool):
+            raise TypeError('Daemon expected to be None or bool')
 
         def decorating_function(function):
-            return _process_wrapper(function, timeout, name)
+            return _process_wrapper(function, timeout, name, daemon)
 
         return decorating_function
 
 
-def _process_wrapper(function, timeout, name):
+def _process_wrapper(function, timeout, name, daemon):
     _register_function(function)
 
     @wraps(function)
@@ -79,13 +82,13 @@ def _process_wrapper(function, timeout, name):
             target = function
 
         worker = launch_process(
-            name, _function_handler, target, args, kwargs, writer)
+            name, _function_handler, daemon, target, args, kwargs, writer)
 
         writer.close()
 
         future.set_running_or_notify_cancel()
 
-        launch_thread(name, _worker_handler, future, worker, reader, timeout)
+        launch_thread(name, _worker_handler, True, future, worker, reader, timeout)
 
         return future
 

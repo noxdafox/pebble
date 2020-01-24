@@ -47,7 +47,7 @@ def process(*args, **kwargs):
     """
     timeout = kwargs.get('timeout')
     name = kwargs.get('name')
-    daemon = kwargs.get('daemon')
+    daemon = kwargs.get('daemon', True)
 
     # decorator without parameters
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
@@ -60,8 +60,6 @@ def process(*args, **kwargs):
             raise TypeError('Name expected to be None or string')
         if daemon is not None and not isinstance(daemon, bool):
             raise TypeError('Daemon expected to be None or bool')
-        elif daemon is None:
-            daemon = True
 
         def decorating_function(function):
             return _process_wrapper(function, timeout, name, daemon)

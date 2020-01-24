@@ -64,6 +64,11 @@ def sigterm_decorated():
     time.sleep(10)
 
 
+@concurrent.process(daemon=False)
+def daemon_keyword_decorated():
+    return multiprocessing.current_process().daemon
+
+
 class ProcessConcurrentObj:
     a = 0
 
@@ -190,3 +195,9 @@ class TestProcessConcurrent(unittest.TestCase):
         future = sigterm_decorated()
         with self.assertRaises(TimeoutError):
             future.result()
+
+    def test_daemon_keyword_decorated(self):
+        """Daemon keyword can be passed to a decorated function and spawns correctly."""
+        f = daemon_keyword_decorated()
+        dec_out = f.result()
+        self.assertEqual(dec_out, False)

@@ -19,23 +19,27 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
 `Concurrent Module`
 -------------------
 
-.. decorator:: concurrent.process(timeout=None, name=None)
+.. decorator:: concurrent.process(timeout=None, name=None, daemon=True)
 
    Runs the decorated function in a concurrent process, taking care of the results and error management.
 
-   The decorated function will a pebble.ProcessFuture_ object.
+   The decorated function will return a pebble.ProcessFuture_ object.
 
    If *timeout* is set, the process will be stopped once expired and the future object will raise a *concurrent.futures.TimeoutError* exception.
 
    The *name* parameter let you define the process name.
 
-.. decorator:: concurrent.thread(name=None)
+   The *daemon* parameter switches between daemon and non-daemeon processes.
+
+.. decorator:: concurrent.thread(name=None, daemon=True)
 
    Runs the decorated function in a concurrent thread, taking care of the results and error management.
 
-   The decorated function will a concurrent.futures.Future_ object.
+   The decorated function will return a concurrent.futures.Future_ object.
 
    The *name* parameter let you define the thread name.
+
+   The *daemon* parameter switches between daemon and non-daemeon threads.
 
 
 `Pebble Module`

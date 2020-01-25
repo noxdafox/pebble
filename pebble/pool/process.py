@@ -63,11 +63,11 @@ class ProcessPool(BasePool):
             if self._context.state == CREATED:
                 self._pool_manager.start()
                 self._loops = (launch_thread(None, task_scheduler_loop,
-                                             self._pool_manager),
+                                             True, self._pool_manager),
                                launch_thread(None, pool_manager_loop,
-                                             self._pool_manager),
+                                             True, self._pool_manager),
                                launch_thread(None, message_manager_loop,
-                                             self._pool_manager))
+                                             True, self._pool_manager))
                 self._context.state = RUNNING
 
     def schedule(self, function, args=(), kwargs={}, timeout=None):
@@ -368,7 +368,7 @@ class WorkerManager:
     def new_worker(self):
         try:
             worker = launch_process(
-                None, worker_process, self.worker_parameters, self.workers_channel)
+                None, worker_process, True, self.worker_parameters, self.workers_channel)
             self.workers[worker.pid] = worker
         except (OSError, EnvironmentError) as error:
             raise BrokenProcessPool(error)

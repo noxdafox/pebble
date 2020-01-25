@@ -30,6 +30,11 @@ def name_keyword_decorated_and_argument(name='bar'):
     return (threading.current_thread().name, name)
 
 
+@concurrent.thread(daemon=False)
+def daemon_keyword_decorated():
+    return threading.current_thread().daemon
+
+
 class ThreadConcurrentObj:
     a = 0
 
@@ -132,3 +137,9 @@ class TestThreadConcurrent(unittest.TestCase):
         dec_out, fn_out = f.result()
         self.assertEqual(dec_out, "decorator_kwarg")
         self.assertEqual(fn_out, "function_kwarg")
+
+    def test_daemon_keyword_decorated(self):
+        """Daemon keyword can be passed to a decorated function and spawns correctly."""
+        f = daemon_keyword_decorated()
+        dec_out = f.result()
+        self.assertEqual(dec_out, False)

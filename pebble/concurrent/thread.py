@@ -1,5 +1,5 @@
 # This file is part of Pebble.
-# Copyright (c) 2013-2019, Matteo Cafasso
+# Copyright (c) 2013-2020, Matteo Cafasso
 
 # Pebble is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License
@@ -28,7 +28,7 @@ def thread(*args, **kwargs):
     Decorated functions will return a concurrent.futures.Future object
     once called.
 
-    The name parameter will set the process name.    
+    The name parameter will set the process name.
     """
     name = kwargs.get('name')
     daemon = kwargs.get('daemon', True)
@@ -46,7 +46,7 @@ def thread(*args, **kwargs):
             return _thread_wrapper(function, name, daemon)
 
         return decorating_function
-    
+
 
 
 def _thread_wrapper(function, name, daemon):

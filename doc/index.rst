@@ -29,7 +29,7 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
 
    The *name* parameter let you define the process name.
 
-   The *daemon* parameter switches between daemon and non-daemeon processes.
+   The *daemon* parameter switches between daemon and non-daemon threads.
 
 .. decorator:: concurrent.thread(name=None, daemon=True)
 
@@ -39,7 +39,7 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
 
    The *name* parameter let you define the thread name.
 
-   The *daemon* parameter switches between daemon and non-daemeon threads.
+   The *daemon* parameter switches between daemon and non-daemon threads.
 
 
 `Pebble Module`

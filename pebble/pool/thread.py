@@ -39,7 +39,6 @@ class ThreadPool(BasePool):
     every time a worker is started, receiving initargs as arguments.
 
     """
-
     def __init__(self, max_workers=cpu_count(), max_tasks=0,
                  initializer=None, initargs=()):
         super(ThreadPool, self).__init__(
@@ -54,6 +53,11 @@ class ThreadPool(BasePool):
                                              True, self._pool_manager),)
 
                 self._context.state = RUNNING
+
+    def _stop_pool(self):
+        for loop in self._loops:
+            loop.join()
+        self._pool_manager.stop()
 
     def schedule(self, function, args=(), kwargs={}):
         """Schedules *function* to be run the Pool.

@@ -107,9 +107,7 @@ class BasePool(object):
         raise NotImplementedError("Not implemented")
 
     def _stop_pool(self):
-        for loop in self._loops:
-            loop.join()
-        self._pool_manager.stop()
+        raise NotImplementedError("Not implemented")
 
 
 class PoolContext(object):

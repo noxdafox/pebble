@@ -51,7 +51,6 @@ class ProcessPool(BasePool):
     every time a worker is started, receiving initargs as arguments.
 
     """
-
     def __init__(self, max_workers=cpu_count(), max_tasks=0,
                  initializer=None, initargs=()):
         super(ProcessPool, self).__init__(
@@ -69,6 +68,12 @@ class ProcessPool(BasePool):
                                launch_thread(None, message_manager_loop,
                                              True, self._pool_manager))
                 self._context.state = RUNNING
+
+    def _stop_pool(self):
+        self._pool_manager.close()
+        for loop in self._loops:
+            loop.join()
+        self._pool_manager.stop()
 
     def schedule(self, function, args=(), kwargs={}, timeout=None):
         """Schedules *function* to be run the Pool.
@@ -177,7 +182,6 @@ def message_manager_loop(pool_manager):
 
 class PoolManager:
     """Combines Task and Worker Managers providing a higher level one."""
-
     def __init__(self, context):
         self.context = context
         self.task_manager = TaskManager(context.task_queue.task_done)
@@ -187,9 +191,11 @@ class PoolManager:
     def start(self):
         self.worker_manager.create_workers()
 
+    def close(self):
+        self.worker_manager.close_channels()
+
     def stop(self):
         self.worker_manager.stop_workers()
-        self.worker_manager.close_channels()
 
     def schedule(self, task):
         """Schedules a new Task in the PoolManager."""

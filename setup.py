@@ -3,16 +3,21 @@ import subprocess
 from setuptools import setup, find_packages
 
 
+CWD = os.path.dirname(__file__)
+
+
 def read(fname):
-    return open(os.path.join(os.path.dirname(__file__), fname)).read()
+    return open(os.path.join(CWD, fname)).read()
 
 
 def package_version():
     """Get the package version via Git Tag."""
-    version_path = os.path.join(os.path.dirname(__file__), 'version.py')
+    version_path = os.path.join(CWD, 'version.py')
+    init_path = os.path.join(CWD, 'pebble', '__init__.py')
 
     version = read_version(version_path)
     write_version(version_path, version)
+    write_version(init_path, version, mode='a')
 
     return version
 
@@ -26,9 +31,9 @@ def read_version(path):
             return version_string.strip().replace('"', '')
 
 
-def write_version(path, version):
+def write_version(path, version, mode='w'):
     msg = '"""Versioning controlled via Git Tag, check setup.py"""'
-    with open(path, 'w') as version_file:
+    with open(path, mode) as version_file:
         version_file.write(msg + os.linesep + os.linesep +
                            '__version__ = "{}"'.format(version) +
                            os.linesep)

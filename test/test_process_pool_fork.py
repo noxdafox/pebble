@@ -280,6 +280,19 @@ class TestProcessPool(unittest.TestCase):
         pool.join()
         self.assertFalse(pool.active)
 
+    def test_process_pool_repeated_stopping(self):
+        """Process Pools are stopped in a loop."""
+        for _ in range(30):
+            with ProcessPool(max_workers=1) as pool:
+                futures = []
+                for i in range(2):
+                    futures.append(pool.schedule(function, args=[1]))
+
+                # wait for the first one and stop
+                futures[0].result()
+                pool.stop()
+                pool.join()
+
     def test_process_pool_stop_stopped_callback(self):
         """Process Pool Fork is stopped in callback."""
         with ProcessPool(max_workers=1) as pool:

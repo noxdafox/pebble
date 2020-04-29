@@ -333,7 +333,7 @@ class WorkerManager:
             self.pool_channel.send(WorkerTask(task.id, task.payload))
         except (pickle.PicklingError, TypeError) as error:
             raise error
-        except (OSError, EnvironmentError) as error:
+        except (OSError, EnvironmentError, TypeError) as error:
             raise BrokenProcessPool(error)
 
     def receive(self, timeout):
@@ -342,7 +342,7 @@ class WorkerManager:
                 return self.pool_channel.recv()
             else:
                 return NoMessage()
-        except (OSError, EnvironmentError) as error:
+        except (OSError, EnvironmentError, TypeError) as error:
             raise BrokenProcessPool(error)
 
     def inspect_workers(self):

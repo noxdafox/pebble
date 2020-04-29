@@ -411,7 +411,7 @@ Is equivalent to ::
         print("Termination request received!")
 
     signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.TERM, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
 
 Running the tests
 -----------------

@@ -17,6 +17,7 @@
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #
 import os
+import fileinput
 # import sys
 # sys.path.insert(0, os.path.abspath('.'))
 
@@ -52,17 +53,23 @@ project = u'Pebble'
 copyright = u'2013-2018, Matteo Cafasso'
 author = u'Matteo Cafasso'
 
+
+CWD = os.path.dirname(__file__)
+
+
+def package_version():
+    module_path = os.path.join(CWD, '..', 'pebble', '__init__.py')
+    for line in fileinput.input(module_path):
+        if line.startswith('__version__'):
+            return line.split('=')[-1].strip().replace('\'', '')
+
+
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
 # built documents.
 #
 # The short X.Y version.
-version_path = os.path.join(
-    os.path.dirname(__file__), '..', 'version.py')
-
-# The short X.Y version.
-with open(version_path) as version_file:
-    version = version_file.read().split('=')[-1].strip().replace('"', '')
+version = package_version()
 # The full version, including alpha/beta/rc tags.
 release = version
 

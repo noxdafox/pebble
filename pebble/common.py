@@ -22,7 +22,6 @@ import signal
 
 from threading import Thread
 from traceback import format_exc
-from multiprocessing import Process
 
 from concurrent.futures import Future
 
@@ -135,8 +134,9 @@ def launch_thread(name, function, daemon, *args, **kwargs):
     return thread
 
 
-def launch_process(name, function, daemon, *args, **kwargs):
-    process = Process(target=function, name=name, args=args, kwargs=kwargs)
+def launch_process(name, function, daemon, mp_context, *args, **kwargs):
+    process = mp_context.Process(
+        target=function, name=name, args=args, kwargs=kwargs)
     process.daemon = daemon
     process.start()
 

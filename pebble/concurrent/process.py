@@ -14,19 +14,15 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with Pebble.  If not, see <http://www.gnu.org/licenses/>.
 
+
 import os
 import sys
 import signal
+import multiprocessing
 
 from itertools import count
 from functools import wraps
-from multiprocessing import Pipe
 from concurrent.futures import CancelledError, TimeoutError
-try:
-    from multiprocessing import get_start_method
-except ImportError:
-    def get_start_method():
-        return 'spawn' if os.name == 'nt' else 'fork'
 
 from pebble.common import ProcessExpired, ProcessFuture
 from pebble.common import launch_process, stop_process, SLEEP_UNIT
@@ -48,10 +44,12 @@ def process(*args, **kwargs):
     timeout = kwargs.get('timeout')
     name = kwargs.get('name')
     daemon = kwargs.get('daemon', True)
+    mp_context = kwargs.get('context')
+    mp_context = multiprocessing if mp_context is None else mp_context
 
     # decorator without parameters
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
-        return _process_wrapper(args[0], timeout, name, daemon)
+        return _process_wrapper(args[0], timeout, name, daemon, mp_context)
     else:
         # decorator with parameters
         if timeout is not None and not isinstance(timeout, (int, float)):
@@ -62,27 +60,32 @@ def process(*args, **kwargs):
             raise TypeError('Daemon expected to be None or bool')
 
         def decorating_function(function):
-            return _process_wrapper(function, timeout, name, daemon)
+            return _process_wrapper(function, timeout, name, daemon, mp_context)
 
         return decorating_function
 
 
-def _process_wrapper(function, timeout, name, daemon):
+def _process_wrapper(function, timeout, name, daemon, mp_context):
     _register_function(function)
+    if hasattr(mp_context, 'get_start_method'):
+        start_method = mp_context.get_start_method()
+    else:
+        start_method = 'spawn' if os.name == 'nt' else 'fork'
 
     @wraps(function)
     def wrapper(*args, **kwargs):
         future = ProcessFuture()
-        reader, writer = Pipe(duplex=False)
+        reader, writer = mp_context.Pipe(duplex=False)
 
-        if get_start_method() != 'fork':
+        if start_method != 'fork':
             target = _trampoline
             args = [function.__name__, function.__module__] + list(args)
         else:
             target = function
 
         worker = launch_process(
-            name, _function_handler, daemon, target, args, kwargs, writer)
+            name, _function_handler, daemon, mp_context,
+            target, args, kwargs, writer)
 
         writer.close()
 

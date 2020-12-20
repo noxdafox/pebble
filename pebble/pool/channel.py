@@ -19,7 +19,6 @@ import os
 import select
 
 from contextlib import contextmanager
-from multiprocessing import RLock, Pipe
 
 
 class ChannelError(OSError):
@@ -27,11 +26,11 @@ class ChannelError(OSError):
     pass
 
 
-def channels():
-    read0, write0 = Pipe(duplex=False)
-    read1, write1 = Pipe(duplex=False)
+def channels(mp_context):
+    read0, write0 = mp_context.Pipe(duplex=False)
+    read1, write1 = mp_context.Pipe(duplex=False)
 
-    return Channel(read1, write0), WorkerChannel(read0, write1)
+    return Channel(read1, write0), WorkerChannel(read0, write1, mp_context)
 
 
 class Channel(object):
@@ -57,7 +56,7 @@ class Channel(object):
         def windows_poll(timeout=None):
             return self.reader.poll(timeout)
 
-        return os.name != 'nt' and unix_poll or windows_poll
+        return unix_poll if os.name != 'nt' else windows_poll
 
     def recv(self):
         return self.reader.recv()
@@ -71,9 +70,9 @@ class Channel(object):
 
 
 class WorkerChannel(Channel):
-    def __init__(self, reader, writer):
+    def __init__(self, reader, writer, mp_context):
         super(WorkerChannel, self).__init__(reader, writer)
-        self.mutex = ChannelMutex()
+        self.mutex = ChannelMutex(mp_context)
         self.recv = self._make_recv_method()
         self.send = self._make_send_method()
 
@@ -102,7 +101,7 @@ class WorkerChannel(Channel):
         def windows_send(obj):
             return self.writer.send(obj)
 
-        return os.name != 'nt' and unix_send or windows_send
+        return unix_send if os.name != 'nt' else windows_send
 
     @property
     @contextmanager
@@ -112,9 +111,9 @@ class WorkerChannel(Channel):
 
 
 class ChannelMutex:
-    def __init__(self):
-        self.reader_mutex = RLock()
-        self.writer_mutex = os.name != 'nt' and RLock() or None
+    def __init__(self, mp_context):
+        self.reader_mutex = mp_context.RLock()
+        self.writer_mutex = mp_context.RLock() if os.name != 'nt' else None
         self.acquire = self._make_acquire_method()
         self.release = self._make_release_method()
 
@@ -129,8 +128,8 @@ class ChannelMutex:
     def __enter__(self):
         if self.acquire():
             return self
-        else:
-            raise ChannelError("Channel mutex time out")
+
+        raise ChannelError("Channel mutex time out")
 
     def __exit__(self, *_):
         self.release()
@@ -143,7 +142,7 @@ class ChannelMutex:
         def windows_acquire():
             return self.reader_mutex.acquire(timeout=LOCK_TIMEOUT)
 
-        return os.name != 'nt' and unix_acquire or windows_acquire
+        return unix_acquire if os.name != 'nt' else windows_acquire
 
     def _make_release_method(self):
         def unix_release():
@@ -153,7 +152,7 @@ class ChannelMutex:
         def windows_release():
             self.reader_mutex.release()
 
-        return os.name != 'nt' and unix_release or windows_release
+        return unix_release if os.name != 'nt' else windows_release
 
     @property
     @contextmanager

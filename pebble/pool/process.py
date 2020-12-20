@@ -17,10 +17,10 @@
 import os
 import time
 import pickle
+import multiprocessing
 
 from itertools import count
 from collections import namedtuple
-from multiprocessing import cpu_count
 from signal import SIG_IGN, SIGINT, signal
 from concurrent.futures import CancelledError, TimeoutError
 try:
@@ -51,11 +51,13 @@ class ProcessPool(BasePool):
     every time a worker is started, receiving initargs as arguments.
 
     """
-    def __init__(self, max_workers=cpu_count(), max_tasks=0,
-                 initializer=None, initargs=()):
+
+    def __init__(self, max_workers=multiprocessing.cpu_count(), max_tasks=0,
+                 initializer=None, initargs=(), context=None):
         super(ProcessPool, self).__init__(
             max_workers, max_tasks, initializer, initargs)
-        self._pool_manager = PoolManager(self._context)
+        mp_context = multiprocessing if context is None else context
+        self._pool_manager = PoolManager(self._context, mp_context)
 
     def _start_pool(self):
         with self._context.state_mutex:
@@ -182,11 +184,12 @@ def message_manager_loop(pool_manager):
 
 class PoolManager:
     """Combines Task and Worker Managers providing a higher level one."""
-    def __init__(self, context):
+    def __init__(self, context, mp_context):
         self.context = context
         self.task_manager = TaskManager(context.task_queue.task_done)
         self.worker_manager = WorkerManager(context.workers,
-                                            context.worker_parameters)
+                                            context.worker_parameters,
+                                            mp_context)
 
     def start(self):
         self.worker_manager.create_workers()
@@ -322,11 +325,12 @@ class WorkerManager:
     Maintains the workers active and encapsulates their communication logic.
     """
 
-    def __init__(self, workers, worker_parameters):
+    def __init__(self, workers, worker_parameters, mp_context):
         self.workers = {}
         self.workers_number = workers
         self.worker_parameters = worker_parameters
-        self.pool_channel, self.workers_channel = channels()
+        self.pool_channel, self.workers_channel = channels(mp_context)
+        self.mp_context = mp_context
 
     def dispatch(self, task):
         try:
@@ -374,7 +378,8 @@ class WorkerManager:
     def new_worker(self):
         try:
             worker = launch_process(
-                None, worker_process, True, self.worker_parameters, self.workers_channel)
+                None, worker_process, True, self.mp_context,
+                self.worker_parameters, self.workers_channel)
             self.workers[worker.pid] = worker
         except (OSError, EnvironmentError) as error:
             raise BrokenProcessPool(error)

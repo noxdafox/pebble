@@ -11,6 +11,7 @@ from concurrent.futures import CancelledError, TimeoutError
 
 import pebble
 from pebble import ProcessPool, ProcessExpired
+from pebble.pool.base_pool import ERROR
 
 
 # set start method
@@ -490,6 +491,24 @@ class TestProcessPool(unittest.TestCase):
             for _ in range(4):
                 with self.assertRaises(CancelledError):
                     next(generator)
+
+    def test_process_pool_map_broken_pool(self):
+        """Process Pool Fork Broken Pool."""
+        elements = [1, 2, 3]
+
+        with ProcessPool(max_workers=1, context=mp_context) as pool:
+            future = pool.map(long_function, elements, timeout=1)
+            generator = future.result()
+            pool._context.state = ERROR
+            while True:
+                try:
+                    next(generator)
+                except TimeoutError as error:
+                    self.assertFalse(pool.active)
+                    future.cancel()
+                    break
+                except StopIteration:
+                    break
 
 
 # DEADLOCK TESTS

@@ -6,6 +6,7 @@ from pebble import ThreadPool
 
 from concurrent.futures import CancelledError, TimeoutError
 
+from pebble.pool.base_pool import ERROR
 
 initarg = 0
 
@@ -341,3 +342,21 @@ class TestThreadPool(unittest.TestCase):
             for _ in range(3):
                 with self.assertRaises(CancelledError):
                     next(generator)
+
+    def test_thread_pool_map_broken_pool(self):
+        """Thread Pool Fork Broken Pool."""
+        elements = [1, 2, 3]
+
+        with ThreadPool(max_workers=1) as pool:
+            future = pool.map(long_function, elements, timeout=1)
+            generator = future.result()
+            pool._context.state = ERROR
+            while True:
+                try:
+                    next(generator)
+                except TimeoutError as error:
+                    self.assertFalse(pool.active)
+                    future.cancel()
+                    break
+                except StopIteration:
+                    break

@@ -196,8 +196,8 @@ class ProcessMapFuture(ProcessFuture):
 
 class MapResults:
     def __init__(self, futures, timeout=None):
-        self._timeout = timeout
-        self._results = chain.from_iterable(chunk_result(f) for f in futures)
+        self._results = chain.from_iterable(
+            chunk_result(f, timeout) for f in futures)
 
     def __iter__(self):
         return self
@@ -226,10 +226,10 @@ def iter_chunks(chunksize, *iterables):
         yield chunk
 
 
-def chunk_result(future):
+def chunk_result(future, timeout):
     """Returns the results of a processed chunk."""
     try:
-        return future.result()
+        return future.result(timeout=timeout)
     except Exception as error:
         return (error, )
 

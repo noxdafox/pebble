@@ -132,7 +132,7 @@ class ProcessPool(BasePool):
 
         def done_map(_):
             if not map_future.done():
-                map_future.set_result(MapResults(futures))
+                map_future.set_result(MapResults(futures, timeout=timeout))
 
         for future in futures:
             future.add_done_callback(done_map)

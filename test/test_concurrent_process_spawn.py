@@ -13,58 +13,60 @@ from pebble import concurrent, ProcessExpired
 
 # set start method
 supported = False
+mp_context = None
+
 
 if sys.version_info.major > 2 and sys.version_info.minor > 3:
     methods = multiprocessing.get_all_start_methods()
     if 'spawn' in methods:
         try:
-            multiprocessing.set_start_method('spawn')
+            mp_context = multiprocessing.get_context('spawn')
 
-            if multiprocessing.get_start_method() == 'spawn':
+            if mp_context.get_start_method() == 'spawn':
                 supported = True
         except RuntimeError:  # child process
             pass
 
 
-@concurrent.process
+@concurrent.process(context=mp_context)
 def decorated(argument, keyword_argument=0):
     """A docstring."""
     return argument + keyword_argument
 
 
-@concurrent.process
+@concurrent.process(context=mp_context)
 def error_decorated():
     raise RuntimeError("BOOM!")
 
 
-@concurrent.process
+@concurrent.process(context=mp_context)
 def pickling_error_decorated():
     event = threading.Event()
     return event
 
 
-@concurrent.process
+@concurrent.process(context=mp_context)
 def critical_decorated():
     os._exit(123)
 
 
-@concurrent.process
+@concurrent.process(context=mp_context)
 def decorated_cancel():
     time.sleep(10)
 
 
-@concurrent.process(timeout=0.1)
+@concurrent.process(timeout=0.1, context=mp_context)
 def long_decorated():
     time.sleep(10)
 
 
-@concurrent.process(timeout=0.1)
+@concurrent.process(timeout=0.1, context=mp_context)
 def sigterm_decorated():
     signal.signal(signal.SIGTERM, signal.SIG_IGN)
     time.sleep(10)
 
 
-@concurrent.process(daemon=False)
+@concurrent.process(daemon=False, context=mp_context)
 def daemon_keyword_decorated():
     return multiprocessing.current_process().daemon
 
@@ -76,11 +78,11 @@ class ProcessConcurrentObj:
         self.b = 1
 
     @classmethod
-    @concurrent.process
+    @concurrent.process(context=mp_context)
     def clsmethod(cls):
         return cls.a
 
-    @concurrent.process
+    @concurrent.process(context=mp_context)
     def instmethod(self):
         return self.b
 
@@ -109,7 +111,7 @@ class TestProcessConcurrent(unittest.TestCase):
     def test_wrong_timeout(self):
         """Process Spawn TypeError is raised if timeout is not number."""
         with self.assertRaises(TypeError):
-            @concurrent.process(timeout='Foo')
+            @concurrent.process(timeout='Foo', context=mp_context)
             def function():
                 return
 

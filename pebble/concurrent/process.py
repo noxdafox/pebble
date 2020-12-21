@@ -40,29 +40,24 @@ def process(*args, **kwargs):
     for the decorated function. If the execution exceeds the timeout,
     the process will be stopped and the Future will raise TimeoutError.
     The name parameter will set the process name.
+
     """
     timeout = kwargs.get('timeout')
     name = kwargs.get('name')
     daemon = kwargs.get('daemon', True)
     mp_context = kwargs.get('context')
-    mp_context = multiprocessing if mp_context is None else mp_context
 
     # decorator without parameters
-    if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
-        return _process_wrapper(args[0], timeout, name, daemon, mp_context)
-    else:
-        # decorator with parameters
-        if timeout is not None and not isinstance(timeout, (int, float)):
-            raise TypeError('Timeout expected to be None or integer or float')
-        if name is not None and not isinstance(name, str):
-            raise TypeError('Name expected to be None or string')
-        if daemon is not None and not isinstance(daemon, bool):
-            raise TypeError('Daemon expected to be None or bool')
+    if len(args) == 1 and kwargs and callable(args[0]):
+        return _process_wrapper(args[0], timeout, name, daemon, multiprocessing)
 
-        def decorating_function(function):
-            return _process_wrapper(function, timeout, name, daemon, mp_context)
+    # decorator with parameters
+    _validate_parameters(timeout, name, daemon, mp_context)
 
-        return decorating_function
+    def decorating_function(function):
+        return _process_wrapper(function, timeout, name, daemon, mp_context)
+
+    return decorating_function
 
 
 def _process_wrapper(function, timeout, name, daemon, mp_context):
@@ -144,6 +139,18 @@ def _get_result(future, pipe, timeout):
         return ProcessExpired('Abnormal termination')
     except Exception as error:
         return error
+
+
+def _validate_parameters(timeout, name, daemon, mp_context):
+    if timeout is not None and not isinstance(timeout, (int, float)):
+        raise TypeError('Timeout expected to be None or integer or float')
+    if name is not None and not isinstance(name, str):
+        raise TypeError('Name expected to be None or string')
+    if daemon is not None and not isinstance(daemon, bool):
+        raise TypeError('Daemon expected to be None or bool')
+    if mp_context is not None and not isinstance(
+            mp_context, multiprocessing.context.BaseContext):
+        raise TypeError('Context expected to be None or multiprocessing.context')
 
 
 ################################################################################

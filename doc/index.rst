@@ -19,7 +19,7 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
 `Concurrent Module`
 -------------------
 
-.. decorator:: concurrent.process(timeout=None, name=None, daemon=True)
+.. decorator:: concurrent.process(timeout=None, name=None, daemon=True, context=None)
 
    Runs the decorated function in a concurrent process, taking care of the results and error management.
 
@@ -30,6 +30,8 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
    The *name* parameter let you define the process name.
 
    The *daemon* parameter switches between daemon and non-daemon threads.
+
+   The *context* parameter can be used to specify the multiprocessing.context_ object used for starting the process.
 
 .. decorator:: concurrent.thread(name=None, daemon=True)
 
@@ -45,13 +47,15 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
 `Pebble Module`
 ---------------
 
-.. class:: pebble.ProcessPool(max_workers=multiprocessing.cpu_count(), max_tasks=0, initializer=None, initargs=None)
+.. class:: pebble.ProcessPool(max_workers=multiprocessing.cpu_count(), max_tasks=0, initializer=None, initargs=None, context=None)
 
    A Pool allows to schedule jobs into a Pool of Processes which will perform them concurrently.
    Process pools work as well as a *context manager*.
 
    *max_workers* is an integer representing the amount of desired process workers managed by the pool. If *max_tasks* is a number greater than zero, each worker will be restarted after performing an equal amount of tasks.
    *initializer* must be callable, if passed, it will be called every time a worker is started, receiving *initargs* as arguments.
+
+   The *context* parameter can be used to specify the multiprocessing.context_ object used for starting the worker processes.
 
    .. data:: active
 
@@ -423,6 +427,7 @@ Due to multiprocessing limitations, it is not possible to change the starting me
 Please refer to the `test/run-test.sh` bash script to see how to run the tests.
 
 .. _concurrent.futures.Future: https://docs.python.org/3/library/concurrent.futures.html#future-objects
+.. _multiprocessing.context: https://docs.python.org/3/library/multiprocessing.html#contexts-and-start-methods
 
 .. toctree::
    :maxdepth: 2

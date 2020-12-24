@@ -17,6 +17,7 @@
 
 import os
 import sys
+import types
 import signal
 import multiprocessing
 
@@ -53,6 +54,7 @@ def process(*args, **kwargs):
 
     # decorator with parameters
     _validate_parameters(timeout, name, daemon, mp_context)
+    mp_context = mp_context if mp_context is not None else multiprocessing
 
     def decorating_function(function):
         return _process_wrapper(function, timeout, name, daemon, mp_context)
@@ -62,6 +64,7 @@ def process(*args, **kwargs):
 
 def _process_wrapper(function, timeout, name, daemon, mp_context):
     _register_function(function)
+
     if hasattr(mp_context, 'get_start_method'):
         start_method = mp_context.get_start_method()
     else:
@@ -74,7 +77,7 @@ def _process_wrapper(function, timeout, name, daemon, mp_context):
 
         if start_method != 'fork':
             target = _trampoline
-            args = [function.__name__, function.__module__] + list(args)
+            args = [_qualname(function), function.__module__] + list(args)
         else:
             target = function
 
@@ -162,7 +165,7 @@ _registered_functions = {}
 def _register_function(function):
     global _registered_functions
 
-    _registered_functions[function.__name__] = function
+    _registered_functions[_qualname(function)] = function
 
 
 def _trampoline(name, module, *args, **kwargs):
@@ -190,3 +193,14 @@ def _function_lookup(name, module):
         getattr(mod, name)
 
         return _registered_functions[name]
+
+
+def _qualname(function):
+    """Returns the fully qualified domain of a function."""
+    try:
+        return function.__qualname__
+    except AttributeError:  # Python 2
+        if isinstance(function, types.MethodType):
+            return '.'.join((function.im_class, function.__name__))
+
+        return function.__name__

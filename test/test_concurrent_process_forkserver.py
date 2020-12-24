@@ -87,6 +87,28 @@ class ProcessConcurrentObj:
         return self.b
 
 
+class ProcessConcurrentSub1(ProcessConcurrentObj):
+    @classmethod
+    @concurrent.process(context=mp_context)
+    def clsmethod(cls):
+        return cls.a + 1
+
+    @concurrent.process(context=mp_context)
+    def instmethod(self):
+        return self.b + 1
+
+
+class ProcessConcurrentSub2(ProcessConcurrentObj):
+    @classmethod
+    @concurrent.process(context=mp_context)
+    def clsmethod(cls):
+        return cls.a + 2
+
+    @concurrent.process(context=mp_context)
+    def instmethod(self):
+        return self.b + 2
+
+
 @unittest.skipIf(not supported, "Start method is not supported")
 class TestProcessConcurrent(unittest.TestCase):
     def setUp(self):
@@ -95,6 +117,8 @@ class TestProcessConcurrent(unittest.TestCase):
         self.event = threading.Event()
         self.event.clear()
         self.concurrentobj = ProcessConcurrentObj()
+        self.concurrentobj1 = ProcessConcurrentSub1()
+        self.concurrentobj2 = ProcessConcurrentSub2()
 
     def callback(self, future):
         try:
@@ -119,11 +143,19 @@ class TestProcessConcurrent(unittest.TestCase):
         """Process Forkserver decorated classmethods."""
         future = ProcessConcurrentObj.clsmethod()
         self.assertEqual(future.result(), 0)
+        future = ProcessConcurrentSub1.clsmethod()
+        self.assertEqual(future.result(), 1)
+        future = ProcessConcurrentSub2.clsmethod()
+        self.assertEqual(future.result(), 2)
 
     def test_instance_method(self):
         """Process Forkserver decorated instance methods."""
         future = self.concurrentobj.instmethod()
         self.assertEqual(future.result(), 1)
+        future = self.concurrentobj1.instmethod()
+        self.assertEqual(future.result(), 2)
+        future = self.concurrentobj2.instmethod()
+        self.assertEqual(future.result(), 3)
 
     def test_decorated_results(self):
         """Process Forkserver results are produced."""

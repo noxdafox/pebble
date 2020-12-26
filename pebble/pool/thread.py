@@ -44,19 +44,19 @@ class ThreadPool(BasePool):
         super(ThreadPool, self).__init__(
             max_workers, max_tasks, initializer, initargs)
         self._pool_manager = PoolManager(self._context)
+        self._pool_manager_loop = None
 
     def _start_pool(self):
         with self._context.state_mutex:
             if self._context.state == CREATED:
                 self._pool_manager.start()
-                self._loops = (launch_thread(None, pool_manager_loop,
-                                             True, self._pool_manager),)
+                self._pool_manager_loop = launch_thread(
+                    None, pool_manager_loop, True, self._pool_manager)
 
                 self._context.state = RUNNING
 
     def _stop_pool(self):
-        for loop in self._loops:
-            loop.join()
+        self._pool_manager_loop.join()
         self._pool_manager.stop()
 
     def schedule(self, function, args=(), kwargs={}):

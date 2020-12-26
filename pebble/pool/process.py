@@ -58,23 +58,29 @@ class ProcessPool(BasePool):
             max_workers, max_tasks, initializer, initargs)
         mp_context = multiprocessing if context is None else context
         self._pool_manager = PoolManager(self._context, mp_context)
+        self._task_scheduler_loop = None
+        self._pool_manager_loop = None
+        self._message_manager_loop = None
 
     def _start_pool(self):
         with self._context.state_mutex:
             if self._context.state == CREATED:
                 self._pool_manager.start()
-                self._loops = (launch_thread(None, task_scheduler_loop,
-                                             True, self._pool_manager),
-                               launch_thread(None, pool_manager_loop,
-                                             True, self._pool_manager),
-                               launch_thread(None, message_manager_loop,
-                                             True, self._pool_manager))
+
+                self._task_scheduler_loop = launch_thread(
+                    None, task_scheduler_loop, True, self._pool_manager)
+                self._pool_manager_loop = launch_thread(
+                    None, pool_manager_loop, True, self._pool_manager)
+                self._message_manager_loop = launch_thread(
+                    None, message_manager_loop, True, self._pool_manager)
+
                 self._context.state = RUNNING
 
     def _stop_pool(self):
+        self._pool_manager_loop.join()
         self._pool_manager.close()
-        for loop in self._loops:
-            loop.join()
+        self._task_scheduler_loop.join()
+        self._message_manager_loop.join()
         self._pool_manager.stop()
 
     def schedule(self, function, args=(), kwargs={}, timeout=None):

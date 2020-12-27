@@ -33,20 +33,18 @@ def thread(*args, **kwargs):
     name = kwargs.get('name')
     daemon = kwargs.get('daemon', True)
 
-    if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
+    # decorator without parameters
+    if len(args) == 1 and not kwargs and callable(args[0]):
         return _thread_wrapper(args[0], name, daemon)
-    else:
-        # decorator with parameters
-        if name is not None and not isinstance(name, str):
-            raise TypeError('Name expected to be None or string')
-        if daemon is not None and not isinstance(daemon, bool):
-            raise TypeError('Daemon expected to be None or bool')
 
-        def decorating_function(function):
-            return _thread_wrapper(function, name, daemon)
+    # decorator with parameters
+    _validate_parameters(name, daemon)
 
-        return decorating_function
+    # decorator with parameters
+    def decorating_function(function):
+        return _thread_wrapper(function, name, daemon)
 
+    return decorating_function
 
 
 def _thread_wrapper(function, name, daemon):
@@ -60,6 +58,7 @@ def _thread_wrapper(function, name, daemon):
 
     return wrapper
 
+
 def _function_handler(function, args, kwargs, future):
     """Runs the actual function in separate thread and returns its result."""
     future.set_running_or_notify_cancel()
@@ -71,3 +70,10 @@ def _function_handler(function, args, kwargs, future):
         future.set_exception(error)
     else:
         future.set_result(result)
+
+
+def _validate_parameters(name, daemon):
+    if name is not None and not isinstance(name, str):
+        raise TypeError('Name expected to be None or string')
+    if daemon is not None and not isinstance(daemon, bool):
+        raise TypeError('Daemon expected to be None or bool')

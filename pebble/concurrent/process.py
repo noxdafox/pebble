@@ -49,7 +49,7 @@ def process(*args, **kwargs):
     mp_context = kwargs.get('context')
 
     # decorator without parameters
-    if len(args) == 1 and kwargs and callable(args[0]):
+    if len(args) == 1 and not kwargs and callable(args[0]):
         return _process_wrapper(args[0], timeout, name, daemon, multiprocessing)
 
     # decorator with parameters

@@ -22,6 +22,9 @@ matrix:
       python: 3.8
     - os: linux
       sudo: required
+      python: 3.9
+    - os: linux
+      sudo: required
       python: &pypy2 pypy2.7-6.0
     - os: linux
       sudo: required

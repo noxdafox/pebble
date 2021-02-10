@@ -5,7 +5,7 @@ Pebble provides a neat API to manage threads and processes within an application
 
 :Source: https://github.com/noxdafox/pebble
 :Documentation: https://pebble.readthedocs.io
-:Download: https://pypi.python.org/pypi/pebble
+:Download: https://pypi.org/project/Pebble/
 
 |travis badge| |docs badge|
 
@@ -62,7 +62,7 @@ Pools support workers restart, timeout for long running tasks and more.
     from concurrent.futures import TimeoutError
 
     def function(foo, bar=0):
-    	return foo + bar
+        return foo + bar
 
     def task_done(future):
         try:

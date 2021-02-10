@@ -420,11 +420,7 @@ Is equivalent to ::
 Running the tests
 -----------------
 
-On Python 3, the tests will cover all the multiprocessing starting methods supported by the platform.
-
-Due to multiprocessing limitations, it is not possible to change the starting method once set. Therefore, test frameworks such as nose and pytest which run all the tests in a single process will fail.
-
-Please refer to the `test/run-test.sh` bash script to see how to run the tests.
+Please refer to the `.travis.yml` to see how to run the tests.
 
 .. _concurrent.futures.Future: https://docs.python.org/3/library/concurrent.futures.html#future-objects
 .. _multiprocessing.context: https://docs.python.org/3/library/multiprocessing.html#contexts-and-start-methods

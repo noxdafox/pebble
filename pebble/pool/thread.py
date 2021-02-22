@@ -56,7 +56,8 @@ class ThreadPool(BasePool):
                 self._context.state = RUNNING
 
     def _stop_pool(self):
-        self._pool_manager_loop.join()
+        if self._pool_manager_loop is not None:
+            self._pool_manager_loop.join()
         self._pool_manager.stop()
 
     def schedule(self, function, args=(), kwargs={}):

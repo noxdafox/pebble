@@ -410,6 +410,8 @@ def worker_process(params, channel):
     """The worker process routines."""
     signal(SIGINT, SIG_IGN)
 
+    channel.initialize()
+
     if params.initializer is not None:
         if not run_initializer(params.initializer, params.initargs):
             os._exit(1)

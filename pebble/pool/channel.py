@@ -30,7 +30,8 @@ def channels(mp_context):
     read0, write0 = mp_context.Pipe(duplex=False)
     read1, write1 = mp_context.Pipe(duplex=False)
 
-    return Channel(read1, write0), WorkerChannel(read0, write1, mp_context)
+    return (Channel(read1, write0),
+            WorkerChannel(read0, write1, (read1, write0), mp_context))
 
 
 class Channel(object):
@@ -70,17 +71,18 @@ class Channel(object):
 
 
 class WorkerChannel(Channel):
-    def __init__(self, reader, writer, mp_context):
+    def __init__(self, reader, writer, unused, mp_context):
         super(WorkerChannel, self).__init__(reader, writer)
         self.mutex = ChannelMutex(mp_context)
         self.recv = self._make_recv_method()
         self.send = self._make_send_method()
+        self.unused = unused
 
     def __getstate__(self):
-        return self.reader, self.writer, self.mutex
+        return self.reader, self.writer, self.mutex, self.unused
 
     def __setstate__(self, state):
-        self.reader, self.writer, self.mutex = state
+        self.reader, self.writer, self.mutex, self.unused = state
 
         self.poll = self._make_poll_method()
         self.recv = self._make_recv_method()
@@ -108,6 +110,11 @@ class WorkerChannel(Channel):
     def lock(self):
         with self.mutex:
             yield self
+
+    def initialize(self):
+        """Close unused connections."""
+        for connection in self.unused:
+            connection.close()
 
 
 class ChannelMutex:

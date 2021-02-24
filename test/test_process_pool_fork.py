@@ -85,6 +85,29 @@ def suicide_function():
     os._exit(1)
 
 
+def process_function():
+    p = multiprocessing.Process(target=function, args=[1])
+    p.start()
+    p.join()
+
+    return 1
+
+
+def pool_function():
+    pool = multiprocessing.Pool(1)
+    result = pool.apply(function, args=[1])
+    pool.close()
+    pool.join()
+
+    return result
+
+
+def pebble_function():
+    with ProcessPool(max_workers=1) as pool:
+        f = pool.schedule(function, args=[1])
+        return f.result()
+
+
 @unittest.skipIf(not supported, "Start method is not supported")
 class TestProcessPool(unittest.TestCase):
     def setUp(self):
@@ -509,6 +532,24 @@ class TestProcessPool(unittest.TestCase):
                     break
                 except StopIteration:
                     break
+
+    def test_process_pool_child_process(self):
+        """Process Pool Fork worker starts process."""
+        with ProcessPool(max_workers=1, context=mp_context) as pool:
+            future = pool.schedule(process_function)
+        self.assertEqual(future.result(), 1)
+
+    def test_process_pool_child_pool(self):
+        """Process Pool Fork worker starts multiprocessing.Pool."""
+        with ProcessPool(max_workers=1, context=mp_context) as pool:
+            future = pool.schedule(pool_function)
+        self.assertEqual(future.result(), 1)
+
+    def test_process_pool_child_pebble(self):
+        """Process Pool Fork worker starts pebble.ProcessPool."""
+        with ProcessPool(max_workers=1, context=mp_context) as pool:
+            future = pool.schedule(pebble_function)
+        self.assertEqual(future.result(), 1)
 
 
 # DEADLOCK TESTS

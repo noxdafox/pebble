@@ -163,8 +163,6 @@ _registered_functions = {}
 
 
 def _register_function(function):
-    global _registered_functions
-
     _registered_functions[_qualname(function)] = function
 
 

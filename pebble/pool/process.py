@@ -16,6 +16,7 @@
 
 import os
 import time
+import atexit
 import pickle
 import multiprocessing
 
@@ -155,7 +156,7 @@ def task_scheduler_loop(pool_manager):
     task_queue = context.task_queue
 
     try:
-        while context.alive:
+        while context.alive and not global_shutdown:
             task = task_queue.get()
 
             if task is not None:
@@ -174,7 +175,7 @@ def pool_manager_loop(pool_manager):
     context = pool_manager.context
 
     try:
-        while context.alive:
+        while context.alive and not global_shutdown:
             pool_manager.update_status()
             time.sleep(SLEEP_UNIT)
     except BrokenProcessPool:
@@ -185,7 +186,7 @@ def message_manager_loop(pool_manager):
     context = pool_manager.context
 
     try:
-        while context.alive:
+        while context.alive and not global_shutdown:
             pool_manager.process_next_message(SLEEP_UNIT)
     except BrokenProcessPool:
         context.state = ERROR
@@ -387,7 +388,7 @@ class WorkerManager:
     def new_worker(self):
         try:
             worker = launch_process(
-                None, worker_process, True, self.mp_context,
+                WORKERS_NAME, worker_process, False, self.mp_context,
                 self.worker_parameters, self.workers_channel)
             self.workers[worker.pid] = worker
         except (OSError, EnvironmentError) as error:
@@ -476,6 +477,22 @@ def process_chunk(function, chunk):
     return [process_execute(function, *args) for args in chunk]
 
 
+def interpreter_shutdown():
+    global global_shutdown
+    global_shutdown = True
+
+    workers = [p for p in multiprocessing.active_children()
+               if p.name == WORKERS_NAME]
+
+    for worker in workers:
+        stop_process(worker)
+
+
+atexit.register(interpreter_shutdown)
+
+
+global_shutdown = False
+WORKERS_NAME = 'pebble_pool_worker'
 NoMessage = namedtuple('NoMessage', ())
 Result = namedtuple('Result', ('task', 'result'))
 Problem = namedtuple('Problem', ('task', 'error'))

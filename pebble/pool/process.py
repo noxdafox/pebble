@@ -358,6 +358,8 @@ class WorkerManager:
                 return NoMessage()
         except (OSError, EnvironmentError, TypeError) as error:
             raise BrokenProcessPool(error)
+        except EOFError:  # Pool shutdown
+            return NoMessage()
 
     def inspect_workers(self):
         """Updates the workers status.

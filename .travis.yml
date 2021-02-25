@@ -30,14 +30,6 @@ matrix:
       sudo: required
       python: &pypy3 pypy3.5-6.0
     - os: osx
-      osx_image: xcode9.3
-      language: shell
-      before_install:
-        - python --version
-        - pip install pytest --user
-        - pip install codecov --user
-      install: pip install . --user
-    - os: osx
       osx_image: xcode10.2
       language: shell
       before_install:

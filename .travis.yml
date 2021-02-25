@@ -45,13 +45,13 @@ matrix:
         - pip3 install --upgrade pip
         - pip3 install --upgrade pytest
       install: pip3 install .
-      script: python3 -m pytest
+      script: python3 -m pytest -sv
 install:
   - pip install --upgrade pip
   - pip install --upgrade setuptools
   - pip install --upgrade pytest
   - pip install .
-script: python -m pytest -v
+script: python -m pytest -sv
 branches:
   only:
     - master

@@ -38,6 +38,14 @@ matrix:
         - pip3 install --upgrade pytest
       install: pip3 install .
       script: python3 -m pytest -sv
+    - os: windows
+      language: shell
+      before_install:
+        - choco install python --version 3.7.4
+        - python --version
+        - python -m pip install --upgrade pip
+        - pip3 install --upgrade pytest
+      env: PATH=/c/Python37:/c/Python37/Scripts:$PATH
 install:
   - pip install --upgrade pip
   - pip install --upgrade setuptools

@@ -136,7 +136,7 @@ class TestProcessPool(unittest.TestCase):
     def test_process_pool_multiple_futures(self):
         """Process Pool Fork multiple futures."""
         futures = []
-        with ProcessPool(max_workers=1, context=mp_context) as pool:
+        with ProcessPool(max_workers=4, context=mp_context) as pool:
             for _ in range(5):
                 futures.append(pool.schedule(function, args=[1]))
         self.assertEqual(sum([f.result() for f in futures]), 5)

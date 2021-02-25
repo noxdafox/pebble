@@ -29,19 +29,23 @@ matrix:
     - os: linux
       sudo: required
       python: &pypy3 pypy3.5-6.0
-    # - os: osx
-    #   language: generic
-    #   before_install:
-    #     - virtualenv env -p python
-    #     - source env/bin/activate
-    # - os: osx
-    #   language: generic
-    #   before_install:
-    #     - brew update
-    #     - brew upgrade python
-    #     - pip install --upgrade virtualenv
-    #     - virtualenv env -p python
-    #     - source env/bin/activate
+    - os: osx
+      osx_image: xcode9.3
+      language: shell
+      before_install:
+        - python --version
+        - pip install pytest --user
+        - pip install codecov --user
+      install: pip install . --user
+    - os: osx
+      osx_image: xcode10.2
+      language: shell
+      before_install:
+        - python3 --version
+        - pip3 install --upgrade pip
+        - pip3 install --upgrade pytest
+      install: pip3 install .
+      script: python3 -m pytest
 install:
   - pip install --upgrade pip
   - pip install --upgrade setuptools

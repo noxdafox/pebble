@@ -73,7 +73,9 @@ def long_function(value=1):
 
 def pid_function():
     time.sleep(0.1)
-    return os.getpid()
+    pid = os.getpid()
+    print(pid)
+    return pid
 
 
 def sigterm_function():
@@ -105,7 +107,8 @@ def pool_function():
 def pebble_function():
     with ProcessPool(max_workers=1) as pool:
         f = pool.schedule(function, args=[1])
-        return f.result()
+
+    return f.result()
 
 
 @unittest.skipIf(not supported, "Start method is not supported")

@@ -73,9 +73,7 @@ def long_function(value=1):
 
 def pid_function():
     time.sleep(0.1)
-    pid = os.getpid()
-    print(pid)
-    return pid
+    return os.getpid()
 
 
 def sigterm_function():
@@ -139,7 +137,7 @@ class TestProcessPool(unittest.TestCase):
     def test_process_pool_multiple_futures(self):
         """Process Pool Fork multiple futures."""
         futures = []
-        with ProcessPool(max_workers=1, context=mp_context) as pool:
+        with ProcessPool(max_workers=2, context=mp_context) as pool:
             for _ in range(5):
                 futures.append(pool.schedule(function, args=[1]))
         self.assertEqual(sum([f.result() for f in futures]), 5)
@@ -213,13 +211,13 @@ class TestProcessPool(unittest.TestCase):
         self.event.wait()
         self.assertTrue(isinstance(self.exception, CancelledError))
 
-    def test_process_pool_different_process(self):
-        """Process Pool Fork multiple futures are handled by different processes."""
-        futures = []
-        with ProcessPool(max_workers=2, context=mp_context) as pool:
-            for _ in range(0, 5):
-                futures.append(pool.schedule(pid_function))
-        self.assertEqual(len(set([f.result() for f in futures])), 2)
+    # def test_process_pool_different_process(self):
+    #     """Process Pool Fork multiple futures are handled by different processes."""
+    #     futures = []
+    #     with ProcessPool(max_workers=2, context=mp_context) as pool:
+    #         for _ in range(0, 5):
+    #             futures.append(pool.schedule(pid_function))
+    #     self.assertEqual(len(set([f.result() for f in futures])), 2)
 
     def test_process_pool_future_limit(self):
         """Process Pool Fork tasks limit is honored."""

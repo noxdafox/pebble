@@ -69,7 +69,9 @@ class BasePool(object):
         if self._context.state == RUNNING:
             raise RuntimeError('The Pool is still running')
         if self._context.state == CLOSED:
+            print("waiting for queue depletion")
             self._wait_queue_depletion(timeout)
+            print("queue depleted")
             self.stop()
             self.join()
         else:

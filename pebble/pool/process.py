@@ -428,7 +428,7 @@ def worker_process(params, channel):
     except (EnvironmentError, OSError, RuntimeError) as error:
         errno = getattr(error, 'errno', 1)
         os._exit(errno if isinstance(errno, int) else 1)
-    except EOFError:
+    except EOFError as error:
         os._exit(0)
 
 

@@ -211,13 +211,14 @@ class TestProcessPool(unittest.TestCase):
         self.event.wait()
         self.assertTrue(isinstance(self.exception, CancelledError))
 
-    # def test_process_pool_different_process(self):
-    #     """Process Pool Fork multiple futures are handled by different processes."""
-    #     futures = []
-    #     with ProcessPool(max_workers=2, context=mp_context) as pool:
-    #         for _ in range(0, 5):
-    #             futures.append(pool.schedule(pid_function))
-    #     self.assertEqual(len(set([f.result() for f in futures])), 2)
+    @unittest.skipIf(sys.platform == 'darwin', "Not supported on MAC OS")
+    def test_process_pool_different_process(self):
+        """Process Pool Fork multiple futures are handled by different processes."""
+        futures = []
+        with ProcessPool(max_workers=2, context=mp_context) as pool:
+            for _ in range(0, 5):
+                futures.append(pool.schedule(pid_function))
+        self.assertEqual(len(set([f.result() for f in futures])), 2)
 
     def test_process_pool_future_limit(self):
         """Process Pool Fork tasks limit is honored."""
@@ -474,12 +475,12 @@ class TestProcessPool(unittest.TestCase):
 
     def test_process_pool_map_timeout_chunks(self):
         """Process Pool Fork map timeout is assigned per chunk."""
-        elements = [0.1]*10
+        elements = [0.2]*10
 
         with ProcessPool(max_workers=1, context=mp_context) as pool:
-            # it takes 0.5s to process a chunk
+            # it takes 1s to process a chunk
             future = pool.map(
-                long_function, elements, chunksize=5, timeout=0.8)
+                long_function, elements, chunksize=5, timeout=1.6)
             generator = future.result()
             self.assertEqual(list(generator), elements)
 

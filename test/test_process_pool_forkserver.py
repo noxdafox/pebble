@@ -105,7 +105,8 @@ def pool_function():
 def pebble_function():
     with ProcessPool(max_workers=1) as pool:
         f = pool.schedule(function, args=[1])
-        return f.result()
+
+    return f.result()
 
 
 @unittest.skipIf(not supported, "Start method is not supported")
@@ -210,6 +211,7 @@ class TestProcessPool(unittest.TestCase):
         self.event.wait()
         self.assertTrue(isinstance(self.exception, CancelledError))
 
+    @unittest.skipIf(sys.platform == 'darwin', "Not supported on MAC OS")
     def test_process_pool_different_process(self):
         """Process Pool Forkserver multiple futures are handled by different processes."""
         futures = []

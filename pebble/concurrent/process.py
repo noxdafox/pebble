@@ -108,8 +108,8 @@ def _worker_handler(future, worker, pipe, timeout):
     if isinstance(result, BaseException):
         if isinstance(result, ProcessExpired):
             result.exitcode = worker.exitcode
-
-        future.set_exception(result)
+        if not isinstance(result, CancelledError):
+            future.set_exception(result)
     else:
         future.set_result(result)
 

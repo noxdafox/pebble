@@ -34,13 +34,17 @@ def thread(*args, **kwargs):
     daemon = kwargs.get('daemon', True)
 
     # decorator without parameters
-    if len(args) == 1 and not kwargs and callable(args[0]):
+    if not kwargs and len(args) == 1 and callable(args[0]):
         return _thread_wrapper(args[0], name, daemon)
 
     # decorator with parameters
     _validate_parameters(name, daemon)
 
-    # decorator with parameters
+    # without @pie syntax
+    if len(args) == 1 and callable(args[0]):
+        return _thread_wrapper(args[0], name, daemon)
+
+    # with @pie syntax
     def decorating_function(function):
         return _thread_wrapper(function, name, daemon)
 

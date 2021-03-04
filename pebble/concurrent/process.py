@@ -49,13 +49,18 @@ def process(*args, **kwargs):
     mp_context = kwargs.get('context')
 
     # decorator without parameters
-    if len(args) == 1 and not kwargs and callable(args[0]):
+    if not kwargs and len(args) == 1 and callable(args[0]):
         return _process_wrapper(args[0], timeout, name, daemon, multiprocessing)
 
     # decorator with parameters
     _validate_parameters(timeout, name, daemon, mp_context)
     mp_context = mp_context if mp_context is not None else multiprocessing
 
+    # without @pie syntax
+    if len(args) == 1 and callable(args[0]):
+        return _process_wrapper(args[0], timeout, name, daemon, multiprocessing)
+
+    # with @pie syntax
     def decorating_function(function):
         return _process_wrapper(function, timeout, name, daemon, mp_context)
 
@@ -159,11 +164,14 @@ def _validate_parameters(timeout, name, daemon, mp_context):
 ################################################################################
 # Spawn process start method handling logic
 ################################################################################
+
 _registered_functions = {}
 
 
 def _register_function(function):
     _registered_functions[_qualname(function)] = function
+
+    return function
 
 
 def _trampoline(name, module, *args, **kwargs):
@@ -188,9 +196,12 @@ def _function_lookup(name, module):
     except KeyError:  # force function registering
         __import__(module)
         mod = sys.modules[module]
-        getattr(mod, name)
+        function = getattr(mod, name)
 
-        return _registered_functions[name]
+        try:
+            return _registered_functions[name]
+        except KeyError:  # decorator without @pie syntax
+            return _register_function(function)
 
 
 def _qualname(function):

@@ -4,6 +4,10 @@ import threading
 from pebble import concurrent
 
 
+def not_decorated(argument, keyword_argument=0):
+    return argument + keyword_argument
+
+
 @concurrent.thread
 def decorated(argument, keyword_argument=0):
     """A docstring."""
@@ -89,6 +93,12 @@ class TestThreadConcurrent(unittest.TestCase):
     def test_static_method(self):
         """Thread  decorated static methods ( startmethod only)."""
         future = self.concurrentobj.stcmethod()
+        self.assertEqual(future.result(), 2)
+
+    def test_not_decorated_results(self):
+        """Process Fork results are produced."""
+        non_decorated = concurrent.thread(not_decorated)
+        future = non_decorated(1, 1)
         self.assertEqual(future.result(), 2)
 
     def test_decorated_results(self):

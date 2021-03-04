@@ -30,6 +30,10 @@ else:
     supported = True
 
 
+def not_decorated(argument, keyword_argument=0):
+    return argument + keyword_argument
+
+
 @concurrent.process(context=mp_context)
 def decorated(argument, keyword_argument=0):
     """A docstring."""
@@ -197,6 +201,12 @@ class TestProcessConcurrent(unittest.TestCase):
         self.assertEqual(future.result(), 3)
         future = self.concurrentobj2.stcmethod()
         self.assertEqual(future.result(), 4)
+
+    def test_not_decorated_results(self):
+        """Process Fork results are produced."""
+        non_decorated = concurrent.process(not_decorated, context=mp_context)
+        future = non_decorated(1, 1)
+        self.assertEqual(future.result(), 2)
 
     def test_decorated_results(self):
         """Process Fork results are produced."""

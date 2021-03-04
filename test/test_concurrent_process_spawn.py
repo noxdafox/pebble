@@ -28,6 +28,10 @@ if sys.version_info.major > 2 and sys.version_info.minor > 3:
             pass
 
 
+def not_decorated(argument, keyword_argument=0):
+    return argument + keyword_argument
+
+
 @concurrent.process(context=mp_context)
 def decorated(argument, keyword_argument=0):
     """A docstring."""
@@ -156,6 +160,12 @@ class TestProcessConcurrent(unittest.TestCase):
         self.assertEqual(future.result(), 2)
         future = self.concurrentobj2.instmethod()
         self.assertEqual(future.result(), 3)
+
+    def test_not_decorated_results(self):
+        """Process Spawn results are produced."""
+        non_decorated = concurrent.process(not_decorated, context=mp_context)
+        future = non_decorated(1, 1)
+        self.assertEqual(future.result(), 2)
 
     def test_decorated_results(self):
         """Process Spawn results are produced."""

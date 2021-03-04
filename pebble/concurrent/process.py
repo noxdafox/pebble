@@ -88,7 +88,7 @@ def _process_wrapper(function, timeout, name, daemon, mp_context):
 
         worker = launch_process(
             name, _function_handler, daemon, mp_context,
-            target, args, kwargs, writer)
+            target, args, kwargs, (reader, writer))
 
         writer.close()
 
@@ -126,9 +126,12 @@ def _function_handler(function, args, kwargs, pipe):
     """Runs the actual function in separate process and returns its result."""
     signal.signal(signal.SIGINT, signal.SIG_IGN)
 
+    reader, writer = pipe
+    reader.close()
+
     result = process_execute(function, *args, **kwargs)
 
-    send_result(pipe, result)
+    send_result(writer, result)
 
 
 def _get_result(future, pipe, timeout):

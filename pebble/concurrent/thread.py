@@ -28,7 +28,11 @@ def thread(*args, **kwargs):
     Decorated functions will return a concurrent.futures.Future object
     once called.
 
-    The name parameter will set the process name.
+    The name parameter will set the thread name.
+
+    The daemon parameter controls the underlying thread daemon flag.
+    Default is True.
+
     """
     name = kwargs.get('name')
     daemon = kwargs.get('daemon', True)

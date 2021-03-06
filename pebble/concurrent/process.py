@@ -40,7 +40,14 @@ def process(*args, **kwargs):
     The timeout parameter will set a maximum execution time
     for the decorated function. If the execution exceeds the timeout,
     the process will be stopped and the Future will raise TimeoutError.
+
     The name parameter will set the process name.
+
+    The daemon parameter controls the underlying process daemon flag.
+    Default is True.
+
+    The context parameter allows to provide the multiprocessing.context
+    object used for starting the process.
 
     """
     timeout = kwargs.get('timeout')

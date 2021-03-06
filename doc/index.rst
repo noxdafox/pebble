@@ -235,15 +235,31 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
 Programming Guidelines
 ----------------------
 
-Processes
-+++++++++
-
 The Python's multiprocessing `programming guidelines`_ apply as well for all functionalities within the *process* namespace.
 
 Pool workers termination
 ++++++++++++++++++++++++
 
 When a `Future` is cancelled or the underlying task times out or the `ProcessPool` is stopped, the affected worker processes are terminated. As a consequence, scheduled functions which allocate resources such as temporary files or child processes are to be handled carefully. If a worker process is terminated abruptly due to the above reason, such resources will not be relinquished.
+
+Concurrent process decorator
+++++++++++++++++++++++++++++
+
+When the start method is either `spawn` or `forkserver`, the recommendation is to limit the decoration via `concurrent.process` to top level functions only. More specifically, inner scope functions decoration is not supported.
+
+The following will not work with the mentioned start methods:
+
+::
+
+   def outer():
+
+       @concurrent.process
+       def inner():
+           return
+
+       future = inner()
+
+       return future.result()
 
 Examples
 --------

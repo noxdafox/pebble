@@ -232,13 +232,18 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
       Integer representing the process' exit code.
 
 
-General notes
--------------
+Programming Guidelines
+----------------------
 
 Processes
 +++++++++
 
-The Python's multiprocessing guidelines apply as well for all functionalities within the *process* namespace.
+The Python's multiprocessing `programming guidelines`_ apply as well for all functionalities within the *process* namespace.
+
+Pool workers termination
+++++++++++++++++++++++++
+
+When a `Future` is cancelled or the underlying task times out or the `ProcessPool` is stopped, the affected worker processes are terminated. As a consequence, scheduled functions which allocate resources such as temporary files or child processes are to be handled carefully. If a worker process is terminated abruptly due to the above reason, such resources will not be relinquished.
 
 Examples
 --------
@@ -424,6 +429,7 @@ Please refer to the `.travis.yml` to see how to run the tests.
 
 .. _concurrent.futures.Future: https://docs.python.org/3/library/concurrent.futures.html#future-objects
 .. _multiprocessing.context: https://docs.python.org/3/library/multiprocessing.html#contexts-and-start-methods
+.. _`programming guidelines`: https://docs.python.org/3/library/multiprocessing.html#programming-guidelines
 
 .. toctree::
    :maxdepth: 2

@@ -43,7 +43,7 @@ class Channel(object):
     def _make_poll_method(self):
         def unix_poll(timeout=None):
             poll = select.poll()
-            poll.register(self.reader)
+            poll.register(self.reader, select.POLLIN | select.POLLPRI)
             try:
                 return bool(poll.poll(timeout))
             except OSError:

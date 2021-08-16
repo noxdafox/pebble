@@ -44,6 +44,10 @@ class Channel(object):
         def unix_poll(timeout=None):
             poll = select.poll()
             poll.register(self.reader, READ_ONLY_EVENTMASK)
+    
+            # Convert from Seconds to Milliseconds
+            timeout = timeout * 1000 if timeout else timeout
+
             try:
                 return bool(poll.poll(timeout))
             except OSError:

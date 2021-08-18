@@ -46,7 +46,8 @@ class Channel(object):
             poll.register(self.reader, READ_ONLY_EVENTMASK)
     
             # Convert from Seconds to Milliseconds
-            timeout = timeout * 1000 if timeout else timeout
+            if timeout is not None:
+                timeout *= MILLISECONDS
 
             try:
                 return bool(poll.poll(timeout))
@@ -188,5 +189,6 @@ class ChannelMutex:
             raise ChannelError("Channel mutex time out")
 
 
+MILLISECONDS = 1000
 LOCK_TIMEOUT = 60
 READ_ONLY_EVENTMASK = select.POLLIN | select.POLLPRI | select.POLLHUP | select.POLLERR

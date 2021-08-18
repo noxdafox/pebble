@@ -43,7 +43,12 @@ class Channel(object):
     def _make_poll_method(self):
         def unix_poll(timeout=None):
             poll = select.poll()
-            poll.register(self.reader)
+            poll.register(self.reader, READ_ONLY_EVENTMASK)
+    
+            # Convert from Seconds to Milliseconds
+            if timeout is not None:
+                timeout *= MILLISECONDS
+
             try:
                 return bool(poll.poll(timeout))
             except OSError:
@@ -184,4 +189,6 @@ class ChannelMutex:
             raise ChannelError("Channel mutex time out")
 
 
+MILLISECONDS = 1000
 LOCK_TIMEOUT = 60
+READ_ONLY_EVENTMASK = select.POLLIN | select.POLLPRI | select.POLLHUP | select.POLLERR

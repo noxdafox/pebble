@@ -7,10 +7,10 @@ Pebble provides a neat API to manage threads and processes within an application
 :Documentation: https://pebble.readthedocs.io
 :Download: https://pypi.org/project/Pebble/
 
-|travis badge| |docs badge|
+|build badge| |docs badge|
 
-.. |travis badge| image:: https://travis-ci.org/noxdafox/pebble.svg?branch=master
-   :target: https://travis-ci.org/noxdafox/pebble
+.. |build badge| image:: https://github.com/noxdafox/pebble/actions/workflows/action.yml/badge.svg
+   :target: https://github.com/noxdafox/pebble/actions/workflows/action.yml
    :alt: Build Status
 .. |docs badge| image:: https://readthedocs.org/projects/pebble/badge/?version=latest
    :target: https://pebble.readthedocs.io

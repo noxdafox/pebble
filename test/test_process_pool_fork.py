@@ -590,7 +590,7 @@ class TestProcessPoolDeadlockOnNewFutures(unittest.TestCase):
             pool = pebble.ProcessPool(max_workers=1, context=mp_context)
             for _ in range(10):
                 pool.schedule(function)
-                time.sleep(0.1)
+                time.sleep(0.2)
 
 
 @unittest.skipIf(not supported, "Start method is not supported")
@@ -616,4 +616,4 @@ class TestProcessPoolDeadlockOnResult(unittest.TestCase):
             pool = pebble.ProcessPool(max_workers=1, context=mp_context)
             for _ in range(10):
                 pool.schedule(function)
-                time.sleep(0.1)
+                time.sleep(0.2)

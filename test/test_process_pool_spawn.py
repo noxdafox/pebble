@@ -473,12 +473,12 @@ class TestProcessPool(unittest.TestCase):
 
     def test_process_pool_map_timeout_chunks(self):
         """Process Pool Spawn map timeout is assigned per chunk."""
-        elements = [0.1]*10
+        elements = [0.1]*20
 
         with ProcessPool(max_workers=1, context=mp_context) as pool:
-            # it takes 0.5s to process a chunk
+            # it takes 1s to process a chunk
             future = pool.map(
-                long_function, elements, chunksize=5, timeout=0.8)
+                long_function, elements, chunksize=5, timeout=1.8)
             generator = future.result()
             self.assertEqual(list(generator), elements)
 

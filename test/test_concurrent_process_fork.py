@@ -313,6 +313,7 @@ class TestProcessConcurrent(unittest.TestCase):
         dec_out = f.result()
         self.assertEqual(dec_out, False)
 
+    @unittest.skipIf(sys.version_info.major < 3, "Test won't run on Python 2.")
     def test_callable_objects(self):
         """Callable objects are correctly handled."""
         callable_object = concurrent.process(context=mp_context)(CallableClass())

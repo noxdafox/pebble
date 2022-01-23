@@ -113,6 +113,11 @@ class ProcessConcurrentSub2(ProcessConcurrentObj):
         return self.b + 2
 
 
+class CallableClass:
+    def __call__(self, argument, keyword_argument=0):
+        return argument + keyword_argument
+
+
 @unittest.skipIf(not supported, "Start method is not supported")
 class TestProcessConcurrent(unittest.TestCase):
     def setUp(self):
@@ -245,3 +250,10 @@ class TestProcessConcurrent(unittest.TestCase):
         f = daemon_keyword_decorated()
         dec_out = f.result()
         self.assertEqual(dec_out, False)
+
+    def test_callable_objects(self):
+        """Callable objects are correctly handled."""
+        callable_object = concurrent.process(context=mp_context)(CallableClass())
+        f = callable_object(1)
+
+        self.assertEqual(f.result(), 1)

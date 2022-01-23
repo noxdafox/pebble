@@ -75,7 +75,8 @@ def process(*args, **kwargs):
 
 
 def _process_wrapper(function, timeout, name, daemon, mp_context):
-    _register_function(function)
+    if isinstance(function, types.FunctionType):
+        _register_function(function)
 
     if hasattr(mp_context, 'get_start_method'):
         start_method = mp_context.get_start_method()
@@ -87,7 +88,7 @@ def _process_wrapper(function, timeout, name, daemon, mp_context):
         future = ProcessFuture()
         reader, writer = mp_context.Pipe(duplex=False)
 
-        if start_method != 'fork':
+        if isinstance(function, types.FunctionType) and start_method != 'fork':
             target = _trampoline
             args = [_qualname(function), function.__module__] + list(args)
         else:

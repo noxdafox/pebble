@@ -22,11 +22,9 @@ setup(
     license="LGPL",
     keywords="thread process pool decorator",
     url="https://github.com/noxdafox/pebble",
-    packages=find_packages(exclude=["tests"]),
-    extras_require={":python_version<'3'": ["futures"]},
+    packages=find_packages(exclude=["test"]),
     long_description=open(os.path.join(CWD, 'README.rst')).read(),
     classifiers=[
-        "Programming Language :: Python",
         "Programming Language :: Python :: 3",
         "Development Status :: 5 - Production/Stable",
         "Intended Audience :: Developers",

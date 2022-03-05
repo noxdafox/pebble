@@ -90,7 +90,7 @@ def _process_wrapper(function, timeout, name, daemon, mp_context):
 
         if isinstance(function, types.FunctionType) and start_method != 'fork':
             target = _trampoline
-            args = [_qualname(function), function.__module__] + list(args)
+            args = [function.__qualname__, function.__module__] + list(args)
         else:
             target = function
 
@@ -180,7 +180,7 @@ _registered_functions = {}
 
 
 def _register_function(function):
-    _registered_functions[_qualname(function)] = function
+    _registered_functions[function.__qualname__] = function
 
     return function
 
@@ -213,14 +213,3 @@ def _function_lookup(name, module):
             return _registered_functions[name]
         except KeyError:  # decorator without @pie syntax
             return _register_function(function)
-
-
-def _qualname(function):
-    """Returns the fully qualified domain of a function."""
-    try:
-        return function.__qualname__
-    except AttributeError:  # Python 2
-        if isinstance(function, types.MethodType):
-            return '.'.join((function.im_class, function.__name__))
-
-        return function.__name__

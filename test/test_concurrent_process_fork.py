@@ -1,5 +1,4 @@
 import os
-import sys
 import time
 import pickle
 import signal
@@ -16,18 +15,17 @@ supported = False
 mp_context = None
 
 
-if sys.version_info.major > 2 and sys.version_info.minor > 3:
-    methods = multiprocessing.get_all_start_methods()
-    if 'fork' in methods:
-        try:
-            mp_context = multiprocessing.get_context('fork')
+methods = multiprocessing.get_all_start_methods()
+if 'fork' in methods:
+    try:
+        mp_context = multiprocessing.get_context('fork')
 
-            if mp_context.get_start_method() == 'fork':
-                supported = True
-        except RuntimeError:  # child process
-            pass
-else:
-    supported = True
+        if mp_context.get_start_method() == 'fork':
+            supported = True
+        else:
+            raise Exception(mp_context.get_start_method())
+    except RuntimeError:  # child process
+        pass
 
 
 def not_decorated(argument, keyword_argument=0):
@@ -113,6 +111,7 @@ class ProcessConcurrentObj:
         return 2
 
 
+@unittest.skipIf(not supported, "Start method is not supported")
 class ProcessConcurrentSub1(ProcessConcurrentObj):
     @classmethod
     @concurrent.process(context=mp_context)
@@ -150,7 +149,6 @@ class CallableClass:
         return argument + keyword_argument
 
 
-@unittest.skipIf(not supported, "Start method is not supported")
 class TestProcessConcurrent(unittest.TestCase):
     def setUp(self):
         self.results = 0
@@ -313,7 +311,6 @@ class TestProcessConcurrent(unittest.TestCase):
         dec_out = f.result()
         self.assertEqual(dec_out, False)
 
-    @unittest.skipIf(sys.version_info.major < 3, "Test won't run on Python 2.")
     def test_callable_objects(self):
         """Callable objects are correctly handled."""
         callable_object = concurrent.process(context=mp_context)(CallableClass())

@@ -1,5 +1,4 @@
 import os
-import sys
 import time
 import pickle
 import signal
@@ -16,16 +15,17 @@ supported = False
 mp_context = None
 
 
-if sys.version_info.major > 2 and sys.version_info.minor > 3:
-    methods = multiprocessing.get_all_start_methods()
-    if 'spawn' in methods:
-        try:
-            mp_context = multiprocessing.get_context('spawn')
+methods = multiprocessing.get_all_start_methods()
+if 'spawn' in methods:
+    try:
+        mp_context = multiprocessing.get_context('spawn')
 
-            if mp_context.get_start_method() == 'spawn':
-                supported = True
-        except RuntimeError:  # child process
-            pass
+        if mp_context.get_start_method() == 'spawn':
+            supported = True
+        else:
+            raise Exception(mp_context.get_start_method())
+    except RuntimeError:  # child process
+        pass
 
 
 def not_decorated(argument, keyword_argument=0):
@@ -91,6 +91,7 @@ class ProcessConcurrentObj:
         return self.b
 
 
+@unittest.skipIf(not supported, "Start method is not supported")
 class ProcessConcurrentSub1(ProcessConcurrentObj):
     @classmethod
     @concurrent.process(context=mp_context)
@@ -118,7 +119,6 @@ class CallableClass:
         return argument + keyword_argument
 
 
-@unittest.skipIf(not supported, "Start method is not supported")
 class TestProcessConcurrent(unittest.TestCase):
     def setUp(self):
         self.results = 0

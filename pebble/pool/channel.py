@@ -58,11 +58,6 @@ class Channel(object):
                 return bool(poll.poll(timeout))
             except OSError:
                 raise
-            except select.error as err:  # Python 2
-                error = OSError(err.args[1])
-                error.errno = err.args[0]
-
-                raise error
 
         def windows_poll(timeout=None):
             return self.reader.poll(timeout)

@@ -19,18 +19,15 @@ supported = False
 mp_context = None
 
 
-if sys.version_info.major > 2 and sys.version_info.minor > 3:
-    methods = multiprocessing.get_all_start_methods()
-    if 'fork' in methods:
-        try:
-            mp_context = multiprocessing.get_context('fork')
+methods = multiprocessing.get_all_start_methods()
+if 'fork' in methods:
+    try:
+        mp_context = multiprocessing.get_context('fork')
 
-            if mp_context.get_start_method() == 'fork':
-                supported = True
-        except RuntimeError:  # child process
-            pass
-else:
-    supported = True
+        if mp_context.get_start_method() == 'fork':
+            supported = True
+    except RuntimeError:  # child process
+        pass
 
 
 initarg = 0

@@ -24,11 +24,7 @@ from itertools import count
 from collections import namedtuple
 from signal import SIG_IGN, SIGINT, signal
 from concurrent.futures import CancelledError, TimeoutError
-try:
-    from concurrent.futures.process import BrokenProcessPool
-except ImportError:
-    class BrokenProcessPool(OSError):
-        pass
+from concurrent.futures.process import BrokenProcessPool
 
 from pebble.pool.channel import ChannelError, channels
 from pebble.pool.base_pool import BasePool, Task, TaskPayload
@@ -347,8 +343,8 @@ class WorkerManager:
             self.pool_channel.send(WorkerTask(task.id, task.payload))
         except (pickle.PicklingError, TypeError) as error:
             raise error
-        except (OSError, EnvironmentError, TypeError) as error:
-            raise BrokenProcessPool(error)
+        except OSError as error:
+            raise BrokenProcessPool from error
 
     def receive(self, timeout):
         try:
@@ -356,8 +352,8 @@ class WorkerManager:
                 return self.pool_channel.recv()
             else:
                 return NoMessage()
-        except (OSError, EnvironmentError, TypeError) as error:
-            raise BrokenProcessPool(error)
+        except (OSError, TypeError) as error:
+            raise BrokenProcessPool from error
         except EOFError:  # Pool shutdown
             return NoMessage()
 
@@ -393,8 +389,8 @@ class WorkerManager:
                 WORKERS_NAME, worker_process, False, self.mp_context,
                 self.worker_parameters, self.workers_channel)
             self.workers[worker.pid] = worker
-        except (OSError, EnvironmentError) as error:
-            raise BrokenProcessPool(error)
+        except OSError as error:
+            raise BrokenProcessPool from error
 
     def stop_worker(self, worker_id, force=False):
         try:
@@ -404,7 +400,7 @@ class WorkerManager:
                 with self.workers_channel.lock:
                     stop_process(self.workers.pop(worker_id))
         except ChannelError as error:
-            raise BrokenProcessPool(error)
+            raise BrokenProcessPool from error
         except KeyError:
             return  # worker already expired
 
@@ -425,7 +421,7 @@ def worker_process(params, channel):
             result = process_execute(
                 payload.function, *payload.args, **payload.kwargs)
             send_result(channel, Result(task.id, result))
-    except (EnvironmentError, OSError, RuntimeError) as error:
+    except (OSError, RuntimeError) as error:
         errno = getattr(error, 'errno', 1)
         os._exit(errno if isinstance(errno, int) else 1)
     except EOFError as error:

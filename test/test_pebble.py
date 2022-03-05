@@ -3,10 +3,7 @@ import time
 import signal
 import unittest
 import threading
-try:  # Python 2
-    from Queue import Queue
-except:  # Python 3
-    from queue import Queue
+from queue import Queue
 
 from pebble import decorators
 

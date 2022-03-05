@@ -111,7 +111,6 @@ class ProcessConcurrentObj:
         return 2
 
 
-@unittest.skipIf(not supported, "Start method is not supported")
 class ProcessConcurrentSub1(ProcessConcurrentObj):
     @classmethod
     @concurrent.process(context=mp_context)
@@ -149,6 +148,7 @@ class CallableClass:
         return argument + keyword_argument
 
 
+@unittest.skipIf(not supported, "Start method is not supported")
 class TestProcessConcurrent(unittest.TestCase):
     def setUp(self):
         self.results = 0

@@ -7,7 +7,7 @@ Pebble provides a neat API to manage threads and processes within an application
 :Documentation: https://pebble.readthedocs.io
 :Download: https://pypi.org/project/Pebble/
 
-|build badge| |docs badge|
+|build badge| |docs badge| |downloads badge|
 
 .. |build badge| image:: https://github.com/noxdafox/pebble/actions/workflows/action.yml/badge.svg
    :target: https://github.com/noxdafox/pebble/actions/workflows/action.yml
@@ -15,6 +15,9 @@ Pebble provides a neat API to manage threads and processes within an application
 .. |docs badge| image:: https://readthedocs.org/projects/pebble/badge/?version=latest
    :target: https://pebble.readthedocs.io
    :alt: Documentation Status
+.. |downloads badge| image:: https://img.shields.io/pypi/dm/pebble
+   :target: https://pypistats.org/packages/pebble
+   :alt: PyPI - Downloads
 
 Examples
 --------

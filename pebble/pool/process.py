@@ -83,6 +83,9 @@ class ProcessPool(BasePool):
             self._message_manager_loop.join()
         self._pool_manager.stop()
 
+    def submit(self, fn, timeout, /, *args, **kwargs):
+        return self.schedule(fn, args=args, kwargs=kwargs, timeout=timeout)
+
     def schedule(self, function, args=(), kwargs={}, timeout=None):
         """Schedules *function* to be run the Pool.
 

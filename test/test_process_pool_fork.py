@@ -3,6 +3,7 @@ import sys
 import time
 import pickle
 import signal
+import asyncio
 import unittest
 import threading
 import multiprocessing
@@ -549,6 +550,189 @@ class TestProcessPool(unittest.TestCase):
         with ProcessPool(max_workers=1, context=mp_context) as pool:
             future = pool.schedule(pebble_function)
         self.assertEqual(future.result(), 1)
+
+
+@unittest.skipIf(not supported, "Start method is not supported")
+class TestAsyncIOProcessPool(unittest.TestCase):
+    def setUp(self):
+        self.event = None
+        self.result = None
+        self.exception = None
+
+    def callback(self, future):
+        try:
+            self.result = future.result()
+        # asyncio.exception.CancelledError does not inherit from Exception
+        except BaseException as error:
+            self.exception = error
+        finally:
+            self.event.set()
+
+    def test_process_pool_single_future(self):
+        """Process Pool Fork single future."""
+        async def test(pool):
+            loop = asyncio.get_running_loop()
+
+            return await loop.run_in_executor(pool, function, None, 1)
+
+        with ProcessPool(max_workers=1, context=mp_context) as pool:
+            self.assertEqual(asyncio.run(test(pool)), 1)
+
+    def test_process_pool_multiple_futures(self):
+        """Process Pool Fork multiple futures."""
+        async def test(pool):
+            futures = []
+            loop = asyncio.get_running_loop()
+
+            for _ in range(5):
+                futures.append(loop.run_in_executor(pool, function, None, 1))
+
+            return await asyncio.wait(futures)
+
+        with ProcessPool(max_workers=2, context=mp_context) as pool:
+            self.assertEqual(sum(r.result()
+                                 for r in asyncio.run(test(pool))[0]), 5)
+
+    def test_process_pool_callback(self):
+        """Process Pool Fork result is forwarded to the callback."""
+        async def test(pool):
+            loop = asyncio.get_running_loop()
+
+            self.event = asyncio.Event()
+            self.event.clear()
+
+            future = loop.run_in_executor(pool, function, None, 1)
+            future.add_done_callback(self.callback)
+
+            await self.event.wait()
+
+        with ProcessPool(max_workers=1, context=mp_context) as pool:
+            asyncio.run(test(pool))
+            self.assertEqual(self.result, 1)
+
+    def test_process_pool_error(self):
+        """Process Pool Fork errors are raised by future get."""
+        async def test(pool):
+            loop = asyncio.get_running_loop()
+
+            return await loop.run_in_executor(pool, error_function, None)
+
+        with ProcessPool(max_workers=1, context=mp_context) as pool:
+            with self.assertRaises(Exception):
+                asyncio.run(test(pool))
+
+    def test_process_pool_error_callback(self):
+        """Process Pool Fork errors are forwarded to callback."""
+        async def test(pool):
+            loop = asyncio.get_running_loop()
+
+            self.event = asyncio.Event()
+            self.event.clear()
+
+            future = loop.run_in_executor(pool, error_function, None)
+            future.add_done_callback(self.callback)
+
+            await self.event.wait()
+
+        with ProcessPool(max_workers=1, context=mp_context) as pool:
+            asyncio.run(test(pool))
+            self.assertTrue(isinstance(self.exception, Exception))
+
+    def test_process_pool_timeout(self):
+        """Process Pool Fork future raises TimeoutError if so."""
+        async def test(pool):
+            loop = asyncio.get_running_loop()
+
+            return await loop.run_in_executor(pool, long_function, 0.1)
+
+        with ProcessPool(max_workers=1, context=mp_context) as pool:
+            with self.assertRaises(asyncio.TimeoutError):
+                asyncio.run(test(pool))
+
+    def test_process_pool_timeout_callback(self):
+        """Process Pool Fork TimeoutError is forwarded to callback."""
+        async def test(pool):
+            loop = asyncio.get_running_loop()
+
+            self.event = asyncio.Event()
+            self.event.clear()
+
+            future = loop.run_in_executor(pool, long_function, 0.1)
+            future.add_done_callback(self.callback)
+
+            await asyncio.sleep(0.1) # let the process pick up the task
+
+            await self.event.wait()
+
+        with ProcessPool(max_workers=1, context=mp_context) as pool:
+            asyncio.run(test(pool))
+            self.assertTrue(isinstance(self.exception, asyncio.TimeoutError))
+
+    def test_process_pool_cancel(self):
+        """Process Pool Fork future raises CancelledError if so."""
+        async def test(pool):
+            loop = asyncio.get_running_loop()
+            future = loop.run_in_executor(pool, long_function, None)
+
+            await asyncio.sleep(0.1) # let the process pick up the task
+
+            self.assertTrue(future.cancel())
+
+            return await future
+
+        with ProcessPool(max_workers=1, context=mp_context) as pool:
+            with self.assertRaises(asyncio.CancelledError):
+                asyncio.run(test(pool))
+
+    def test_process_pool_cancel_callback(self):
+        """Process Pool Fork CancelledError is forwarded to callback."""
+        async def test(pool):
+            loop = asyncio.get_running_loop()
+
+            self.event = asyncio.Event()
+            self.event.clear()
+
+            future = loop.run_in_executor(pool, long_function, None)
+            future.add_done_callback(self.callback)
+
+            await asyncio.sleep(0.1) # let the process pick up the task
+
+            self.assertTrue(future.cancel())
+
+            await self.event.wait()
+
+        with ProcessPool(max_workers=1, context=mp_context) as pool:
+            asyncio.run(test(pool))
+            self.assertTrue(isinstance(self.exception, asyncio.CancelledError))
+
+    def test_process_pool_stop_timeout(self):
+        """Process Pool Fork workers are stopped if future timeout."""
+        async def test(pool):
+            loop = asyncio.get_running_loop()
+            future1 = loop.run_in_executor(pool, pid_function, None)
+            with self.assertRaises(asyncio.TimeoutError):
+                await loop.run_in_executor(pool, long_function, 0.1)
+            future2 = loop.run_in_executor(pool, pid_function, None)
+
+            self.assertNotEqual(await future1, await future2)
+
+        with ProcessPool(max_workers=1, context=mp_context) as pool:
+            asyncio.run(test(pool))
+
+    def test_process_pool_stop_cancel(self):
+        """Process Pool Fork workers are stopped if future is cancelled."""
+        async def test(pool):
+            loop = asyncio.get_running_loop()
+            future1 = loop.run_in_executor(pool, pid_function, None)
+            cancel_future = loop.run_in_executor(pool, long_function, None)
+            await asyncio.sleep(0.1)  # let the process pick up the task
+            self.assertTrue(cancel_future.cancel())
+            future2 = loop.run_in_executor(pool, pid_function, None)
+
+            self.assertNotEqual(await future1, await future2)
+
+        with ProcessPool(max_workers=1, context=mp_context) as pool:
+            asyncio.run(test(pool))
 
 
 # DEADLOCK TESTS

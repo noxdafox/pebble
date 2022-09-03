@@ -83,7 +83,7 @@ class ProcessPool(BasePool):
             self._message_manager_loop.join()
         self._pool_manager.stop()
 
-    def submit(self, fn, timeout, /, *args, **kwargs):
+    def submit(self, fn, timeout, *args, **kwargs):
         """Submits *function* to the Pool for execution.
 
         *timeout* is an integer, if expires the task will be terminated

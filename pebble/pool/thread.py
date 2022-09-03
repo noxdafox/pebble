@@ -60,7 +60,7 @@ class ThreadPool(BasePool):
             self._pool_manager_loop.join()
         self._pool_manager.stop()
 
-    def submit(self, fn, /, *args, **kwargs):
+    def submit(self, fn, *args, **kwargs):
         """Submits *function* to the Pool for execution.
 
         *args* and *kwargs* will be forwareded to the scheduled function

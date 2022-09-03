@@ -61,6 +61,14 @@ class ThreadPool(BasePool):
         self._pool_manager.stop()
 
     def submit(self, fn, /, *args, **kwargs):
+        """Submits *function* to the Pool for execution.
+
+        *args* and *kwargs* will be forwareded to the scheduled function
+        respectively as arguments and keyword arguments.
+
+        A *concurrent.futures.Future* object is returned.
+
+        """
         return self.schedule(fn, args=args, kwargs=kwargs)
 
     def schedule(self, function, args=(), kwargs={}):
@@ -70,6 +78,7 @@ class ThreadPool(BasePool):
         respectively as arguments and keyword arguments.
 
         A *concurrent.futures.Future* object is returned.
+
         """
         self._check_pool_state()
 

@@ -84,6 +84,17 @@ class ProcessPool(BasePool):
         self._pool_manager.stop()
 
     def submit(self, fn, timeout, /, *args, **kwargs):
+        """Submits *function* to the Pool for execution.
+
+        *timeout* is an integer, if expires the task will be terminated
+        and *Future.result()* will raise *TimeoutError*.
+
+        *args* and *kwargs* will be forwareded to the scheduled function
+        respectively as arguments and keyword arguments.
+
+        A *pebble.ProcessFuture* object is returned.
+
+        """
         return self.schedule(fn, args=args, kwargs=kwargs, timeout=timeout)
 
     def schedule(self, function, args=(), kwargs={}, timeout=None):

@@ -60,6 +60,9 @@ class ThreadPool(BasePool):
             self._pool_manager_loop.join()
         self._pool_manager.stop()
 
+    def submit(self, fn, /, *args, **kwargs):
+        return self.schedule(fn, args=args, kwargs=kwargs)
+
     def schedule(self, function, args=(), kwargs={}):
         """Schedules *function* to be run the Pool.
 

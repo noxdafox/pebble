@@ -1,4 +1,5 @@
 import time
+import asyncio
 import unittest
 import threading
 
@@ -360,3 +361,112 @@ class TestThreadPool(unittest.TestCase):
                     break
                 except StopIteration:
                     break
+
+
+class TestAsyncIOThreadPool(unittest.TestCase):
+    def setUp(self):
+        global initarg
+        initarg = 0
+        self.event = None
+        self.result = None
+        self.exception = None
+
+    def callback(self, future):
+        try:
+            self.result = future.result()
+        # asyncio.exception.CancelledError does not inherit from Exception
+        except BaseException as error:
+            self.exception = error
+        finally:
+            self.event.set()
+
+    def test_thread_pool_single_future(self):
+        """Thread Pool single future."""
+        async def test(pool):
+            loop = asyncio.get_running_loop()
+
+            return await loop.run_in_executor(pool, function, 1)
+
+        with ThreadPool(max_workers=1) as pool:
+            self.assertEqual(asyncio.run(test(pool)), 1)
+
+    def test_thread_pool_multiple_futures(self):
+        """Thread Pool multiple futures."""
+        async def test(pool):
+            futures = []
+            loop = asyncio.get_running_loop()
+
+            for _ in range(5):
+                futures.append(loop.run_in_executor(pool, function, 1))
+
+            return await asyncio.wait(futures)
+
+        with ThreadPool(max_workers=2) as pool:
+            self.assertEqual(sum(r.result()
+                                 for r in asyncio.run(test(pool))[0]), 5)
+
+    def test_thread_pool_callback(self):
+        """Thread Pool results are forwarded to the callback."""
+        async def test(pool):
+            loop = asyncio.get_running_loop()
+
+            self.event = asyncio.Event()
+            self.event.clear()
+
+            future = loop.run_in_executor(pool, function, 1)
+            future.add_done_callback(self.callback)
+
+            await self.event.wait()
+
+        with ThreadPool(max_workers=1) as pool:
+            asyncio.run(test(pool))
+            self.assertEqual(self.result, 1)
+
+    def test_thread_pool_error(self):
+        """Thread Pool errors are raised by future get."""
+        async def test(pool):
+            loop = asyncio.get_running_loop()
+
+            return await loop.run_in_executor(pool, error_function)
+
+        with ThreadPool(max_workers=1) as pool:
+            with self.assertRaises(Exception):
+                asyncio.run(test(pool))
+
+    def test_thread_pool_error_callback(self):
+        """Thread Pool errors are forwarded to callback."""
+        async def test(pool):
+            loop = asyncio.get_running_loop()
+
+            self.event = asyncio.Event()
+            self.event.clear()
+
+            future = loop.run_in_executor(pool, error_function)
+            future.add_done_callback(self.callback)
+
+            await self.event.wait()
+
+        with ThreadPool(max_workers=1) as pool:
+            asyncio.run(test(pool))
+            self.assertTrue(isinstance(self.exception, Exception))
+
+    def test_thread_pool_cancel_callback(self):
+        """Thread Pool FutureCancelled is forwarded to callback."""
+        async def test(pool):
+            loop = asyncio.get_running_loop()
+
+            self.event = asyncio.Event()
+            self.event.clear()
+
+            future = loop.run_in_executor(pool, long_function)
+            future.add_done_callback(self.callback)
+
+            await asyncio.sleep(0.1) # let the process pick up the task
+
+            self.assertTrue(future.cancel())
+
+            await self.event.wait()
+
+        with ThreadPool(max_workers=1) as pool:
+            asyncio.run(test(pool))
+            self.assertTrue(isinstance(self.exception, asyncio.CancelledError))

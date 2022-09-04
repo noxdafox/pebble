@@ -323,7 +323,7 @@ class TestProcessPool(unittest.TestCase):
 
     def test_process_pool_large_data(self):
         """Process Pool Spawn large data is sent on the channel."""
-        data = "a" * 1098 * 1024 * 50  # 50 Mb
+        data = "a" * 1098 * 1024 * 100  # 100 Mb
 
         with ProcessPool(max_workers=1, context=mp_context) as pool:
             future = pool.schedule(
@@ -333,9 +333,10 @@ class TestProcessPool(unittest.TestCase):
 
     def test_process_pool_stop_large_data(self):
         """Process Pool Spawn stopped if large data is sent on the channel."""
-        data = "a" * 1098 * 1024 * 50  # 50 Mb
+        data = "a" * 1098 * 1024 * 100  # 100 Mb
         pool = ProcessPool(max_workers=1, context=mp_context)
         pool.schedule(function, args=[data])
+        time.sleep(1)
         pool.stop()
         pool.join()
 

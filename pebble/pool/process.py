@@ -76,12 +76,11 @@ class ProcessPool(BasePool):
     def _stop_pool(self):
         if self._pool_manager_loop is not None:
             self._pool_manager_loop.join()
-        self._pool_manager.close()
+        self._pool_manager.stop()
         if self._task_scheduler_loop is not None:
             self._task_scheduler_loop.join()
         if self._message_manager_loop is not None:
             self._message_manager_loop.join()
-        self._pool_manager.stop()
 
     def submit(self, fn, timeout, *args, **kwargs):
         """Submits *function* to the Pool for execution.
@@ -214,10 +213,8 @@ class PoolManager:
     def start(self):
         self.worker_manager.create_workers()
 
-    def close(self):
-        self.worker_manager.close_channels()
-
     def stop(self):
+        self.worker_manager.close_channels()
         self.worker_manager.stop_workers()
 
     def schedule(self, task):

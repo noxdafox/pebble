@@ -18,6 +18,7 @@ import signal
 import threading
 
 from functools import wraps
+from typing import Any, Callable
 
 
 _synchronized_lock = threading.Lock()
@@ -44,16 +45,16 @@ def synchronized(*args):
         return wrap
 
 
-def decorate_synchronized(function, lock):
+def decorate_synchronized(function: Callable, lock: threading.Lock) -> Callable:
     @wraps(function)
-    def wrapper(*args, **kwargs):
+    def wrapper(*args, **kwargs) -> Any:
         with lock:
             return function(*args, **kwargs)
 
     return wrapper
 
 
-def sighandler(signals):
+def sighandler(signals: list) -> Callable:
     """Sets the decorated function as signal handler of given *signals*.
 
     *signals* can be either a single signal or a list/tuple
@@ -72,7 +73,7 @@ def sighandler(signals):
     return wrap
 
 
-def set_signal_handlers(signals, function):
+def set_signal_handlers(signals: list, function: Callable):
     if isinstance(signals, (list, tuple)):
         for signum in signals:
             signal.signal(signum, function)

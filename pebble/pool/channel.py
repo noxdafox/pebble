@@ -17,16 +17,17 @@
 
 import os
 import select
+import multiprocessing
 
 from contextlib import contextmanager
+from typing import Any, Callable, Tuple
 
 
 class ChannelError(OSError):
     """Error occurring within the process channel."""
-    pass
 
 
-def channels(mp_context):
+def channels(mp_context: multiprocessing.context.BaseContext) -> tuple:
     read0, write0 = mp_context.Pipe(duplex=False)
     read1, write1 = mp_context.Pipe(duplex=False)
 
@@ -34,14 +35,15 @@ def channels(mp_context):
             WorkerChannel(read0, write1, (read1, write0), mp_context))
 
 
-class Channel(object):
-    def __init__(self, reader, writer):
+class Channel:
+    def __init__(self, reader: multiprocessing.connection.Connection,
+                 writer: multiprocessing.connection.Connection):
         self.reader = reader
         self.writer = writer
         self.poll = self._make_poll_method()
 
     def _make_poll_method(self):
-        def unix_poll(timeout=None):
+        def unix_poll(timeout: float = None) -> bool:
             readonly_mask = (select.POLLIN  |
                              select.POLLPRI |
                              select.POLLHUP |
@@ -54,20 +56,17 @@ class Channel(object):
             if timeout is not None:
                 timeout *= MILLISECONDS
 
-            try:
-                return bool(poll.poll(timeout))
-            except OSError:
-                raise
+            return bool(poll.poll(timeout))
 
-        def windows_poll(timeout=None):
+        def windows_poll(timeout: float = None) -> bool:
             return self.reader.poll(timeout)
 
         return unix_poll if os.name != 'nt' else windows_poll
 
-    def recv(self):
+    def recv(self) -> Any:
         return self.reader.recv()
 
-    def send(self, obj):
+    def send(self, obj: Any):
         return self.writer.send(obj)
 
     def close(self):
@@ -76,36 +75,39 @@ class Channel(object):
 
 
 class WorkerChannel(Channel):
-    def __init__(self, reader, writer, unused, mp_context):
-        super(WorkerChannel, self).__init__(reader, writer)
+    def __init__(self, reader: multiprocessing.connection.Connection,
+                 writer: multiprocessing.connection.Connection,
+                 unused: tuple,
+                 mp_context: multiprocessing.context.BaseContext):
+        super().__init__(reader, writer)
         self.mutex = ChannelMutex(mp_context)
         self.recv = self._make_recv_method()
         self.send = self._make_send_method()
         self.unused = unused
 
-    def __getstate__(self):
+    def __getstate__(self) -> tuple:
         return self.reader, self.writer, self.mutex, self.unused
 
-    def __setstate__(self, state):
+    def __setstate__(self, state: tuple):
         self.reader, self.writer, self.mutex, self.unused = state
 
         self.poll = self._make_poll_method()
         self.recv = self._make_recv_method()
         self.send = self._make_send_method()
 
-    def _make_recv_method(self):
+    def _make_recv_method(self) -> Callable:
         def recv():
             with self.mutex.reader:
                 return self.reader.recv()
 
         return recv
 
-    def _make_send_method(self):
-        def unix_send(obj):
+    def _make_send_method(self) -> Callable:
+        def unix_send(obj: Any):
             with self.mutex.writer:
                 return self.writer.send(obj)
 
-        def windows_send(obj):
+        def windows_send(obj: Any):
             return self.writer.send(obj)
 
         return unix_send if os.name != 'nt' else windows_send
@@ -123,7 +125,7 @@ class WorkerChannel(Channel):
 
 
 class ChannelMutex:
-    def __init__(self, mp_context):
+    def __init__(self, mp_context: multiprocessing.context.BaseContext):
         self.reader_mutex = mp_context.RLock()
         self.writer_mutex = mp_context.RLock() if os.name != 'nt' else None
         self.acquire = self._make_acquire_method()
@@ -146,17 +148,17 @@ class ChannelMutex:
     def __exit__(self, *_):
         self.release()
 
-    def _make_acquire_method(self):
-        def unix_acquire():
+    def _make_acquire_method(self) -> Callable:
+        def unix_acquire() -> bool:
             return (self.reader_mutex.acquire(timeout=LOCK_TIMEOUT) and
                     self.writer_mutex.acquire(timeout=LOCK_TIMEOUT))
 
-        def windows_acquire():
+        def windows_acquire() -> bool:
             return self.reader_mutex.acquire(timeout=LOCK_TIMEOUT)
 
         return unix_acquire if os.name != 'nt' else windows_acquire
 
-    def _make_release_method(self):
+    def _make_release_method(self) -> Callable:
         def unix_release():
             self.reader_mutex.release()
             self.writer_mutex.release()

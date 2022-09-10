@@ -18,12 +18,12 @@ import threading
 
 from time import time
 from types import MethodType
-
+from typing import Callable, Optional
 
 _waitforthreads_lock = threading.Lock()
 
 
-def waitforqueues(queues, timeout=None):
+def waitforqueues(queues: list, timeout: float = None) -> filter:
     """Waits for one or more *Queue* to be ready or until *timeout* expires.
 
     *queues* is a list containing one or more *Queue.Queue* objects.
@@ -44,7 +44,7 @@ def waitforqueues(queues, timeout=None):
     return filter(lambda q: not q.empty(), queues)
 
 
-def prepare_queues(queues, lock):
+def prepare_queues(queues: list, lock: threading.Condition):
     """Replaces queue._put() method in order to notify the waiting Condition."""
     for queue in queues:
         queue._pebble_lock = lock
@@ -53,13 +53,15 @@ def prepare_queues(queues, lock):
             queue._put = MethodType(new_method, queue)
 
 
-def wait_queues(queues, lock, timeout):
+def wait_queues(queues: list,
+                lock: threading.Condition,
+                timeout: Optional[float]):
     with lock:
         if not any(map(lambda q: not q.empty(), queues)):
             lock.wait(timeout)
 
 
-def reset_queues(queues):
+def reset_queues(queues: list):
     """Resets original queue._put() method."""
     for queue in queues:
         with queue.mutex:
@@ -68,7 +70,7 @@ def reset_queues(queues):
         delattr(queue, '_pebble_lock')
 
 
-def waitforthreads(threads, timeout=None):
+def waitforthreads(threads: list, timeout: float = None) -> filter:
     """Waits for one or more *Thread* to exit or until *timeout* expires.
 
     .. note::
@@ -99,21 +101,19 @@ def waitforthreads(threads, timeout=None):
     return filter(lambda t: not t.is_alive(), threads)
 
 
-def prepare_threads(new_function):
+def prepare_threads(new_function: Callable) -> Callable:
     """Replaces threading._get_ident() function in order to notify
     the waiting Condition."""
     with _waitforthreads_lock:
-        if hasattr(threading, 'get_ident'):
-            old_function = threading.get_ident
-            threading.get_ident = new_function
-        else:
-            old_function = threading._get_ident
-            threading._get_ident = new_function
+        old_function = threading.get_ident
+        threading.get_ident = new_function
 
         return old_function
 
 
-def wait_threads(threads, lock, timeout):
+def wait_threads(threads: list,
+                 lock: threading.Condition,
+                 timeout: Optional[float]):
     timestamp = time()
 
     with lock:
@@ -126,13 +126,10 @@ def wait_threads(threads, lock, timeout):
                 return
 
 
-def reset_threads(old_function):
-    """Resets original threading._get_ident() function."""
+def reset_threads(old_function: Callable):
+    """Resets original threading.get_ident() function."""
     with _waitforthreads_lock:
-        if hasattr(threading, 'get_ident'):
-            threading.get_ident = old_function
-        else:
-            threading._get_ident = old_function
+        threading.get_ident = old_function
 
 
 def new_method(self, *args):

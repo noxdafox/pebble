@@ -17,20 +17,21 @@
 import time
 import logging
 
+from queue import Queue
 from threading import RLock
 from collections import namedtuple
+from typing import Callable, Optional
 from itertools import chain, count, islice
-from concurrent.futures import TimeoutError
-try:
-    from queue import Queue
-except ImportError:
-    from Queue import Queue
+from concurrent.futures import Future, TimeoutError
 
 from pebble.common import PebbleFuture, ProcessFuture, SLEEP_UNIT
 
 
-class BasePool(object):
-    def __init__(self, max_workers, max_tasks, initializer, initargs):
+class BasePool:
+    def __init__(self, max_workers: int,
+                 max_tasks: int,
+                 initializer: Optional[Callable],
+                 initargs: list):
         self._context = PoolContext(
             max_workers, max_tasks, initializer, initargs)
         self._loops = ()
@@ -44,7 +45,7 @@ class BasePool(object):
         self.join()
 
     @property
-    def active(self):
+    def active(self) -> bool:
         self._update_pool_state()
 
         return self._context.state in (CLOSED, RUNNING)
@@ -60,7 +61,7 @@ class BasePool(object):
         """Stops the pool without performing any pending task."""
         self._context.state = STOPPED
 
-    def join(self, timeout=None):
+    def join(self, timeout: float = None):
         """Joins the pool waiting until all workers exited.
 
         If *timeout* is set, it block until all workers are done
@@ -76,7 +77,7 @@ class BasePool(object):
             self._context.task_queue.put(None)
             self._stop_pool()
 
-    def _wait_queue_depletion(self, timeout):
+    def _wait_queue_depletion(self, timeout: Optional[float]):
         tick = time.time()
 
         while self.active:
@@ -110,8 +111,11 @@ class BasePool(object):
         raise NotImplementedError("Not implemented")
 
 
-class PoolContext(object):
-    def __init__(self, max_workers, max_tasks, initializer, initargs):
+class PoolContext:
+    def __init__(self, max_workers: int,
+                 max_tasks: int,
+                 initializer: Callable,
+                 initargs: list):
         self._state = CREATED
         self.state_mutex = RLock()
 
@@ -121,31 +125,34 @@ class PoolContext(object):
         self.worker_parameters = Worker(max_tasks, initializer, initargs)
 
     @property
-    def state(self):
+    def state(self) -> int:
         return self._state
 
     @state.setter
-    def state(self, state):
+    def state(self, state: int):
         with self.state_mutex:
             if self.alive:
                 self._state = state
 
     @property
-    def alive(self):
+    def alive(self) -> bool:
         return self.state not in (ERROR, STOPPED)
 
 
 class Task:
-    def __init__(self, identifier, future, timeout, payload):
+    def __init__(self, identifier: int,
+                 future: Future,
+                 timeout: Optional[float],
+                 payload: 'TaskPayload'):
         self.id = identifier
         self.future = future
         self.timeout = timeout
         self.payload = payload
-        self.timestamp = 0
+        self.timestamp = 0.0
         self.worker_id = 0
 
     @property
-    def started(self):
+    def started(self) -> bool:
         return bool(self.timestamp > 0)
 
     def set_running_or_notify_cancel(self):
@@ -163,39 +170,47 @@ class Task:
 
 
 class MapFuture(PebbleFuture):
-    def __init__(self, futures):
-        super(MapFuture, self).__init__()
+    def __init__(self, futures: list):
+        super().__init__()
         self._futures = futures
 
-    def cancel(self):
+    @property
+    def futures(self) -> list:
+        return self._futures
+
+    def cancel(self) -> bool:
         """Cancel the future.
 
         Returns True if any of the elements of the iterables is cancelled.
         False otherwise.
         """
-        super(MapFuture, self).cancel()
+        super().cancel()
 
         return any(tuple(f.cancel() for f in self._futures))
 
 
 class ProcessMapFuture(ProcessFuture):
-    def __init__(self, futures):
-        super(ProcessMapFuture, self).__init__()
+    def __init__(self, futures: list):
+        super().__init__()
         self._futures = futures
 
-    def cancel(self):
+    @property
+    def futures(self) -> list:
+        return self._futures
+
+    def cancel(self) -> bool:
         """Cancel the future.
 
         Returns True if any of the elements of the iterables is cancelled.
         False otherwise.
         """
-        super(ProcessMapFuture, self).cancel()
+        super().cancel()
 
         return any(tuple(f.cancel() for f in self._futures))
 
 
 class MapResults:
-    def __init__(self, futures, timeout=None):
+    def __init__(self, futures: list, timeout: float = None):
         self._results = chain.from_iterable(
             chunk_result(f, timeout) for f in futures)
 
@@ -213,7 +228,24 @@ class MapResults:
     __next__ = next
 
 
-def iter_chunks(chunksize, *iterables):
+def map_results(map_future: MapFuture, timeout: Optional[float]) -> MapFuture:
+    futures = map_future.futures
+    if not futures:
+        map_future.set_result(MapResults(futures))
+        return map_future
+
+    def done_map(_):
+        if not map_future.done():
+            map_future.set_result(MapResults(futures, timeout=timeout))
+
+    for future in futures:
+        future.add_done_callback(done_map)
+        setattr(future, 'map_future', map_future)
+
+    return map_future
+
+
+def iter_chunks(chunksize: int, *iterables):
     """Iterates over zipped iterables in chunks."""
     iterables = iter(zip(*iterables))
 
@@ -226,7 +258,7 @@ def iter_chunks(chunksize, *iterables):
         yield chunk
 
 
-def chunk_result(future, timeout):
+def chunk_result(future: ProcessFuture, timeout: Optional[float]):
     """Returns the results of a processed chunk."""
     try:
         return future.result(timeout=timeout)
@@ -234,7 +266,7 @@ def chunk_result(future, timeout):
         return (error, )
 
 
-def run_initializer(initializer, initargs):
+def run_initializer(initializer: Callable, initargs: list):
     """Runs the Pool initializer dealing with errors."""
     try:
         initializer(*initargs)

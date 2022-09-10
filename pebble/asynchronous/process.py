@@ -26,9 +26,9 @@ from itertools import count
 from functools import wraps
 from concurrent.futures import TimeoutError
 
-from pebble.common import ProcessExpired, ProcessFuture
+from pebble.common import ProcessExpired
+from pebble.common import process_execute, send_result
 from pebble.common import launch_process, stop_process, SLEEP_UNIT
-from pebble.common import process_execute, launch_thread, send_result
 
 
 def process(*args, **kwargs):

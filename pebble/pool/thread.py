@@ -16,15 +16,17 @@
 
 
 import time
+import multiprocessing
+
 from itertools import count
-from multiprocessing import cpu_count
+from typing import Callable
 from concurrent.futures import Future
 
 from pebble.common import execute, launch_thread
-from pebble.pool.base_pool import MapFuture, MapResults
-from pebble.pool.base_pool import BasePool, Task, TaskPayload
+from pebble.pool.base_pool import MapFuture, map_results
 from pebble.pool.base_pool import iter_chunks, run_initializer
 from pebble.pool.base_pool import CREATED, ERROR, RUNNING, SLEEP_UNIT
+from pebble.pool.base_pool import PoolContext, BasePool, Task, TaskPayload
 
 
 class ThreadPool(BasePool):
@@ -39,10 +41,11 @@ class ThreadPool(BasePool):
     every time a worker is started, receiving initargs as arguments.
 
     """
-    def __init__(self, max_workers=cpu_count(), max_tasks=0,
-                 initializer=None, initargs=()):
-        super(ThreadPool, self).__init__(
-            max_workers, max_tasks, initializer, initargs)
+    def __init__(self, max_workers: int = multiprocessing.cpu_count(),
+                 max_tasks: int = 0,
+                 initializer: Callable = None,
+                 initargs: list = ()):
+        super().__init__(max_workers, max_tasks, initializer, initargs)
         self._pool_manager = PoolManager(self._context)
         self._pool_manager_loop = None
 
@@ -60,19 +63,8 @@ class ThreadPool(BasePool):
             self._pool_manager_loop.join()
         self._pool_manager.stop()
 
-    def submit(self, fn, *args, **kwargs):
+    def submit(self, function: Callable, *args, **kwargs) -> Future:
         """Submits *function* to the Pool for execution.
-
-        *args* and *kwargs* will be forwareded to the scheduled function
-        respectively as arguments and keyword arguments.
-
-        A *concurrent.futures.Future* object is returned.
-
-        """
-        return self.schedule(fn, args=args, kwargs=kwargs)
-
-    def schedule(self, function, args=(), kwargs={}):
-        """Schedules *function* to be run the Pool.
 
         *args* and *kwargs* will be forwareded to the scheduled function
         respectively as arguments and keyword arguments.
@@ -90,7 +82,18 @@ class ThreadPool(BasePool):
 
         return future
 
-    def map(self, function, *iterables, **kwargs):
+    def schedule(self, function, args=(), kwargs={}) -> Future:
+        """Schedules *function* to be run the Pool.
+
+        *args* and *kwargs* will be forwareded to the scheduled function
+        respectively as arguments and keyword arguments.
+
+        A *concurrent.futures.Future* object is returned.
+
+        """
+        return self.submit(function, *args, **kwargs)
+
+    def map(self, function: Callable, *iterables, **kwargs) -> MapFuture:
         """Returns an iterator equivalent to map(function, iterables).
 
         *chunksize* controls the size of the chunks the iterable will
@@ -109,23 +112,10 @@ class ThreadPool(BasePool):
         futures = [self.schedule(process_chunk, args=(function, chunk))
                    for chunk in iter_chunks(chunksize, *iterables)]
 
-        map_future = MapFuture(futures)
-        if not futures:
-            map_future.set_result(MapResults(futures))
-            return map_future
-
-        def done_map(_):
-            if not map_future.done():
-                map_future.set_result(MapResults(futures, timeout=timeout))
-
-        for future in futures:
-            future.add_done_callback(done_map)
-            setattr(future, 'map_future', map_future)
-
-        return map_future
+        return map_results(MapFuture(futures), timeout)
 
 
-def pool_manager_loop(pool_manager):
+def pool_manager_loop(pool_manager: 'PoolManager'):
     context = pool_manager.context
 
     while context.alive:
@@ -134,7 +124,7 @@ def pool_manager_loop(pool_manager):
 
 
 class PoolManager:
-    def __init__(self, context):
+    def __init__(self, context: PoolContext):
         self.workers = []
         self.context = context
 
@@ -155,7 +145,7 @@ class PoolManager:
 
         self.create_workers()
 
-    def inspect_workers(self):
+    def inspect_workers(self) -> tuple:
         return tuple(w for w in self.workers if not w.is_alive())
 
     def create_workers(self):
@@ -169,7 +159,7 @@ class PoolManager:
         self.workers.remove(worker)
 
 
-def worker_thread(context):
+def worker_thread(context: PoolContext):
     """The worker thread routines."""
     queue = context.task_queue
     parameters = context.worker_parameters
@@ -184,7 +174,7 @@ def worker_thread(context):
         queue.task_done()
 
 
-def get_next_task(context, max_tasks):
+def get_next_task(context: PoolContext, max_tasks: int):
     counter = count()
     queue = context.task_queue
 
@@ -199,7 +189,7 @@ def get_next_task(context, max_tasks):
                 yield task
 
 
-def execute_next_task(task):
+def execute_next_task(task: Task):
     payload = task.payload
     task.timestamp = time.time()
     task.set_running_or_notify_cancel()
@@ -212,6 +202,6 @@ def execute_next_task(task):
         task.future.set_result(result)
 
 
-def process_chunk(function, chunk):
+def process_chunk(function: Callable, chunk: list) -> list:
     """Processes a chunk of the iterable passed to map dealing with errors."""
     return [execute(function, *args) for args in chunk]

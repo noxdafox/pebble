@@ -373,7 +373,7 @@ As for the `concurrent` namespace, asynchronous decorators are `asyncio` compati
 More Pickles
 ++++++++++++
 
-All process functionalities accept `multiprocessing.context` compatible objects. Therefore, it is possible to use alternative implementations such as `multiprocess`_ with `dill`_ in order to serialize more object types.
+All process APIs accept `multiprocessing.context` compatible objects. Therefore, it is possible to use alternative implementations such as `multiprocess`_ with `dill`_ in order to serialize more object types.
 
 ::
 
@@ -498,6 +498,7 @@ Pebble pool implemetations are `asyncio` compatible. Parameters such as timeouts
 
     from pebble import ProcessPool
 
+    SLEEP = 10
     TIMEOUT = 3
 
     def function(seconds):
@@ -508,7 +509,8 @@ Pebble pool implemetations are `asyncio` compatible. Parameters such as timeouts
     async def main():
         loop = asyncio.get_running_loop()
         pool = ProcessPool()
-        result = await loop.run_in_executor(pool, function, TIMEOUT, 10)
+
+        await loop.run_in_executor(pool, function, TIMEOUT, SLEEP)
 
     asyncio.run(main())
 

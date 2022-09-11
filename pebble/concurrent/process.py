@@ -167,9 +167,6 @@ def _validate_parameters(timeout, name, daemon, mp_context):
         raise TypeError('Name expected to be None or string')
     if daemon is not None and not isinstance(daemon, bool):
         raise TypeError('Daemon expected to be None or bool')
-    if mp_context is not None and not isinstance(
-            mp_context, multiprocessing.context.BaseContext):
-        raise TypeError('Context expected to be None or multiprocessing.context')
 
 
 ################################################################################

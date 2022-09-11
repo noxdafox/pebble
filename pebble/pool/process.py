@@ -18,6 +18,7 @@ import os
 import time
 import atexit
 import pickle
+import warnings
 import multiprocessing
 
 from itertools import count
@@ -31,7 +32,7 @@ from pebble.pool.base_pool import ProcessMapFuture, map_results
 from pebble.pool.base_pool import CREATED, ERROR, RUNNING, SLEEP_UNIT
 from pebble.pool.base_pool import Worker, iter_chunks, run_initializer
 from pebble.pool.base_pool import PoolContext, BasePool, Task, TaskPayload
-from pebble.pool.channel import ChannelError, Channel, WorkerChannel, channels
+from pebble.pool.channel import ChannelError, WorkerChannel, channels
 from pebble.common import launch_process, stop_process
 from pebble.common import ProcessExpired, ProcessFuture
 from pebble.common import process_execute, launch_thread
@@ -124,6 +125,9 @@ class ProcessPool(BasePool):
         A *pebble.ProcessFuture* object is returned.
 
         """
+        warnings.warn("schedule is deprecated; use submit instead",
+                      DeprecationWarning)
+
         return self.submit(function, timeout, *args, **kwargs)
 
     def map(self, function: Callable,

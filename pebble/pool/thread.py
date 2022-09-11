@@ -16,6 +16,7 @@
 
 
 import time
+import warnings
 import multiprocessing
 
 from itertools import count
@@ -91,6 +92,9 @@ class ThreadPool(BasePool):
         A *concurrent.futures.Future* object is returned.
 
         """
+        warnings.warn("schedule is deprecated; use submit instead",
+                      DeprecationWarning)
+
         return self.submit(function, *args, **kwargs)
 
     def map(self, function: Callable, *iterables, **kwargs) -> MapFuture:

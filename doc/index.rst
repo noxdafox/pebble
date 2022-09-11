@@ -302,9 +302,9 @@ The following will not work with the mentioned start methods:
 
        return future.result()
 
+
 Examples
 --------
-
 
 Concurrent decorators
 +++++++++++++++++++++
@@ -368,6 +368,41 @@ As for the `concurrent` namespace, asynchronous decorators are `asyncio` compati
         print(result)
 
     asyncio.run(asynchronous_function())
+
+
+More Pickles
+++++++++++++
+
+All process functionalities accept `multiprocessing.context` compatible objects. Therefore, it is possible to use alternative implementations such as `multiprocess`_ with `dill`_ in order to serialize more object types.
+
+::
+
+    import threading
+    import multiprocess
+
+    from pebble import concurrent
+
+    @concurrent.process(context=multiprocess.get_context('spawn'))
+    def function(unpicklable_object):
+        """Pickle an unpicklable object."""
+        unpicklable_object.pickle_this()
+
+    class Unpicklable:
+        """This class cannot be serialized by standard Python Pickle."""
+        def __init__(self):
+            self.lock = threading.Lock()
+
+        def pickle_this(self):
+            with self.lock:
+                print('Just pickled!')
+
+    def main():
+        unpicklable = Unpicklable()
+        future = function(unpicklable)
+        future.result()
+
+    if __name__ == '__main__':
+        main()
 
 
 Pools
@@ -450,6 +485,10 @@ To compute large collections of elements without incurring in IPC performance li
 
         assert list(future.result()) == elements
 
+
+Pools and AsyncIO
++++++++++++++++++
+
 Pebble pool implemetations are `asyncio` compatible. Parameters such as timeouts can be passed via the `loop.run_in_executor` function.
 
 ::
@@ -501,9 +540,10 @@ In the following example, the memory consumption of each worker process is limit
             string += 1024 * 'A'
 
     pool = ProcessPool(initializer=initializer, initargs=(MAX_MEM,))
-    future = pool.submit(function)
+    future = pool.submit(function, None)
 
     assert isinstance(future.exception(), MemoryError)
+
 
 Sighandler decorator
 ++++++++++++++++++++
@@ -536,6 +576,8 @@ Please refer to the `.travis.yml` to see how to run the tests.
 .. _asyncio.Future: https://docs.python.org/3/library/asyncio-future.html#asyncio.Future
 .. _multiprocessing.context: https://docs.python.org/3/library/multiprocessing.html#contexts-and-start-methods
 .. _`programming guidelines`: https://docs.python.org/3/library/multiprocessing.html#programming-guidelines
+.. _`dill`: https://pypi.org/project/dill/
+.. _`multiprocess`: https://pypi.org/project/multiprocess/
 
 .. toctree::
    :maxdepth: 2

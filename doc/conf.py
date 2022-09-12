@@ -50,7 +50,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'Pebble'
-copyright = u'2013-2020, Matteo Cafasso'
+copyright = u'2013-2022, Matteo Cafasso'
 author = u'Matteo Cafasso'
 
 

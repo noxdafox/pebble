@@ -36,6 +36,24 @@ Run a job in a separate thread and wait for its results.
 
     result = future.result()  # blocks until results are ready
 
+Same code with AsyncIO support.
+
+.. code:: python
+
+    import asyncio
+
+    from pebble import asynchronous
+
+    @asynchronous.thread
+    def function(foo, bar=0):
+        return foo + bar
+
+    async def asynchronous_function():
+        result = await function(1, bar=2)  # blocks until results are ready
+        print(result)
+
+    asyncio.run(asynchronous_function())
+
 Run a function with a timeout of ten seconds and deal with errors.
 
 .. code:: python

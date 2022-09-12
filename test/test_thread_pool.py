@@ -68,8 +68,7 @@ class TestThreadPool(unittest.TestCase):
     def test_thread_pool_single_future(self):
         """Thread Pool single future."""
         with ThreadPool(max_workers=1) as pool:
-            future = pool.schedule(function, args=[1],
-                                   kwargs={'keyword_argument': 1})
+            future = pool.submit(function, 1, keyword_argument=1)
         self.assertEqual(future.result(), 2)
 
     def test_thread_pool_multiple_futures(self):
@@ -77,14 +76,13 @@ class TestThreadPool(unittest.TestCase):
         futures = []
         with ThreadPool(max_workers=1) as pool:
             for _ in range(5):
-                futures.append(pool.schedule(function, args=[1]))
+                futures.append(pool.submit(function, 1))
         self.assertEqual(sum([t.result() for t in futures]), 5)
 
     def test_thread_pool_callback(self):
         """Thread Pool results are forwarded to the callback."""
         with ThreadPool(max_workers=1) as pool:
-            future = pool.schedule(
-                function, args=[1], kwargs={'keyword_argument': 1})
+            future = pool.submit(function, 1, keyword_argument=1)
             future.add_done_callback(self.callback)
 
         self.event.wait()
@@ -93,14 +91,14 @@ class TestThreadPool(unittest.TestCase):
     def test_thread_pool_error(self):
         """Thread Pool errors are raised by future get."""
         with ThreadPool(max_workers=1) as pool:
-            future = pool.schedule(error_function)
+            future = pool.submit(error_function)
         with self.assertRaises(Exception):
             future.result()
 
     def test_thread_pool_error_callback(self):
         """Thread Pool errors are forwarded to callback."""
         with ThreadPool(max_workers=1) as pool:
-            future = pool.schedule(error_function)
+            future = pool.submit(error_function)
             future.add_done_callback(self.callback)
         self.event.wait()
         self.assertTrue(isinstance(self.exception, Exception))
@@ -108,8 +106,8 @@ class TestThreadPool(unittest.TestCase):
     def test_thread_pool_cancel_callback(self):
         """Thread Pool FutureCancelled is forwarded to callback."""
         with ThreadPool(max_workers=1) as pool:
-            pool.schedule(long_function)
-            future = pool.schedule(long_function)
+            pool.submit(long_function)
+            future = pool.submit(long_function)
             future.add_done_callback(self.callback)
             future.cancel()
         self.event.wait()
@@ -121,7 +119,7 @@ class TestThreadPool(unittest.TestCase):
         futures = []
         with ThreadPool(max_workers=2) as pool:
             for _ in range(0, 5):
-                futures.append(pool.schedule(tid_function))
+                futures.append(pool.submit(tid_function))
         self.assertEqual(len(set([t.result() for t in futures])), 2)
 
     def test_thread_pool_tasks_limit(self):
@@ -129,13 +127,13 @@ class TestThreadPool(unittest.TestCase):
         futures = []
         with ThreadPool(max_workers=1, max_tasks=2) as pool:
             for _ in range(0, 4):
-                futures.append(pool.schedule(tid_function))
+                futures.append(pool.submit(tid_function))
         self.assertEqual(len(set([t.result() for t in futures])), 2)
 
     def test_thread_pool_initializer(self):
         """Thread Pool initializer is correctly run."""
         with ThreadPool(initializer=initializer, initargs=[1]) as pool:
-            future = pool.schedule(initializer_function)
+            future = pool.submit(initializer_function)
         self.assertEqual(future.result(), 1)
 
     def test_thread_pool_broken_initializer(self):
@@ -144,18 +142,18 @@ class TestThreadPool(unittest.TestCase):
             with ThreadPool(initializer=broken_initializer) as pool:
                 pool.active
                 time.sleep(0.3)
-                pool.schedule(function)
+                pool.submit(function)
 
     def test_thread_pool_running(self):
         """Thread Pool is active if a future is scheduled."""
         with ThreadPool(max_workers=1) as pool:
-            pool.schedule(function, args=[1])
+            pool.submit(function, 1)
             self.assertTrue(pool.active)
 
     def test_thread_pool_stopped(self):
         """Thread Pool is not active once stopped."""
         with ThreadPool(max_workers=1) as pool:
-            pool.schedule(function, args=[1])
+            pool.submit(function, 1)
         self.assertFalse(pool.active)
 
     def test_thread_pool_close_futures(self):
@@ -163,7 +161,7 @@ class TestThreadPool(unittest.TestCase):
         futures = []
         pool = ThreadPool(max_workers=1)
         for index in range(10):
-            futures.append(pool.schedule(function, args=[index]))
+            futures.append(pool.submit(function, index))
         pool.close()
         pool.join()
         map(self.assertTrue, [t.done() for t in futures])
@@ -171,7 +169,7 @@ class TestThreadPool(unittest.TestCase):
     def test_thread_pool_close_stopped(self):
         """Thread Pool is stopped after close."""
         pool = ThreadPool(max_workers=1)
-        pool.schedule(function, args=[1])
+        pool.submit(function, 1)
         pool.close()
         pool.join()
         self.assertFalse(pool.active)
@@ -181,7 +179,7 @@ class TestThreadPool(unittest.TestCase):
         futures = []
         pool = ThreadPool(max_workers=1)
         for index in range(10):
-            futures.append(pool.schedule(long_function, args=[index]))
+            futures.append(pool.submit(long_function, index))
         pool.stop()
         pool.join()
         self.assertTrue(len([t for t in futures if not t.done()]) > 0)
@@ -189,7 +187,7 @@ class TestThreadPool(unittest.TestCase):
     def test_thread_pool_stop_stopped(self):
         """Thread Pool is stopped after stop."""
         pool = ThreadPool(max_workers=1)
-        pool.schedule(function, args=[1])
+        pool.submit(function, 1)
         pool.stop()
         pool.join()
         self.assertFalse(pool.active)
@@ -200,7 +198,7 @@ class TestThreadPool(unittest.TestCase):
             def function():
                 pool.stop()
 
-            pool.schedule(function)
+            pool.submit(function)
 
         self.assertFalse(pool.active)
 
@@ -210,19 +208,19 @@ class TestThreadPool(unittest.TestCase):
             def stop_pool_callback(_):
                 pool.stop()
 
-            future = pool.schedule(function, args=[1])
+            future = pool.submit(function, 1)
             future.add_done_callback(stop_pool_callback)
             with self.assertRaises(RuntimeError):
                 for index in range(10):
                     time.sleep(0.1)
-                    pool.schedule(long_function, args=[index])
+                    pool.submit(long_function, index)
 
         self.assertFalse(pool.active)
 
     def test_thread_pool_join_workers(self):
         """Thread Pool no worker is running after join."""
         pool = ThreadPool(max_workers=4)
-        pool.schedule(function, args=[1])
+        pool.submit(function, 1)
         pool.stop()
         pool.join()
         self.assertEqual(len(pool._pool_manager.workers), 0)
@@ -230,14 +228,14 @@ class TestThreadPool(unittest.TestCase):
     def test_thread_pool_join_running(self):
         """Thread Pool RuntimeError is raised if active pool joined."""
         with ThreadPool(max_workers=1) as pool:
-            pool.schedule(function, args=[1])
+            pool.submit(function, 1)
             self.assertRaises(RuntimeError, pool.join)
 
     def test_thread_pool_join_futures_timeout(self):
         """Thread Pool TimeoutError is raised if join on long futures."""
         pool = ThreadPool(max_workers=1)
         for _ in range(2):
-            pool.schedule(long_function)
+            pool.submit(long_function)
         pool.close()
         self.assertRaises(TimeoutError, pool.join, 0.4)
         pool.stop()
@@ -246,13 +244,12 @@ class TestThreadPool(unittest.TestCase):
     def test_thread_pool_exception_isolated(self):
         """Thread Pool an Exception does not affect other futures."""
         with ThreadPool(max_workers=1) as pool:
-            future = pool.schedule(error_function)
+            future = pool.submit(error_function)
             try:
                 future.result()
             except:
                 pass
-            future = pool.schedule(function, args=[1],
-                                   kwargs={'keyword_argument': 1})
+            future = pool.submit(function, 1, keyword_argument=1)
         self.assertEqual(future.result(), 2)
 
     def test_thread_pool_map(self):

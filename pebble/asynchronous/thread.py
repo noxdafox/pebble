@@ -26,7 +26,7 @@ def thread(*args, **kwargs):
     """Runs the decorated function within a concurrent thread,
     taking care of the result and error management.
 
-    Decorated functions will return a concurrent.futures.Future object
+    Decorated functions will return an asyncio.Future object
     once called.
 
     The name parameter will set the thread name.

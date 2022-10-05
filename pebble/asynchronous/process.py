@@ -118,6 +118,9 @@ async def _worker_handler(future, worker, pipe, timeout):
     """
     result = await _get_result(future, pipe, timeout)
 
+    if worker.is_alive():
+        stop_process(worker)
+
     if isinstance(result, BaseException):
         if isinstance(result, ProcessExpired):
             result.exitcode = worker.exitcode
@@ -125,9 +128,6 @@ async def _worker_handler(future, worker, pipe, timeout):
             future.set_exception(result)
     else:
         future.set_result(result)
-
-    if worker.is_alive():
-        stop_process(worker)
 
 
 async def _get_result(future, pipe, timeout):

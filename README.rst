@@ -81,6 +81,8 @@ Pools support workers restart, timeout for long running tasks and more.
 
     from pebble import ProcessPool
     from concurrent.futures import TimeoutError
+    
+    TIMEOUT_SECONDS = 3
 
     def function(foo, bar=0):
         return foo + bar
@@ -95,6 +97,6 @@ Pools support workers restart, timeout for long running tasks and more.
             print(error.traceback)  # traceback of the function
 
     with ProcessPool(max_workers=5, max_tasks=10) as pool:
-        for i in range(0, 10):
-            future = pool.schedule(function, args=[i], timeout=3)
+        for index in range(0, 10):
+            future = pool.submit(function, TIMEOUT_SECONDS, index, bar=1)
             future.add_done_callback(task_done)

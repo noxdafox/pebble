@@ -35,7 +35,7 @@ def process(*args, **kwargs):
     """Runs the decorated function in a concurrent process,
     taking care of the result and error management.
 
-    Decorated functions will return a concurrent.futures.Future object
+    Decorated functions will return an asyncio.Future object
     once called.
 
     The timeout parameter will set a maximum execution time

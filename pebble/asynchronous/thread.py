@@ -59,7 +59,7 @@ def thread(*args, **kwargs):
 def _thread_wrapper(function, name, daemon):
     @wraps(function)
     def wrapper(*args, **kwargs):
-        loop = asyncio.get_running_loop()
+        loop = _get_asyncio_loop()
         future = loop.create_future()
 
         launch_thread(name, _function_handler, daemon, function, args, kwargs, future)
@@ -87,3 +87,11 @@ def _validate_parameters(name, daemon):
         raise TypeError('Name expected to be None or string')
     if daemon is not None and not isinstance(daemon, bool):
         raise TypeError('Daemon expected to be None or bool')
+
+
+def _get_asyncio_loop():
+    """Backwards compatible loop getter."""
+    try:
+        return asyncio.get_running_loop()
+    except AttributeError:
+        return asyncio.get_event_loop()

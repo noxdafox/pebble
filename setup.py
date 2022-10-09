@@ -33,4 +33,5 @@ setup(
         "License :: OSI Approved :: " +
         "GNU Library or Lesser General Public License (LGPL)"
     ],
+    python_requires=">=3",
 )

@@ -86,9 +86,9 @@ def _process_wrapper(function, timeout, name, daemon, mp_context):
 
     @wraps(function)
     def wrapper(*args, **kwargs):
-        reader, writer = mp_context.Pipe(duplex=False)
-        loop = asyncio.get_running_loop()
+        loop = _get_asyncio_loop()
         future = loop.create_future()
+        reader, writer = mp_context.Pipe(duplex=False)
 
         if isinstance(function, types.FunctionType) and start_method != 'fork':
             target = _trampoline
@@ -172,6 +172,14 @@ def _validate_parameters(timeout, name, daemon, mp_context):
     if mp_context is not None and not isinstance(
             mp_context, multiprocessing.context.BaseContext):
         raise TypeError('Context expected to be None or multiprocessing.context')
+
+
+def _get_asyncio_loop():
+    """Backwards compatible loop getter."""
+    try:
+        return asyncio.get_running_loop()
+    except AttributeError:
+        return asyncio.get_event_loop()
 
 
 ################################################################################

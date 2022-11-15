@@ -18,7 +18,6 @@ import os
 import time
 import atexit
 import pickle
-import warnings
 import multiprocessing
 
 from itertools import count
@@ -86,30 +85,6 @@ class ProcessPool(BasePool):
         if self._message_manager_loop is not None:
             self._message_manager_loop.join()
 
-    def submit(self, function: Callable,
-               timeout: Optional[float],
-               *args, **kwargs) -> ProcessFuture:
-        """Submits *function* to the Pool for execution.
-
-        *timeout* is an integer, if expires the task will be terminated
-        and *Future.result()* will raise *TimeoutError*.
-
-        *args* and *kwargs* will be forwareded to the scheduled function
-        respectively as arguments and keyword arguments.
-
-        A *pebble.ProcessFuture* object is returned.
-
-        """
-        self._check_pool_state()
-
-        future = ProcessFuture()
-        payload = TaskPayload(function, args, kwargs)
-        task = Task(next(self._task_counter), future, timeout, payload)
-
-        self._context.task_queue.put(task)
-
-        return future
-
     def schedule(self, function: Callable,
                  args: list = (),
                  kwargs: dict = {},
@@ -125,10 +100,27 @@ class ProcessPool(BasePool):
         A *pebble.ProcessFuture* object is returned.
 
         """
-        warnings.warn("schedule is deprecated; use submit instead",
-                      DeprecationWarning)
+        self._check_pool_state()
 
-        return self.submit(function, timeout, *args, **kwargs)
+        future = ProcessFuture()
+        payload = TaskPayload(function, args, kwargs)
+        task = Task(next(self._task_counter), future, timeout, payload)
+
+        self._context.task_queue.put(task)
+
+        return future
+
+    def submit(self, function: Callable,
+               timeout: Optional[float],
+               *args, **kwargs) -> ProcessFuture:
+        """This function is provided for compatibility with
+        `asyncio.loop.run_in_executor`.
+
+        For scheduling jobs within the pool use `schedule` instead.
+
+        """
+        return self.schedule(
+            function, args=args, kwargs=kwargs, timeout=timeout)
 
     def map(self, function: Callable,
             *iterables, **kwargs) -> ProcessMapFuture:
@@ -153,8 +145,9 @@ class ProcessPool(BasePool):
         if chunksize < 1:
             raise ValueError("chunksize must be >= 1")
 
-        futures = [self.submit(process_chunk, timeout, function, chunk)
-                   for chunk in iter_chunks(chunksize, *iterables)]
+        futures = [self.schedule(
+            process_chunk, args=(function, chunk), timeout=timeout)
+            for chunk in iter_chunks(chunksize, *iterables)]
 
         return map_results(ProcessMapFuture(futures), timeout)
 

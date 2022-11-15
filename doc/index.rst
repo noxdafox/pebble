@@ -89,23 +89,17 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
 
       True if the Pool is running, false otherwise.
 
-   .. function:: submit(function, timeout, /, *args, **kwargs)
+   .. function:: schedule(function, args=(), kwargs={}, timeout=None)
 
-      Submit the function to be executed within the Pool.
+      Schedule the function to be executed within the Pool.
 
       Returns a pebble.ProcessFuture_ object representing the execution of the callable.
 
       *function* is the function which is about to be scheduled.
 
-      *timeout* can be None, an integer or a float. Once expired, it will force the timed out task to be interrupted and the worker will be restarted. *Future.result()* will raise *TimeoutError*, callbacks will be executed.
-
       *args* and *kwargs* will be passed to the function respectively as its arguments and keyword arguments.
 
-      This method is compatible with `asyncio` `loop.run_in_executor` function.
-
-   .. function:: schedule(function, args=(), kwargs={}, timeout=None)
-
-      Deprecated since Pebble 5.0, use `submit` instead.
+      *timeout* can be None, an integer or a float. Once expired, it will force the timed out task to be interrupted and the worker will be restarted. *Future.result()* will raise *TimeoutError*, callbacks will be executed.
 
    .. function:: map(function, *iterables, chunksize=1, timeout=None)
 
@@ -148,21 +142,15 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
 
       True if the Pool is running, false otherwise.
 
-   .. function:: submit(function, /, *args, **kwargs)
+   .. function:: schedule(function, args=(), kwargs={})
 
-      Submit the function to be executed within the Pool.
+      Schedule the function to be executed within the Pool.
 
       Returns a pebble.ProcessFuture_ object representing the execution of the callable.
 
       *function* is the function which is about to be scheduled.
 
       *args* and *kwargs* will be passed to the function respectively as its arguments and keyword arguments.
-
-      This method is compatible with `asyncio` `loop.run_in_executor` function.
-
-   .. function:: schedule(function, args=(), kwargs={})
-
-      Deprecated since Pebble 5.0, use `submit` instead.
 
    .. function:: map(function, *iterables, chunksize=1)
 
@@ -542,7 +530,7 @@ In the following example, the memory consumption of each worker process is limit
             string += 1024 * 'A'
 
     pool = ProcessPool(initializer=initializer, initargs=(MAX_MEM,))
-    future = pool.submit(function, None)
+    future = pool.schedule(function)
 
     assert isinstance(future.exception(), MemoryError)
 

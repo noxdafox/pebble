@@ -16,7 +16,6 @@
 
 
 import time
-import warnings
 import multiprocessing
 
 from itertools import count
@@ -64,8 +63,8 @@ class ThreadPool(BasePool):
             self._pool_manager_loop.join()
         self._pool_manager.stop()
 
-    def submit(self, function: Callable, *args, **kwargs) -> Future:
-        """Submits *function* to the Pool for execution.
+    def schedule(self, function, args=(), kwargs={}) -> Future:
+        """Schedules *function* to be run the Pool.
 
         *args* and *kwargs* will be forwareded to the scheduled function
         respectively as arguments and keyword arguments.
@@ -83,19 +82,14 @@ class ThreadPool(BasePool):
 
         return future
 
-    def schedule(self, function, args=(), kwargs={}) -> Future:
-        """Schedules *function* to be run the Pool.
+    def submit(self, function: Callable, *args, **kwargs) -> Future:
+        """This function is provided for compatibility with
+        `asyncio.loop.run_in_executor`.
 
-        *args* and *kwargs* will be forwareded to the scheduled function
-        respectively as arguments and keyword arguments.
-
-        A *concurrent.futures.Future* object is returned.
+        For scheduling jobs within the pool use `schedule` instead.
 
         """
-        warnings.warn("schedule is deprecated; use submit instead",
-                      DeprecationWarning)
-
-        return self.submit(function, *args, **kwargs)
+        return self.schedule(function, args=args, kwargs=kwargs)
 
     def map(self, function: Callable, *iterables, **kwargs) -> MapFuture:
         """Returns an iterator equivalent to map(function, iterables).
@@ -113,7 +107,7 @@ class ThreadPool(BasePool):
         if chunksize < 1:
             raise ValueError("chunksize must be >= 1")
 
-        futures = [self.submit(process_chunk, function, chunk)
+        futures = [self.schedule(process_chunk, args=(function, chunk))
                    for chunk in iter_chunks(chunksize, *iterables)]
 
         return map_results(MapFuture(futures), timeout)

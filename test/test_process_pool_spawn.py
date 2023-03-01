@@ -315,7 +315,7 @@ class TestProcessPool(unittest.TestCase):
             future = pool.schedule(function, args=[1])
             future.add_done_callback(stop_pool_callback)
             with self.assertRaises(RuntimeError):
-                for index in range(10):
+                for index in range(30):
                     time.sleep(0.1)
                     pool.schedule(long_function, args=[index])
 

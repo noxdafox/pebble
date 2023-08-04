@@ -146,7 +146,7 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
 
       Schedule the function to be executed within the Pool.
 
-      Returns a pebble.ProcessFuture_ object representing the execution of the callable.
+      Returns a concurrent.futures.Future_ object representing the execution of the callable.
 
       *function* is the function which is about to be scheduled.
 

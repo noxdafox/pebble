@@ -184,6 +184,8 @@ def send_result(pipe, data):
     except (pickle.PicklingError, TypeError) as error:
         error.traceback = format_exc()
         pipe.send(RemoteException(error, error.traceback))
+    finally:
+        pipe.close()
 
 
 SLEEP_UNIT = 0.1

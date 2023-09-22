@@ -100,7 +100,6 @@ def _process_wrapper(function, timeout, name, daemon, mp_context):
             name, _function_handler, daemon, mp_context,
             target, args, kwargs, (reader, writer))
 
-        writer.close()
 
         loop.create_task(_worker_handler(future, worker, reader, timeout))
 
@@ -148,6 +147,8 @@ async def _get_result(future, pipe, timeout):
         return ProcessExpired('Abnormal termination')
     except Exception as error:
         return error
+    finally:
+        pipe.close()
 
 
 def _function_handler(function, args, kwargs, pipe):
@@ -155,7 +156,6 @@ def _function_handler(function, args, kwargs, pipe):
     signal.signal(signal.SIGINT, signal.SIG_IGN)
 
     reader, writer = pipe
-    reader.close()
 
     result = process_execute(function, *args, **kwargs)
 

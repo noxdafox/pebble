@@ -24,7 +24,7 @@ from typing import Any, Callable
 _synchronized_lock = threading.Lock()
 
 
-def synchronized(*args):
+def synchronized(*args) -> Callable:
     """A synchronized function prevents two or more callers to interleave
     its execution preventing race conditions.
 
@@ -39,7 +39,7 @@ def synchronized(*args):
     if callable(args[0]):
         return decorate_synchronized(args[0], _synchronized_lock)
     else:
-        def wrap(function):
+        def wrap(function) -> type:
             return decorate_synchronized(function, args[0])
 
         return wrap

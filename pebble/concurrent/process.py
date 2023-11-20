@@ -1,5 +1,5 @@
 # This file is part of Pebble.
-# Copyright (c) 2013-2022, Matteo Cafasso
+# Copyright (c) 2013-2023, Matteo Cafasso
 
 # Pebble is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License

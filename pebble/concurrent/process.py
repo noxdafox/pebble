@@ -23,6 +23,7 @@ import multiprocessing
 
 from itertools import count
 from functools import wraps
+from typing import Any, Callable
 from concurrent.futures import CancelledError, TimeoutError
 
 from pebble.common import ProcessExpired, ProcessFuture
@@ -30,7 +31,7 @@ from pebble.common import launch_process, stop_process, SLEEP_UNIT
 from pebble.common import process_execute, launch_thread, send_result
 
 
-def process(*args, **kwargs):
+def process(*args, **kwargs) -> Callable:
     """Runs the decorated function in a concurrent process,
     taking care of the result and error management.
 
@@ -74,7 +75,13 @@ def process(*args, **kwargs):
     return decorating_function
 
 
-def _process_wrapper(function, timeout, name, daemon, mp_context):
+def _process_wrapper(
+        function: callable,
+        timeout: float,
+        name: str,
+        daemon: bool,
+        mp_context: multiprocessing.context.BaseContext
+) -> Callable:
     if isinstance(function, types.FunctionType):
         _register_function(function)
 
@@ -84,7 +91,7 @@ def _process_wrapper(function, timeout, name, daemon, mp_context):
         start_method = 'spawn' if os.name == 'nt' else 'fork'
 
     @wraps(function)
-    def wrapper(*args, **kwargs):
+    def wrapper(*args, **kwargs) -> ProcessFuture:
         future = ProcessFuture()
         reader, writer = mp_context.Pipe(duplex=False)
 
@@ -109,7 +116,12 @@ def _process_wrapper(function, timeout, name, daemon, mp_context):
     return wrapper
 
 
-def _worker_handler(future, worker, pipe, timeout):
+def _worker_handler(
+        future: ProcessFuture,
+        worker: multiprocessing.Process,
+        pipe: multiprocessing.Pipe,
+        timeout: float
+):
     """Worker lifecycle manager.
 
     Waits for the worker to be perform its task,
@@ -130,7 +142,12 @@ def _worker_handler(future, worker, pipe, timeout):
         future.set_result(result)
 
 
-def _function_handler(function, args, kwargs, pipe):
+def _function_handler(
+        function: callable,
+        args: list,
+        kwargs: dict,
+        pipe: multiprocessing.Pipe
+):
     """Runs the actual function in separate process and returns its result."""
     signal.signal(signal.SIGINT, signal.SIG_IGN)
 
@@ -142,7 +159,11 @@ def _function_handler(function, args, kwargs, pipe):
     send_result(writer, result)
 
 
-def _get_result(future, pipe, timeout):
+def _get_result(
+        future: ProcessFuture,
+        pipe: multiprocessing.Pipe,
+        timeout: float
+) -> Any:
     """Waits for result and handles communication errors."""
     counter = count(step=SLEEP_UNIT)
 
@@ -150,7 +171,7 @@ def _get_result(future, pipe, timeout):
         while not pipe.poll(SLEEP_UNIT):
             if timeout is not None and next(counter) >= timeout:
                 return TimeoutError('Task Timeout', timeout)
-            elif future.cancelled():
+            if future.cancelled():
                 return CancelledError()
 
         return pipe.recv()
@@ -160,13 +181,21 @@ def _get_result(future, pipe, timeout):
         return error
 
 
-def _validate_parameters(timeout, name, daemon, mp_context):
+def _validate_parameters(
+        timeout: float,
+        name: str,
+        daemon: bool,
+        mp_context: multiprocessing.context.BaseContext
+):
     if timeout is not None and not isinstance(timeout, (int, float)):
         raise TypeError('Timeout expected to be None or integer or float')
     if name is not None and not isinstance(name, str):
         raise TypeError('Name expected to be None or string')
     if daemon is not None and not isinstance(daemon, bool):
         raise TypeError('Daemon expected to be None or bool')
+    if mp_context is not None and not isinstance(
+            mp_context, multiprocessing.context.BaseContext):
+        raise TypeError('Context expected to be None or multiprocessing.context')
 
 
 ################################################################################
@@ -176,13 +205,13 @@ def _validate_parameters(timeout, name, daemon, mp_context):
 _registered_functions = {}
 
 
-def _register_function(function):
+def _register_function(function: Callable) -> Callable:
     _registered_functions[function.__qualname__] = function
 
     return function
 
 
-def _trampoline(name, module, *args, **kwargs):
+def _trampoline(name: str, module: Any, *args, **kwargs) -> Any:
     """Trampoline function for decorators.
 
     Lookups the function between the registered ones;
@@ -194,7 +223,7 @@ def _trampoline(name, module, *args, **kwargs):
     return function(*args, **kwargs)
 
 
-def _function_lookup(name, module):
+def _function_lookup(name: str, module: Any) -> Callable:
     """Searches the function between the registered ones.
     If not found, it imports the module forcing its registration.
 

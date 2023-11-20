@@ -14,6 +14,7 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with Pebble.  If not, see <http://www.gnu.org/licenses/>.
 
+from typing import Callable
 from functools import wraps
 from traceback import format_exc
 from concurrent.futures import Future
@@ -21,7 +22,7 @@ from concurrent.futures import Future
 from pebble.common import launch_thread
 
 
-def thread(*args, **kwargs):
+def thread(*args, **kwargs) -> Callable:
     """Runs the decorated function within a concurrent thread,
     taking care of the result and error management.
 
@@ -55,9 +56,9 @@ def thread(*args, **kwargs):
     return decorating_function
 
 
-def _thread_wrapper(function, name, daemon):
+def _thread_wrapper(function: Callable, name: str, daemon: bool) -> Callable:
     @wraps(function)
-    def wrapper(*args, **kwargs):
+    def wrapper(*args, **kwargs) -> Future:
         future = Future()
 
         launch_thread(name, _function_handler, daemon, function, args, kwargs, future)
@@ -67,7 +68,12 @@ def _thread_wrapper(function, name, daemon):
     return wrapper
 
 
-def _function_handler(function, args, kwargs, future):
+def _function_handler(
+        function: Callable,
+        args: list,
+        kwargs: dict,
+        future: Future
+):
     """Runs the actual function in separate thread and returns its result."""
     future.set_running_or_notify_cancel()
 
@@ -80,7 +86,7 @@ def _function_handler(function, args, kwargs, future):
         future.set_result(result)
 
 
-def _validate_parameters(name, daemon):
+def _validate_parameters(name: str, daemon: bool):
     if name is not None and not isinstance(name, str):
         raise TypeError('Name expected to be None or string')
     if daemon is not None and not isinstance(daemon, bool):

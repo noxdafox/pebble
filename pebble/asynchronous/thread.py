@@ -16,13 +16,14 @@
 
 import asyncio
 
+from typing import Callable
 from functools import wraps
 from traceback import format_exc
 
 from pebble.common import launch_thread
 
 
-def thread(*args, **kwargs):
+def thread(*args, **kwargs) -> Callable:
     """Runs the decorated function within a concurrent thread,
     taking care of the result and error management.
 
@@ -56,9 +57,9 @@ def thread(*args, **kwargs):
     return decorating_function
 
 
-def _thread_wrapper(function, name, daemon):
+def _thread_wrapper(function: Callable, name: str, daemon: bool) -> Callable:
     @wraps(function)
-    def wrapper(*args, **kwargs):
+    def wrapper(*args, **kwargs) -> asyncio.Future:
         loop = _get_asyncio_loop()
         future = loop.create_future()
 
@@ -69,7 +70,12 @@ def _thread_wrapper(function, name, daemon):
     return wrapper
 
 
-def _function_handler(function, args, kwargs, future):
+def _function_handler(
+        function: Callable,
+        args: list,
+        kwargs: dict,
+        future: asyncio.Future
+):
     """Runs the actual function in separate thread and returns its result."""
     loop = future.get_loop()
 
@@ -82,14 +88,14 @@ def _function_handler(function, args, kwargs, future):
         loop.call_soon_threadsafe(future.set_result, result)
 
 
-def _validate_parameters(name, daemon):
+def _validate_parameters(name: str, daemon: bool):
     if name is not None and not isinstance(name, str):
         raise TypeError('Name expected to be None or string')
     if daemon is not None and not isinstance(daemon, bool):
         raise TypeError('Daemon expected to be None or bool')
 
 
-def _get_asyncio_loop():
+def _get_asyncio_loop() -> asyncio.BaseEventLoop:
     """Backwards compatible loop getter."""
     try:
         return asyncio.get_running_loop()

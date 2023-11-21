@@ -136,8 +136,7 @@ html_theme_options = {
     'page_width': '80%',
     'github_user': 'noxdafox',
     'github_repo': 'pebble',
-    'show_related': True,
-    'github_banner': True
+    'show_related': True
 }
 
 # Theme options are theme-specific and customize the look and feel of a theme

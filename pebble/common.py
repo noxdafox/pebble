@@ -22,6 +22,7 @@ import signal
 
 from threading import Thread
 from traceback import format_exc
+from collections import namedtuple
 
 from concurrent.futures import Future
 
@@ -162,19 +163,19 @@ def stop_process(process):
 def execute(function, *args, **kwargs):
     """Runs the given function returning its results or exception."""
     try:
-        return function(*args, **kwargs)
+        return Result(SUCCESS, function(*args, **kwargs))
     except Exception as error:
         error.traceback = format_exc()
-        return error
+        return Result(FAILURE, error)
 
 
 def process_execute(function, *args, **kwargs):
     """Runs the given function returning its results or exception."""
     try:
-        return function(*args, **kwargs)
+        return Result(SUCCESS, function(*args, **kwargs))
     except Exception as error:
         error.traceback = format_exc()
-        return RemoteException(error, error.traceback)
+        return Result(FAILURE, RemoteException(error, error.traceback))
 
 
 def send_result(pipe, data):
@@ -183,9 +184,15 @@ def send_result(pipe, data):
         pipe.send(data)
     except (pickle.PicklingError, TypeError) as error:
         error.traceback = format_exc()
-        pipe.send(RemoteException(error, error.traceback))
+        pipe.send(Result(ERROR, RemoteException(error, error.traceback)))
 
 
+Result = namedtuple('Result', ('status', 'value'))
+
+
+SUCCESS = 0
+FAILURE = 1
+ERROR = 2
 SLEEP_UNIT = 0.1
 # Borrowed from concurrent.futures
 PENDING = 'PENDING'

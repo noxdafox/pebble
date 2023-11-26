@@ -44,6 +44,11 @@ def error_decorated():
 
 
 @concurrent.process(context=mp_context)
+def error_returned():
+    return RuntimeError("BOOM!")
+
+
+@concurrent.process(context=mp_context)
 def pickling_error_decorated():
     event = threading.Event()
     return event
@@ -189,6 +194,11 @@ class TestProcessConcurrent(unittest.TestCase):
         future = error_decorated()
         with self.assertRaises(RuntimeError):
             future.result()
+
+    def test_error_returned(self):
+        """Process Forkserver returned errors are returned by future.result."""
+        future = error_returned()
+        self.assertIsInstance(future.result(), RuntimeError)
 
     def test_error_decorated_callback(self):
         """Process Forkserver errors are forwarded to callback."""

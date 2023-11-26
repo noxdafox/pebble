@@ -19,6 +19,11 @@ def error_decorated():
     raise RuntimeError("BOOM!")
 
 
+@concurrent.thread
+def error_returned():
+    return RuntimeError("BOOM!")
+
+
 @concurrent.thread()
 def name_keyword_argument(name='function_kwarg'):
     return name
@@ -118,6 +123,11 @@ class TestThreadConcurrent(unittest.TestCase):
         future = error_decorated()
         with self.assertRaises(RuntimeError):
             future.result()
+
+    def test_error_returned(self):
+        """Thread returned errors are returned by future.result."""
+        future = error_returned()
+        self.assertIsInstance(future.result(), RuntimeError)
 
     def test_error_decorated_callback(self):
         """Thread  errors are forwarded to callback."""

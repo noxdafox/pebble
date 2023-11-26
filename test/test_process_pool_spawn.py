@@ -60,6 +60,10 @@ def error_function():
     raise Exception("BOOM!")
 
 
+def return_error_function():
+    return Exception("BOOM!")
+
+
 def pickle_error_function():
     return threading.Lock()
 
@@ -154,6 +158,12 @@ class TestProcessPool(unittest.TestCase):
         with ProcessPool(max_workers=1, context=mp_context) as pool:
             future = pool.schedule(error_function)
         self.assertRaises(Exception, future.result)
+
+    def test_process_pool_error_returned(self):
+        """Process Pool Spawn returned errors are returned by future get."""
+        with ProcessPool(max_workers=1, context=mp_context) as pool:
+            future = pool.schedule(return_error_function)
+        self.assertIsInstance(future.result(), Exception)
 
     def test_process_pool_error_callback(self):
         """Process Pool Spawn errors are forwarded to callback."""
@@ -569,7 +579,7 @@ class TestAsyncIOProcessPool(unittest.TestCase):
             self.event.set()
 
     def test_process_pool_single_future(self):
-        """Process Pool Fork single future."""
+        """Process Pool Spawn single future."""
         async def test(pool):
             loop = asyncio.get_running_loop()
 
@@ -579,7 +589,7 @@ class TestAsyncIOProcessPool(unittest.TestCase):
             self.assertEqual(asyncio.run(test(pool)), 1)
 
     def test_process_pool_multiple_futures(self):
-        """Process Pool Fork multiple futures."""
+        """Process Pool Spawn multiple futures."""
         async def test(pool):
             futures = []
             loop = asyncio.get_running_loop()
@@ -594,7 +604,7 @@ class TestAsyncIOProcessPool(unittest.TestCase):
                                  for r in asyncio.run(test(pool))[0]), 5)
 
     def test_process_pool_callback(self):
-        """Process Pool Fork result is forwarded to the callback."""
+        """Process Pool Spawn result is forwarded to the callback."""
         async def test(pool):
             loop = asyncio.get_running_loop()
 
@@ -611,7 +621,7 @@ class TestAsyncIOProcessPool(unittest.TestCase):
             self.assertEqual(self.result, 1)
 
     def test_process_pool_error(self):
-        """Process Pool Fork errors are raised by future get."""
+        """Process Pool Spawn errors are raised by future get."""
         async def test(pool):
             loop = asyncio.get_running_loop()
 
@@ -621,8 +631,18 @@ class TestAsyncIOProcessPool(unittest.TestCase):
             with self.assertRaises(Exception):
                 asyncio.run(test(pool))
 
+    def test_process_pool_error_returned(self):
+        """Process Pool Spawn returned errors are returned by future get."""
+        async def test(pool):
+            loop = asyncio.get_running_loop()
+
+            return await loop.run_in_executor(pool, return_error_function, None)
+
+        with ProcessPool(max_workers=1, context=mp_context) as pool:
+            self.assertIsInstance(asyncio.run(test(pool)), Exception)
+
     def test_process_pool_error_callback(self):
-        """Process Pool Fork errors are forwarded to callback."""
+        """Process Pool Spawn errors are forwarded to callback."""
         async def test(pool):
             loop = asyncio.get_running_loop()
 
@@ -639,7 +659,7 @@ class TestAsyncIOProcessPool(unittest.TestCase):
             self.assertTrue(isinstance(self.exception, Exception))
 
     def test_process_pool_timeout(self):
-        """Process Pool Fork future raises TimeoutError if so."""
+        """Process Pool Spawn future raises TimeoutError if so."""
         async def test(pool):
             loop = asyncio.get_running_loop()
 
@@ -650,7 +670,7 @@ class TestAsyncIOProcessPool(unittest.TestCase):
                 asyncio.run(test(pool))
 
     def test_process_pool_timeout_callback(self):
-        """Process Pool Fork TimeoutError is forwarded to callback."""
+        """Process Pool Spawn TimeoutError is forwarded to callback."""
         async def test(pool):
             loop = asyncio.get_running_loop()
 
@@ -669,7 +689,7 @@ class TestAsyncIOProcessPool(unittest.TestCase):
             self.assertTrue(isinstance(self.exception, asyncio.TimeoutError))
 
     def test_process_pool_cancel(self):
-        """Process Pool Fork future raises CancelledError if so."""
+        """Process Pool Spawn future raises CancelledError if so."""
         async def test(pool):
             loop = asyncio.get_running_loop()
             future = loop.run_in_executor(pool, long_function, None)
@@ -685,7 +705,7 @@ class TestAsyncIOProcessPool(unittest.TestCase):
                 asyncio.run(test(pool))
 
     def test_process_pool_cancel_callback(self):
-        """Process Pool Fork CancelledError is forwarded to callback."""
+        """Process Pool Spawn CancelledError is forwarded to callback."""
         async def test(pool):
             loop = asyncio.get_running_loop()
 
@@ -706,7 +726,7 @@ class TestAsyncIOProcessPool(unittest.TestCase):
             self.assertTrue(isinstance(self.exception, asyncio.CancelledError))
 
     def test_process_pool_stop_timeout(self):
-        """Process Pool Fork workers are stopped if future timeout."""
+        """Process Pool Spawn workers are stopped if future timeout."""
         async def test(pool):
             loop = asyncio.get_running_loop()
             future1 = loop.run_in_executor(pool, pid_function, None)
@@ -720,7 +740,7 @@ class TestAsyncIOProcessPool(unittest.TestCase):
             asyncio.run(test(pool))
 
     def test_process_pool_stop_cancel(self):
-        """Process Pool Fork workers are stopped if future is cancelled."""
+        """Process Pool Spawn workers are stopped if future is cancelled."""
         async def test(pool):
             loop = asyncio.get_running_loop()
             future1 = loop.run_in_executor(pool, pid_function, None)

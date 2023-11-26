@@ -60,6 +60,10 @@ def error_function():
     raise Exception("BOOM!")
 
 
+def return_error_function():
+    return Exception("BOOM!")
+
+
 def pickle_error_function():
     return threading.Lock()
 
@@ -154,6 +158,12 @@ class TestProcessPool(unittest.TestCase):
         with ProcessPool(max_workers=1, context=mp_context) as pool:
             future = pool.schedule(error_function)
         self.assertRaises(Exception, future.result)
+
+    def test_process_pool_error_returned(self):
+        """Process Pool Fork returned errors are returned by future get."""
+        with ProcessPool(max_workers=1, context=mp_context) as pool:
+            future = pool.schedule(return_error_function)
+        self.assertIsInstance(future.result(), Exception)
 
     def test_process_pool_error_callback(self):
         """Process Pool Fork errors are forwarded to callback."""
@@ -621,6 +631,16 @@ class TestAsyncIOProcessPool(unittest.TestCase):
         with ProcessPool(max_workers=1, context=mp_context) as pool:
             with self.assertRaises(Exception):
                 asyncio.run(test(pool))
+
+    def test_process_pool_error_returned(self):
+        """Process Pool Fork returned errors are returned by future get."""
+        async def test(pool):
+            loop = asyncio.get_running_loop()
+
+            return await loop.run_in_executor(pool, return_error_function, None)
+
+        with ProcessPool(max_workers=1, context=mp_context) as pool:
+            self.assertIsInstance(asyncio.run(test(pool)), Exception)
 
     def test_process_pool_error_callback(self):
         """Process Pool Fork errors are forwarded to callback."""

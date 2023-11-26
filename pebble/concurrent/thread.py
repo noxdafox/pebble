@@ -19,7 +19,7 @@ from functools import wraps
 from traceback import format_exc
 from concurrent.futures import Future
 
-from pebble.common import launch_thread
+from pebble.common import launch_thread, SUCCESS
 
 
 def thread(*args, **kwargs) -> Callable:

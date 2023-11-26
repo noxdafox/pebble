@@ -27,6 +27,7 @@ from typing import Any, Callable
 from concurrent.futures import CancelledError, TimeoutError
 
 from pebble.common import ProcessExpired, ProcessFuture
+from pebble.common import Result, SUCCESS, FAILURE, ERROR
 from pebble.common import launch_process, stop_process, SLEEP_UNIT
 from pebble.common import process_execute, launch_thread, send_result
 
@@ -133,17 +134,17 @@ def _worker_handler(
     if worker.is_alive():
         stop_process(worker)
 
-    if isinstance(result, BaseException):
-        if isinstance(result, ProcessExpired):
-            result.exitcode = worker.exitcode
-        if not isinstance(result, CancelledError):
-            future.set_exception(result)
+    if result.status == SUCCESS:
+        future.set_result(result.value)
     else:
-        future.set_result(result)
+        if result.status == ERROR:
+            result.value.exitcode = worker.exitcode
+        if not isinstance(result.value, CancelledError):
+            future.set_exception(result.value)
 
 
 def _function_handler(
-        function: callable,
+        function: Callable,
         args: list,
         kwargs: dict,
         pipe: multiprocessing.Pipe
@@ -170,13 +171,13 @@ def _get_result(
     try:
         while not pipe.poll(SLEEP_UNIT):
             if timeout is not None and next(counter) >= timeout:
-                return TimeoutError('Task Timeout', timeout)
+                return Result(FAILURE, TimeoutError('Task Timeout', timeout))
             if future.cancelled():
-                return CancelledError()
+                return Result(FAILURE, CancelledError())
 
         return pipe.recv()
     except (EOFError, OSError):
-        return ProcessExpired('Abnormal termination')
+        return Result(ERROR, ProcessExpired('Abnormal termination'))
     except Exception as error:
         return error
 

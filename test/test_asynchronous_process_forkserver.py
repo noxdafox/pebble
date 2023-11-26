@@ -45,6 +45,11 @@ def error_decorated():
 
 
 @asynchronous.process(context=mp_context)
+def error_returned():
+    return RuntimeError("BOOM!")
+
+
+@asynchronous.process(context=mp_context)
 def pickling_error_decorated():
     event = threading.Event()
     return event
@@ -249,6 +254,13 @@ class TestProcessAsynchronous(unittest.TestCase):
 
         with self.assertRaises(RuntimeError):
             asyncio.run(test())
+
+    def test_error_returned(self):
+        """Process Forkserver errors are returned by future.result."""
+        async def test():
+            return await error_returned()
+
+        self.assertIsInstance(asyncio.run(test()), RuntimeError)
 
     def test_error_decorated_callback(self):
         """Process Forkserver errors are forwarded to callback."""

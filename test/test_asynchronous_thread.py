@@ -20,6 +20,11 @@ def error_decorated():
     raise RuntimeError("BOOM!")
 
 
+@asynchronous.thread
+def error_returned():
+    return RuntimeError("BOOM!")
+
+
 @asynchronous.thread()
 def name_keyword_argument(name='function_kwarg'):
     return name
@@ -139,6 +144,13 @@ class TestThreadAsynchronous(unittest.TestCase):
 
         with self.assertRaises(RuntimeError):
             asyncio.run(test())
+
+    def test_error_returned(self):
+        """Thread  errors are raised by future.result."""
+        async def test():
+            return await error_returned()
+
+        self.assertIsInstance(asyncio.run(test()), RuntimeError)
 
     def test_error_decorated_callback(self):
         """Thread  errors are forwarded to callback."""

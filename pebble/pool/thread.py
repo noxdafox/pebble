@@ -22,7 +22,7 @@ from itertools import count
 from typing import Callable
 from concurrent.futures import Future
 
-from pebble.common import execute, launch_thread
+from pebble.common import execute, launch_thread, SUCCESS
 from pebble.pool.base_pool import MapFuture, map_results
 from pebble.pool.base_pool import iter_chunks, run_initializer
 from pebble.pool.base_pool import CREATED, ERROR, RUNNING, SLEEP_UNIT
@@ -194,10 +194,10 @@ def execute_next_task(task: Task):
 
     result = execute(payload.function, *payload.args, **payload.kwargs)
 
-    if isinstance(result, BaseException):
-        task.future.set_exception(result)
+    if result.status == SUCCESS:
+        task.future.set_result(result.value)
     else:
-        task.future.set_result(result)
+        task.future.set_exception(result.value)
 
 
 def process_chunk(function: Callable, chunk: list) -> list:

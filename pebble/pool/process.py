@@ -24,8 +24,8 @@ from itertools import count
 from collections import namedtuple
 from signal import SIG_IGN, SIGINT, signal
 from typing import Any, Callable, Optional
-from concurrent.futures import CancelledError, TimeoutError
 from concurrent.futures.process import BrokenProcessPool
+from concurrent.futures import CancelledError, TimeoutError
 
 from pebble.pool.base_pool import ProcessMapFuture, map_results
 from pebble.pool.base_pool import CREATED, ERROR, RUNNING, SLEEP_UNIT
@@ -35,6 +35,7 @@ from pebble.pool.channel import ChannelError, WorkerChannel, channels
 from pebble.common import launch_process, stop_process
 from pebble.common import ProcessExpired, ProcessFuture
 from pebble.common import process_execute, launch_thread
+from pebble.common import Result, SUCCESS, FAILURE, ERROR as TASK_ERROR
 
 
 class ProcessPool(BasePool):
@@ -224,9 +225,9 @@ class PoolManager:
 
         if isinstance(message, Acknowledgement):
             self.task_manager.task_start(message.task, message.worker)
-        elif isinstance(message, Result):
+        elif isinstance(message, TaskResult):
             self.task_manager.task_done(message.task, message.result)
-        elif isinstance(message, Problem):
+        elif isinstance(message, TaskProblem):
             self.task_manager.task_problem(message.task, message.error)
 
     def update_status(self):
@@ -238,12 +239,13 @@ class PoolManager:
         for task in self.task_manager.timeout_tasks():
             self.worker_manager.stop_worker(task.worker_id)
             self.task_manager.task_done(
-                task.id, TimeoutError("Task timeout", task.timeout))
+                task.id,
+                Result(FAILURE, TimeoutError("Task timeout", task.timeout)))
 
         for task in self.task_manager.cancelled_tasks():
             self.worker_manager.stop_worker(task.worker_id)
             self.task_manager.task_done(
-                task.id, CancelledError())
+                task.id, Result(FAILURE, CancelledError()))
 
     def update_workers(self):
         """Handles unexpected processes termination."""
@@ -261,7 +263,7 @@ class PoolManager:
             return
         else:
             error = ProcessExpired('Abnormal termination', code=exitcode)
-            self.task_manager.task_done(task.id, error)
+            self.task_manager.task_done(task.id, Result(TASK_ERROR, error))
 
     def find_expired_task(self, worker_id: int) -> Task:
         tasks = tuple(self.task_manager.tasks.values())
@@ -293,7 +295,7 @@ class TaskManager:
         task.timestamp = time.time()
         task.set_running_or_notify_cancel()
 
-    def task_done(self, task_id: int, result: Any):
+    def task_done(self, task_id: int, result: Result):
         """Set the tasks result and run the callback."""
         try:
             task = self.tasks.pop(task_id)
@@ -302,17 +304,17 @@ class TaskManager:
         else:
             if task.future.cancelled():
                 task.set_running_or_notify_cancel()
-            elif isinstance(result, BaseException):
-                task.future.set_exception(result)
+            elif result.status == SUCCESS:
+                task.future.set_result(result.value)
             else:
-                task.future.set_result(result)
+                task.future.set_exception(result.value)
 
             self.task_done_callback()
 
     def task_problem(self, task_id: int, error: Exception):
         """Set the task with the error it caused within the Pool."""
         self.task_start(task_id, None)
-        self.task_done(task_id, error)
+        self.task_done(task_id, Result(TASK_ERROR, error))
 
     def timeout_tasks(self) -> tuple:
         return tuple(t for t in tuple(self.tasks.values()) if self.timeout(t))
@@ -426,7 +428,7 @@ def worker_process(params: Worker, channel: WorkerChannel):
             payload = task.payload
             result = process_execute(
                 payload.function, *payload.args, **payload.kwargs)
-            send_result(channel, Result(task.id, result))
+            send_result(channel, TaskResult(task.id, result))
     except (OSError, RuntimeError) as error:
         errno = getattr(error, 'errno', 1)
         os._exit(errno if isinstance(errno, int) else 1)
@@ -446,7 +448,7 @@ def send_result(channel: WorkerChannel, result: Any):
     try:
         channel.send(result)
     except (pickle.PicklingError, TypeError) as error:
-        channel.send(Problem(result.task, error))
+        channel.send(TaskProblem(result.task, error))
 
 
 def fetch_task(channel: WorkerChannel) -> Task:
@@ -499,7 +501,7 @@ atexit.register(interpreter_shutdown)
 GLOBAL_SHUTDOWN = False
 WORKERS_NAME = 'pebble_pool_worker'
 NoMessage = namedtuple('NoMessage', ())
-Result = namedtuple('Result', ('task', 'result'))
-Problem = namedtuple('Problem', ('task', 'error'))
+TaskResult = namedtuple('TaskResult', ('task', 'result'))
+TaskProblem = namedtuple('TaskProblem', ('task', 'error'))
 WorkerTask = namedtuple('WorkerTask', ('id', 'payload'))
 Acknowledgement = namedtuple('Acknowledgement', ('worker', 'task'))

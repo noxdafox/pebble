@@ -24,6 +24,7 @@ from typing import Callable, Optional
 from itertools import chain, count, islice
 from concurrent.futures import Future, TimeoutError
 
+from pebble.common import Result, SUCCESS
 from pebble.common import PebbleFuture, ProcessFuture, SLEEP_UNIT
 
 
@@ -220,10 +221,13 @@ class MapResults:
     def next(self):
         result = next(self._results)
 
-        if isinstance(result, Exception):
-            raise result
+        if isinstance(result, Result):
+            if result.status == SUCCESS:
+                return result.value
 
-        return result
+            result = result.value
+
+        raise result
 
     __next__ = next
 

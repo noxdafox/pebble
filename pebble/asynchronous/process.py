@@ -27,9 +27,9 @@ from functools import wraps
 from typing import Any, Callable
 from concurrent.futures import TimeoutError
 
-from pebble.common import ProcessExpired
 from pebble.common import process_execute, send_result
 from pebble.common import launch_process, stop_process, SLEEP_UNIT
+from pebble.common import ProcessExpired, Result, FAILURE, SUCCESS, ERROR
 
 
 def process(*args, **kwargs) -> Callable:
@@ -133,13 +133,13 @@ async def _worker_handler(
     if worker.is_alive():
         stop_process(worker)
 
-    if isinstance(result, BaseException):
-        if isinstance(result, ProcessExpired):
-            result.exitcode = worker.exitcode
-        if not isinstance(result, asyncio.CancelledError):
-            future.set_exception(result)
+    if result.status == SUCCESS:
+        future.set_result(result.value)
     else:
-        future.set_result(result)
+        if result.status == ERROR:
+            result.value.exitcode = worker.exitcode
+        if not isinstance(result.value, asyncio.CancelledError):
+            future.set_exception(result.value)
 
 
 async def _get_result(
@@ -153,15 +153,15 @@ async def _get_result(
     try:
         while not pipe.poll():
             if timeout is not None and next(counter) >= timeout:
-                return TimeoutError('Task Timeout', timeout)
+                return Result(FAILURE, TimeoutError('Task Timeout', timeout))
             if future.cancelled():
-                return asyncio.CancelledError()
+                return Result(FAILURE, asyncio.CancelledError())
 
             await asyncio.sleep(SLEEP_UNIT)
 
         return pipe.recv()
     except (EOFError, OSError):
-        return ProcessExpired('Abnormal termination')
+        return Result(ERROR, ProcessExpired('Abnormal termination'))
     except Exception as error:
         return error
 

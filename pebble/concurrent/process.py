@@ -70,14 +70,14 @@ def process(*args, **kwargs) -> Callable:
         return _process_wrapper(args[0], timeout, name, daemon, multiprocessing)
 
     # with @pie syntax
-    def decorating_function(function):
+    def decorating_function(function: Callable) -> Callable:
         return _process_wrapper(function, timeout, name, daemon, mp_context)
 
     return decorating_function
 
 
 def _process_wrapper(
-        function: callable,
+        function: Callable,
         timeout: float,
         name: str,
         daemon: bool,

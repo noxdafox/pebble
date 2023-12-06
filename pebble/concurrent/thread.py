@@ -50,7 +50,7 @@ def thread(*args, **kwargs) -> Callable:
         return _thread_wrapper(args[0], name, daemon)
 
     # with @pie syntax
-    def decorating_function(function):
+    def decorating_function(function: Callable) -> Callable:
         return _thread_wrapper(function, name, daemon)
 
     return decorating_function

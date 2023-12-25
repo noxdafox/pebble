@@ -164,7 +164,7 @@ def execute(function, *args, **kwargs):
     """Runs the given function returning its results or exception."""
     try:
         return Result(SUCCESS, function(*args, **kwargs))
-    except Exception as error:
+    except BaseException as error:
         error.traceback = format_exc()
         return Result(FAILURE, error)
 
@@ -173,7 +173,7 @@ def process_execute(function, *args, **kwargs):
     """Runs the given function returning its results or exception."""
     try:
         return Result(SUCCESS, function(*args, **kwargs))
-    except Exception as error:
+    except BaseException as error:
         error.traceback = format_exc()
         return Result(FAILURE, RemoteException(error, error.traceback))
 

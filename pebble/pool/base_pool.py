@@ -266,7 +266,7 @@ def chunk_result(future: ProcessFuture, timeout: Optional[float]):
     """Returns the results of a processed chunk."""
     try:
         return future.result(timeout=timeout)
-    except Exception as error:
+    except BaseException as error:
         return (error, )
 
 
@@ -275,7 +275,7 @@ def run_initializer(initializer: Callable, initargs: list):
     try:
         initializer(*initargs)
         return True
-    except Exception as error:
+    except BaseException as error:
         logging.exception(error)
         return False
 

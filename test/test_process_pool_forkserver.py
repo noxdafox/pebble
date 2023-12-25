@@ -28,7 +28,7 @@ if 'forkserver' in methods:
         if mp_context.get_start_method() == 'forkserver':
             supported = True
         else:
-            raise Exception(mp_context.get_start_method())
+            raise BaseException(mp_context.get_start_method())
     except RuntimeError:  # child process
         pass
 
@@ -46,7 +46,7 @@ def long_initializer():
 
 
 def broken_initializer():
-    raise Exception("BOOM!")
+    raise BaseException("BOOM!")
 
 
 def function(argument, keyword_argument=0):
@@ -59,11 +59,11 @@ def initializer_function():
 
 
 def error_function():
-    raise Exception("BOOM!")
+    raise BaseException("BOOM!")
 
 
 def return_error_function():
-    return Exception("BOOM!")
+    return BaseException("BOOM!")
 
 
 def pickle_error_function():
@@ -126,7 +126,7 @@ class TestProcessPool(unittest.TestCase):
     def callback(self, future):
         try:
             self.result = future.result()
-        except Exception as error:
+        except BaseException as error:
             self.exception = error
         finally:
             self.event.set()
@@ -159,13 +159,13 @@ class TestProcessPool(unittest.TestCase):
         """Process Pool Forkserver errors are raised by future get."""
         with ProcessPool(max_workers=1, context=mp_context) as pool:
             future = pool.schedule(error_function)
-        self.assertRaises(Exception, future.result)
+        self.assertRaises(BaseException, future.result)
 
     def test_process_pool_error_returned(self):
         """Process Pool Forkserver returned errors are returned by future get."""
         with ProcessPool(max_workers=1, context=mp_context) as pool:
             future = pool.schedule(return_error_function)
-        self.assertIsInstance(future.result(), Exception)
+        self.assertIsInstance(future.result(), BaseException)
 
     def test_process_pool_error_callback(self):
         """Process Pool Forkserver errors are forwarded to callback."""
@@ -173,7 +173,7 @@ class TestProcessPool(unittest.TestCase):
             future = pool.schedule(error_function)
         future.add_done_callback(self.callback)
         self.event.wait()
-        self.assertTrue(isinstance(self.exception, Exception))
+        self.assertTrue(isinstance(self.exception, BaseException))
 
     def test_process_pool_pickling_error_task(self):
         """Process Pool Forkserver task pickling errors
@@ -390,12 +390,12 @@ class TestProcessPool(unittest.TestCase):
                           kwargs={'keyword_argument': 1})
 
     def test_process_pool_exception_isolated(self):
-        """Process Pool Forkserver an Exception does not affect other futures."""
+        """Process Pool Forkserver an BaseException does not affect other futures."""
         with ProcessPool(max_workers=1, context=mp_context) as pool:
             future = pool.schedule(error_function)
             try:
                 future.result()
-            except Exception:
+            except BaseException:
                 pass
             future = pool.schedule(function, args=[1],
                                    kwargs={'keyword_argument': 1})
@@ -574,7 +574,7 @@ class TestAsyncIOProcessPool(unittest.TestCase):
     def callback(self, future):
         try:
             self.result = future.result()
-        # asyncio.exception.CancelledError does not inherit from Exception
+        # asyncio.exception.CancelledError does not inherit from BaseException
         except BaseException as error:
             self.exception = error
         finally:
@@ -630,7 +630,7 @@ class TestAsyncIOProcessPool(unittest.TestCase):
             return await loop.run_in_executor(pool, error_function, None)
 
         with ProcessPool(max_workers=1, context=mp_context) as pool:
-            with self.assertRaises(Exception):
+            with self.assertRaises(BaseException):
                 asyncio.run(test(pool))
 
     def test_process_pool_error_returned(self):
@@ -641,7 +641,7 @@ class TestAsyncIOProcessPool(unittest.TestCase):
             return await loop.run_in_executor(pool, return_error_function, None)
 
         with ProcessPool(max_workers=1, context=mp_context) as pool:
-            self.assertIsInstance(asyncio.run(test(pool)), Exception)
+            self.assertIsInstance(asyncio.run(test(pool)), BaseException)
 
     def test_process_pool_error_callback(self):
         """Process Pool Forkserver errors are forwarded to callback."""
@@ -658,7 +658,7 @@ class TestAsyncIOProcessPool(unittest.TestCase):
 
         with ProcessPool(max_workers=1, context=mp_context) as pool:
             asyncio.run(test(pool))
-            self.assertTrue(isinstance(self.exception, Exception))
+            self.assertTrue(isinstance(self.exception, BaseException))
 
     def test_process_pool_timeout(self):
         """Process Pool Forkserver future raises TimeoutError if so."""

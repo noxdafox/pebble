@@ -13,7 +13,7 @@ initarg = 0
 
 
 def error_callback(future):
-    raise Exception("BOOM!")
+    raise BaseException("BOOM!")
 
 
 def initializer(value):
@@ -22,7 +22,7 @@ def initializer(value):
 
 
 def broken_initializer():
-    raise Exception("BOOM!")
+    raise BaseException("BOOM!")
 
 
 def function(argument, keyword_argument=0):
@@ -35,7 +35,7 @@ def initializer_function():
 
 
 def error_function():
-    raise Exception("BOOM!")
+    raise BaseException("BOOM!")
 
 
 def long_function(value=0):
@@ -60,7 +60,7 @@ class TestThreadPool(unittest.TestCase):
     def callback(self, future):
         try:
             self.results = future.result()
-        except Exception as error:
+        except BaseException as error:
             self.exception = error
         finally:
             self.event.set()
@@ -94,7 +94,7 @@ class TestThreadPool(unittest.TestCase):
         """Thread Pool errors are raised by future get."""
         with ThreadPool(max_workers=1) as pool:
             future = pool.schedule(error_function)
-        with self.assertRaises(Exception):
+        with self.assertRaises(BaseException):
             future.result()
 
     def test_thread_pool_error_callback(self):
@@ -103,7 +103,7 @@ class TestThreadPool(unittest.TestCase):
             future = pool.schedule(error_function)
             future.add_done_callback(self.callback)
         self.event.wait()
-        self.assertTrue(isinstance(self.exception, Exception))
+        self.assertTrue(isinstance(self.exception, BaseException))
 
     def test_thread_pool_cancel_callback(self):
         """Thread Pool FutureCancelled is forwarded to callback."""
@@ -244,7 +244,7 @@ class TestThreadPool(unittest.TestCase):
         pool.join()
 
     def test_thread_pool_exception_isolated(self):
-        """Thread Pool an Exception does not affect other futures."""
+        """Thread Pool an BaseException does not affect other futures."""
         with ThreadPool(max_workers=1) as pool:
             future = pool.schedule(error_function)
             try:
@@ -374,7 +374,7 @@ class TestAsyncIOThreadPool(unittest.TestCase):
     def callback(self, future):
         try:
             self.result = future.result()
-        # asyncio.exception.CancelledError does not inherit from Exception
+        # asyncio.exception.CancelledError does not inherit from BaseException
         except BaseException as error:
             self.exception = error
         finally:
@@ -430,7 +430,7 @@ class TestAsyncIOThreadPool(unittest.TestCase):
             return await loop.run_in_executor(pool, error_function)
 
         with ThreadPool(max_workers=1) as pool:
-            with self.assertRaises(Exception):
+            with self.assertRaises(BaseException):
                 asyncio.run(test(pool))
 
     def test_thread_pool_error_callback(self):
@@ -448,7 +448,7 @@ class TestAsyncIOThreadPool(unittest.TestCase):
 
         with ThreadPool(max_workers=1) as pool:
             asyncio.run(test(pool))
-            self.assertTrue(isinstance(self.exception, Exception))
+            self.assertTrue(isinstance(self.exception, BaseException))
 
     def test_thread_pool_cancel_callback(self):
         """Thread Pool FutureCancelled is forwarded to callback."""

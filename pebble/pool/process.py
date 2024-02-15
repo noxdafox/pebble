@@ -266,13 +266,12 @@ class PoolManager:
             self.task_manager.task_done(task.id, Result(TASK_ERROR, error))
 
     def find_expired_task(self, worker_id: int) -> Task:
-        tasks = tuple(self.task_manager.tasks.values())
+        tasks = dictionary_values(self.task_manager.tasks)
         running_tasks = tuple(t for t in tasks if t.worker_id != 0)
-
         if running_tasks:
             return task_worker_lookup(running_tasks, worker_id)
-        else:
-            raise BrokenProcessPool("All workers expired")
+
+        raise BrokenProcessPool("All workers expired")
 
 
 class TaskManager:
@@ -317,10 +316,11 @@ class TaskManager:
         self.task_done(task_id, Result(TASK_ERROR, error))
 
     def timeout_tasks(self) -> tuple:
-        return tuple(t for t in tuple(self.tasks.values()) if self.timeout(t))
+        return tuple(t for t in dictionary_values(self.tasks)
+                     if self.timeout(t))
 
     def cancelled_tasks(self) -> tuple:
-        return tuple(t for t in tuple(self.tasks.values())
+        return tuple(t for t in dictionary_values(self.tasks)
                      if t.timestamp != 0 and t.future.cancelled())
 
     @staticmethod
@@ -371,8 +371,8 @@ class WorkerManager:
         Returns the workers which have unexpectedly ended.
 
         """
-        workers = tuple(self.workers.values())
-        expired = tuple(w for w in workers if not w.is_alive())
+        expired = tuple(w for w in dictionary_values(self.workers)
+                        if not w.is_alive())
 
         for worker in expired:
             self.workers.pop(worker.pid)
@@ -493,6 +493,15 @@ def interpreter_shutdown():
 
     for worker in workers:
         stop_process(worker)
+
+
+def dictionary_values(dictionary: dict) -> tuple:
+    """Returns a snapshot of the dictionary values handling race conditions."""
+    while True:
+        try:
+            return tuple(dictionary.values())
+        except RuntimeError:  # race condition
+            pass
 
 
 atexit.register(interpreter_shutdown)

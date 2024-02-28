@@ -179,7 +179,7 @@ def _get_result(
     except (EOFError, OSError):
         return Result(ERROR, ProcessExpired('Abnormal termination'))
     except Exception as error:
-        return error
+        return Result(ERROR, error)
 
 
 def _validate_parameters(

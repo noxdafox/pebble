@@ -62,7 +62,7 @@ def process(*args, **kwargs) -> Callable:
         return _process_wrapper(args[0], timeout, name, daemon, multiprocessing)
 
     # decorator with parameters
-    _validate_parameters(timeout, name, daemon, mp_context)
+    _validate_parameters(timeout, name, daemon)
     mp_context = mp_context if mp_context is not None else multiprocessing
 
     # without @pie syntax
@@ -183,21 +183,13 @@ def _function_handler(
     send_result(writer, result)
 
 
-def _validate_parameters(
-        timeout: float,
-        name: str,
-        daemon: bool,
-        mp_context: multiprocessing.context.BaseContext
-):
+def _validate_parameters(timeout: float, name: str, daemon: bool):
     if timeout is not None and not isinstance(timeout, (int, float)):
         raise TypeError('Timeout expected to be None or integer or float')
     if name is not None and not isinstance(name, str):
         raise TypeError('Name expected to be None or string')
     if daemon is not None and not isinstance(daemon, bool):
         raise TypeError('Daemon expected to be None or bool')
-    if mp_context is not None and not isinstance(
-            mp_context, multiprocessing.context.BaseContext):
-        raise TypeError('Context expected to be None or multiprocessing.context')
 
 
 def _get_asyncio_loop() -> asyncio.BaseEventLoop:

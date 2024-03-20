@@ -122,7 +122,11 @@ class RemoteException(object):
 
 
 def rebuild_exception(exception, traceback):
-    exception.__cause__ = RemoteTraceback(traceback)
+    try:
+        exception.traceback = traceback
+        exception.__cause__ = RemoteTraceback(traceback)
+    except AttributeError:  # Frozen exception
+        pass
 
     return exception
 
@@ -165,7 +169,11 @@ def execute(function, *args, **kwargs):
     try:
         return Result(SUCCESS, function(*args, **kwargs))
     except BaseException as error:
-        error.traceback = format_exc()
+        try:
+            error.traceback = format_exc()
+        except AttributeError:  # Frozen exception
+            pass
+
         return Result(FAILURE, error)
 
 
@@ -174,8 +182,7 @@ def process_execute(function, *args, **kwargs):
     try:
         return Result(SUCCESS, function(*args, **kwargs))
     except BaseException as error:
-        error.traceback = format_exc()
-        return Result(FAILURE, RemoteException(error, error.traceback))
+        return Result(FAILURE, RemoteException(error, format_exc()))
 
 
 def send_result(pipe, data):
@@ -183,8 +190,7 @@ def send_result(pipe, data):
     try:
         pipe.send(data)
     except (pickle.PicklingError, TypeError) as error:
-        error.traceback = format_exc()
-        pipe.send(Result(ERROR, RemoteException(error, error.traceback)))
+        pipe.send(Result(ERROR, RemoteException(error, format_exc())))
 
 
 Result = namedtuple('Result', ('status', 'value'))

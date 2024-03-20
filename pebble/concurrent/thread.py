@@ -19,7 +19,7 @@ from functools import wraps
 from traceback import format_exc
 from concurrent.futures import Future
 
-from pebble.common import launch_thread, SUCCESS
+from pebble.common import execute, launch_thread, SUCCESS
 
 
 def thread(*args, **kwargs) -> Callable:
@@ -77,13 +77,12 @@ def _function_handler(
     """Runs the actual function in separate thread and returns its result."""
     future.set_running_or_notify_cancel()
 
-    try:
-        result = function(*args, **kwargs)
-    except BaseException as error:
-        error.traceback = format_exc()
-        future.set_exception(error)
+    result = execute(function, *args, **kwargs)
+
+    if result.status == SUCCESS:
+        future.set_result(result.value)
     else:
-        future.set_result(result)
+        future.set_exception(result.value)
 
 
 def _validate_parameters(name: str, daemon: bool):

@@ -5,6 +5,7 @@ import signal
 import asyncio
 import unittest
 import threading
+import dataclasses
 import multiprocessing
 from concurrent.futures import CancelledError, TimeoutError
 
@@ -53,6 +54,16 @@ def error_returned():
 def pickling_error_decorated():
     event = threading.Event()
     return event
+
+
+@dataclasses.dataclass(frozen=True)
+class FrozenError(Exception):
+    pass
+
+
+@asynchronous.process(context=mp_context)
+def frozen_error_decorated():
+    raise FrozenError()
 
 
 @asynchronous.process(context=mp_context)
@@ -284,6 +295,14 @@ class TestProcessAsynchronous(unittest.TestCase):
             return await pickling_error_decorated()
 
         with self.assertRaises((pickle.PicklingError, TypeError)):
+            asyncio.run(test())
+
+    def test_frozen_error_decorated(self):
+        """Process Spawn frozen errors are raised by future.result."""
+        async def test():
+            return await frozen_error_decorated()
+
+        with self.assertRaises(FrozenError):
             asyncio.run(test())
 
     def test_timeout_decorated(self):

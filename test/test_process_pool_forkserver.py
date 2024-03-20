@@ -6,6 +6,7 @@ import signal
 import asyncio
 import unittest
 import threading
+import dataclasses
 import multiprocessing
 
 from concurrent.futures import CancelledError, TimeoutError
@@ -68,6 +69,15 @@ def return_error_function():
 
 def pickle_error_function():
     return threading.Lock()
+
+
+@dataclasses.dataclass(frozen=True)
+class FrozenError(Exception):
+    pass
+
+
+def frozen_error_function():
+    raise FrozenError()
 
 
 def long_function(value=1):
@@ -188,6 +198,12 @@ class TestProcessPool(unittest.TestCase):
         with ProcessPool(max_workers=1, context=mp_context) as pool:
             future = pool.schedule(pickle_error_function)
             self.assertRaises((pickle.PicklingError, TypeError), future.result)
+
+    def test_process_pool_frozen_error(self):
+        """Process Pool Forkserver frozen errors are raised by future get."""
+        with ProcessPool(max_workers=1, context=mp_context) as pool:
+            future = pool.schedule(frozen_error_function)
+        self.assertRaises(FrozenError, future.result)
 
     def test_process_pool_timeout(self):
         """Process Pool Forkserver future raises TimeoutError if so."""

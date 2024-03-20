@@ -4,6 +4,7 @@ import pickle
 import signal
 import unittest
 import threading
+import dataclasses
 import multiprocessing
 from concurrent.futures import CancelledError, TimeoutError
 
@@ -52,6 +53,16 @@ def error_returned():
 def pickling_error_decorated():
     event = threading.Event()
     return event
+
+
+@dataclasses.dataclass(frozen=True)
+class FrozenError(Exception):
+    pass
+
+
+@concurrent.process(context=mp_context)
+def frozen_error_decorated():
+    raise FrozenError()
 
 
 @concurrent.process(context=mp_context)
@@ -212,6 +223,12 @@ class TestProcessConcurrent(unittest.TestCase):
         """Process Spawn pickling errors are raised by future.result."""
         future = pickling_error_decorated()
         with self.assertRaises((pickle.PicklingError, TypeError)):
+            future.result()
+
+    def test_error_decorated(self):
+        """Process Fork errors are raised by future.result."""
+        future = error_decorated()
+        with self.assertRaises(RuntimeError):
             future.result()
 
     def test_timeout_decorated(self):

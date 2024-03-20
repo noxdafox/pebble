@@ -1,6 +1,7 @@
 import asyncio
 import unittest
 import threading
+import dataclasses
 
 from pebble import asynchronous
 
@@ -23,6 +24,16 @@ def error_decorated():
 @asynchronous.thread
 def error_returned():
     return RuntimeError("BOOM!")
+
+
+@dataclasses.dataclass(frozen=True)
+class FrozenError(Exception):
+    pass
+
+
+@asynchronous.thread()
+def frozen_error_decorated():
+    raise FrozenError()
 
 
 @asynchronous.thread()
@@ -167,6 +178,14 @@ class TestThreadAsynchronous(unittest.TestCase):
 
         self.assertTrue(isinstance(self.exception, RuntimeError),
                         msg=str(self.exception))
+
+    def test_frozen_error_decorated(self):
+        """Thread frozen errors are raised by future.result."""
+        async def test():
+            return await frozen_error_decorated()
+
+        with self.assertRaises(FrozenError):
+            asyncio.run(test())
 
     def test_name_keyword_argument(self):
         """name keyword can be passed to a decorated function process without name """

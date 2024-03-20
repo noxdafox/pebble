@@ -2,6 +2,7 @@ import time
 import asyncio
 import unittest
 import threading
+import dataclasses
 
 from pebble import ThreadPool
 
@@ -36,6 +37,15 @@ def initializer_function():
 
 def error_function():
     raise BaseException("BOOM!")
+
+
+@dataclasses.dataclass(frozen=True)
+class FrozenError(Exception):
+    pass
+
+
+def frozen_error_function():
+    raise FrozenError()
 
 
 def long_function(value=0):
@@ -104,6 +114,12 @@ class TestThreadPool(unittest.TestCase):
             future.add_done_callback(self.callback)
         self.event.wait()
         self.assertTrue(isinstance(self.exception, BaseException))
+
+    def test_process_pool_frozen_error(self):
+        """Thread Pool frozen errors are raised by future get."""
+        with ThreadPool(max_workers=1) as pool:
+            future = pool.schedule(frozen_error_function)
+        self.assertRaises(FrozenError, future.result)
 
     def test_thread_pool_cancel_callback(self):
         """Thread Pool FutureCancelled is forwarded to callback."""

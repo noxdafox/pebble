@@ -20,7 +20,7 @@ from typing import Callable
 from functools import wraps
 from traceback import format_exc
 
-from pebble.common import launch_thread
+from pebble.common import execute, launch_thread, SUCCESS
 
 
 def thread(*args, **kwargs) -> Callable:
@@ -79,13 +79,12 @@ def _function_handler(
     """Runs the actual function in separate thread and returns its result."""
     loop = future.get_loop()
 
-    try:
-        result = function(*args, **kwargs)
-    except BaseException as error:
-        error.traceback = format_exc()
-        loop.call_soon_threadsafe(future.set_exception, error)
+    result = execute(function, *args, **kwargs)
+
+    if result.status == SUCCESS:
+        loop.call_soon_threadsafe(future.set_result, result.value)
     else:
-        loop.call_soon_threadsafe(future.set_result, result)
+        loop.call_soon_threadsafe(future.set_exception, result.value)
 
 
 def _validate_parameters(name: str, daemon: bool):

@@ -15,9 +15,63 @@
 # along with Pebble.  If not, see <http://www.gnu.org/licenses/>.
 
 
+import os
 import sys
+import pickle
+import signal
+import multiprocessing
 
+from traceback import format_exc
 from typing import Any, Callable
+
+from pebble.common.types import Result, RemoteException, SUCCESS, FAILURE, ERROR
+
+
+def launch_process(
+        name: str,
+        function: Callable,
+        daemon: bool, mp_context: multiprocessing.context,
+        *args,
+        **kwargs
+) -> multiprocessing.Process:
+    process = mp_context.Process(
+        target=function, name=name, args=args, kwargs=kwargs)
+    process.daemon = daemon
+    process.start()
+
+    return process
+
+
+def stop_process(process: multiprocessing.Process):
+    """Does its best to stop the process."""
+    process.terminate()
+    process.join(3)
+
+    if process.is_alive() and os.name != 'nt':
+        try:
+            os.kill(process.pid, signal.SIGKILL)
+            process.join()
+        except OSError:
+            return
+
+    if process.is_alive():
+        raise RuntimeError("Unable to terminate PID %d" % os.getpid())
+
+
+def process_execute(function: Callable, *args, **kwargs) -> Result:
+    """Runs the given function returning its results or exception."""
+    try:
+        return Result(SUCCESS, function(*args, **kwargs))
+    except BaseException as error:
+        return Result(FAILURE, RemoteException(error, format_exc()))
+
+
+def send_result(pipe: multiprocessing.Pipe, data: Any):
+    """Send result handling pickling and communication errors."""
+    try:
+        pipe.send(data)
+    except (pickle.PicklingError, TypeError) as error:
+        pipe.send(Result(ERROR, RemoteException(error, format_exc())))
 
 
 ################################################################################

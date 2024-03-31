@@ -16,7 +16,6 @@
 
 
 import os
-import sys
 import types
 import signal
 import multiprocessing
@@ -28,6 +27,7 @@ from concurrent.futures import CancelledError, TimeoutError
 
 from pebble.common import ProcessExpired, ProcessFuture
 from pebble.common import Result, SUCCESS, FAILURE, ERROR, SLEEP_UNIT
+from pebble.common import register_function, trampoline
 from pebble.common import process_execute, launch_thread, send_result
 from pebble.common import decorate_function, launch_process, stop_process
 
@@ -63,7 +63,7 @@ def _process_wrapper(
         mp_context: multiprocessing.context.BaseContext
 ) -> Callable:
     if isinstance(function, types.FunctionType):
-        _register_function(function)
+        register_function(function)
 
     if hasattr(mp_context, 'get_start_method'):
         start_method = mp_context.get_start_method()
@@ -76,7 +76,7 @@ def _process_wrapper(
         reader, writer = mp_context.Pipe(duplex=False)
 
         if isinstance(function, types.FunctionType) and start_method != 'fork':
-            target = _trampoline
+            target = trampoline
             args = [function.__qualname__, function.__module__] + list(args)
         else:
             target = function
@@ -159,46 +159,3 @@ def _get_result(
         return Result(ERROR, ProcessExpired('Abnormal termination'))
     except Exception as error:
         return Result(ERROR, error)
-
-
-################################################################################
-# Spawn process start method handling logic
-################################################################################
-
-_registered_functions = {}
-
-
-def _register_function(function: Callable) -> Callable:
-    _registered_functions[function.__qualname__] = function
-
-    return function
-
-
-def _trampoline(name: str, module: Any, *args, **kwargs) -> Any:
-    """Trampoline function for decorators.
-
-    Lookups the function between the registered ones;
-    if not found, forces its registering and then executes it.
-
-    """
-    function = _function_lookup(name, module)
-
-    return function(*args, **kwargs)
-
-
-def _function_lookup(name: str, module: Any) -> Callable:
-    """Searches the function between the registered ones.
-    If not found, it imports the module forcing its registration.
-
-    """
-    try:
-        return _registered_functions[name]
-    except KeyError:  # force function registering
-        __import__(module)
-        mod = sys.modules[module]
-        function = getattr(mod, name)
-
-        try:
-            return _registered_functions[name]
-        except KeyError:  # decorator without @pie syntax
-            return _register_function(function)

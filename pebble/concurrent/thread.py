@@ -16,10 +16,9 @@
 
 from typing import Callable
 from functools import wraps
-from traceback import format_exc
 from concurrent.futures import Future
 
-from pebble.common import execute, launch_thread, SUCCESS
+from pebble.common import decorate_function, execute, launch_thread, SUCCESS
 
 
 def thread(*args, **kwargs) -> Callable:
@@ -35,28 +34,10 @@ def thread(*args, **kwargs) -> Callable:
     Default is True.
 
     """
-    name = kwargs.get('name')
-    daemon = kwargs.get('daemon', True)
-
-    # decorator without parameters
-    if not kwargs and len(args) == 1 and callable(args[0]):
-        return _thread_wrapper(args[0], name, daemon)
-
-    # decorator with parameters
-    _validate_parameters(name, daemon)
-
-    # without @pie syntax
-    if len(args) == 1 and callable(args[0]):
-        return _thread_wrapper(args[0], name, daemon)
-
-    # with @pie syntax
-    def decorating_function(function: Callable) -> Callable:
-        return _thread_wrapper(function, name, daemon)
-
-    return decorating_function
+    return decorate_function(_thread_wrapper, *args, **kwargs)
 
 
-def _thread_wrapper(function: Callable, name: str, daemon: bool) -> Callable:
+def _thread_wrapper(function: Callable, name: str, daemon: bool, *_) -> Callable:
     @wraps(function)
     def wrapper(*args, **kwargs) -> Future:
         future = Future()
@@ -83,10 +64,3 @@ def _function_handler(
         future.set_result(result.value)
     else:
         future.set_exception(result.value)
-
-
-def _validate_parameters(name: str, daemon: bool):
-    if name is not None and not isinstance(name, str):
-        raise TypeError('Name expected to be None or string')
-    if daemon is not None and not isinstance(daemon, bool):
-        raise TypeError('Daemon expected to be None or bool')

@@ -14,16 +14,7 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with Pebble.  If not, see <http://www.gnu.org/licenses/>.
 
-from __future__ import absolute_import
-
-import os
-import pickle
-import signal
-
-from threading import Thread
-from traceback import format_exc
 from collections import namedtuple
-
 from concurrent.futures import Future
 
 
@@ -110,7 +101,7 @@ class RemoteTraceback(Exception):
         return self.traceback
 
 
-class RemoteException(object):
+class RemoteException:
     """Pickling wrapper for exceptions in remote process."""
 
     def __init__(self, exception, traceback):
@@ -118,79 +109,17 @@ class RemoteException(object):
         self.traceback = traceback
 
     def __reduce__(self):
-        return rebuild_exception, (self.exception, self.traceback)
+        return self.rebuild_exception, (self.exception, self.traceback)
 
-
-def rebuild_exception(exception, traceback):
-    try:
-        exception.traceback = traceback
-        exception.__cause__ = RemoteTraceback(traceback)
-    except AttributeError:  # Frozen exception
-        pass
-
-    return exception
-
-
-def launch_thread(name, function, daemon, *args, **kwargs):
-    thread = Thread(target=function, name=name, args=args, kwargs=kwargs)
-    thread.daemon = daemon
-    thread.start()
-
-    return thread
-
-
-def launch_process(name, function, daemon, mp_context, *args, **kwargs):
-    process = mp_context.Process(
-        target=function, name=name, args=args, kwargs=kwargs)
-    process.daemon = daemon
-    process.start()
-
-    return process
-
-
-def stop_process(process):
-    """Does its best to stop the process."""
-    process.terminate()
-    process.join(3)
-
-    if process.is_alive() and os.name != 'nt':
+    @staticmethod
+    def rebuild_exception(exception, traceback):
         try:
-            os.kill(process.pid, signal.SIGKILL)
-            process.join()
-        except OSError:
-            return
-
-    if process.is_alive():
-        raise RuntimeError("Unable to terminate PID %d" % os.getpid())
-
-
-def execute(function, *args, **kwargs):
-    """Runs the given function returning its results or exception."""
-    try:
-        return Result(SUCCESS, function(*args, **kwargs))
-    except BaseException as error:
-        try:
-            error.traceback = format_exc()
+            exception.traceback = traceback
+            exception.__cause__ = RemoteTraceback(traceback)
         except AttributeError:  # Frozen exception
             pass
 
-        return Result(FAILURE, error)
-
-
-def process_execute(function, *args, **kwargs):
-    """Runs the given function returning its results or exception."""
-    try:
-        return Result(SUCCESS, function(*args, **kwargs))
-    except BaseException as error:
-        return Result(FAILURE, RemoteException(error, format_exc()))
-
-
-def send_result(pipe, data):
-    """Send result handling pickling and communication errors."""
-    try:
-        pipe.send(data)
-    except (pickle.PicklingError, TypeError) as error:
-        pipe.send(Result(ERROR, RemoteException(error, format_exc())))
+        return exception
 
 
 Result = namedtuple('Result', ('status', 'value'))

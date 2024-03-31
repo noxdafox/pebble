@@ -14,13 +14,14 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with Pebble.  If not, see <http://www.gnu.org/licenses/>.
 
+import asyncio
 import multiprocessing
 
 from typing import Callable
 from threading import Thread
 from traceback import format_exc
 
-from pebble.common.types import Result, RemoteException, SUCCESS, FAILURE, ERROR
+from pebble.common.types import Result, SUCCESS, FAILURE
 
 
 def launch_thread(name, function, daemon, *args, **kwargs):
@@ -42,6 +43,14 @@ def execute(function, *args, **kwargs):
             pass
 
         return Result(FAILURE, error)
+
+
+def get_asyncio_loop() -> asyncio.BaseEventLoop:
+    """Backwards compatible loop getter."""
+    try:
+        return asyncio.get_running_loop()
+    except AttributeError:
+        return asyncio.get_event_loop()
 
 
 ################################################################################

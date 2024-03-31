@@ -17,7 +17,6 @@
 
 import os
 import types
-import signal
 import multiprocessing
 
 from itertools import count
@@ -28,7 +27,7 @@ from concurrent.futures import CancelledError, TimeoutError
 from pebble.common import ProcessExpired, ProcessFuture
 from pebble.common import Result, SUCCESS, FAILURE, ERROR, SLEEP_UNIT
 from pebble.common import register_function, trampoline
-from pebble.common import process_execute, launch_thread, send_result
+from pebble.common import launch_thread, function_handler
 from pebble.common import decorate_function, launch_process, stop_process
 
 
@@ -82,7 +81,7 @@ def _process_wrapper(
             target = function
 
         worker = launch_process(
-            name, _function_handler, daemon, mp_context,
+            name, function_handler, daemon, mp_context,
             target, args, kwargs, (reader, writer))
 
         writer.close()
@@ -120,23 +119,6 @@ def _worker_handler(
             result.value.exitcode = worker.exitcode
         if not isinstance(result.value, CancelledError):
             future.set_exception(result.value)
-
-
-def _function_handler(
-        function: Callable,
-        args: list,
-        kwargs: dict,
-        pipe: multiprocessing.Pipe
-):
-    """Runs the actual function in separate process and returns its result."""
-    signal.signal(signal.SIGINT, signal.SIG_IGN)
-
-    reader, writer = pipe
-    reader.close()
-
-    result = process_execute(function, *args, **kwargs)
-
-    send_result(writer, result)
 
 
 def _get_result(

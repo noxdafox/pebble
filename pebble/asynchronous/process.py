@@ -17,7 +17,6 @@
 
 import os
 import types
-import signal
 import asyncio
 import multiprocessing
 
@@ -26,9 +25,9 @@ from functools import wraps
 from typing import Any, Callable
 from concurrent.futures import TimeoutError
 
-from pebble.common import ProcessExpired, process_execute, send_result
+from pebble.common import ProcessExpired, get_asyncio_loop
 from pebble.common import Result, SUCCESS, FAILURE, ERROR, SLEEP_UNIT
-from pebble.common import register_function, trampoline
+from pebble.common import register_function, trampoline, function_handler
 from pebble.common import decorate_function, launch_process, stop_process
 
 
@@ -72,7 +71,7 @@ def _process_wrapper(
 
     @wraps(function)
     def wrapper(*args, **kwargs) -> asyncio.Future:
-        loop = _get_asyncio_loop()
+        loop = get_asyncio_loop()
         future = loop.create_future()
         reader, writer = mp_context.Pipe(duplex=False)
 
@@ -83,7 +82,7 @@ def _process_wrapper(
             target = function
 
         worker = launch_process(
-            name, _function_handler, daemon, mp_context,
+            name, function_handler, daemon, mp_context,
             target, args, kwargs, (reader, writer))
 
         writer.close()
@@ -143,28 +142,3 @@ async def _get_result(
         return Result(ERROR, ProcessExpired('Abnormal termination'))
     except Exception as error:
         return Result(ERROR, error)
-
-
-def _function_handler(
-        function: Callable,
-        args: list,
-        kwargs: dict,
-        pipe: multiprocessing.Pipe
-):
-    """Runs the actual function in separate process and returns its result."""
-    signal.signal(signal.SIGINT, signal.SIG_IGN)
-
-    reader, writer = pipe
-    reader.close()
-
-    result = process_execute(function, *args, **kwargs)
-
-    send_result(writer, result)
-
-
-def _get_asyncio_loop() -> asyncio.BaseEventLoop:
-    """Backwards compatible loop getter."""
-    try:
-        return asyncio.get_running_loop()
-    except AttributeError:
-        return asyncio.get_event_loop()

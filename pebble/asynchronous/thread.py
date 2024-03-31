@@ -19,7 +19,8 @@ import asyncio
 from typing import Callable
 from functools import wraps
 
-from pebble.common import decorate_function, execute, launch_thread, SUCCESS
+from pebble.common import execute, launch_thread
+from pebble.common import decorate_function, get_asyncio_loop, SUCCESS
 
 
 def thread(*args, **kwargs) -> Callable:
@@ -41,7 +42,7 @@ def thread(*args, **kwargs) -> Callable:
 def _thread_wrapper(function: Callable, name: str, daemon: bool, *_) -> Callable:
     @wraps(function)
     def wrapper(*args, **kwargs) -> asyncio.Future:
-        loop = _get_asyncio_loop()
+        loop = get_asyncio_loop()
         future = loop.create_future()
 
         launch_thread(name, _function_handler, daemon, function, args, kwargs, future)
@@ -66,11 +67,3 @@ def _function_handler(
         loop.call_soon_threadsafe(future.set_result, result.value)
     else:
         loop.call_soon_threadsafe(future.set_exception, result.value)
-
-
-def _get_asyncio_loop() -> asyncio.BaseEventLoop:
-    """Backwards compatible loop getter."""
-    try:
-        return asyncio.get_running_loop()
-    except AttributeError:
-        return asyncio.get_event_loop()

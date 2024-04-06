@@ -14,11 +14,8 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with Pebble.  If not, see <http://www.gnu.org/licenses/>.
 
-
 import os
-import sys
 import types
-import signal
 import asyncio
 import multiprocessing
 
@@ -27,9 +24,7 @@ from functools import wraps
 from typing import Any, Callable
 from concurrent.futures import TimeoutError
 
-from pebble.common import process_execute, send_result
-from pebble.common import launch_process, stop_process, SLEEP_UNIT
-from pebble.common import ProcessExpired, Result, FAILURE, SUCCESS, ERROR
+from pebble import common
 
 
 def process(*args, **kwargs) -> Callable:
@@ -52,39 +47,18 @@ def process(*args, **kwargs) -> Callable:
     object used for starting the process.
 
     """
-    timeout = kwargs.get('timeout')
-    name = kwargs.get('name')
-    daemon = kwargs.get('daemon', True)
-    mp_context = kwargs.get('context')
-
-    # decorator without parameters
-    if not kwargs and len(args) == 1 and callable(args[0]):
-        return _process_wrapper(args[0], timeout, name, daemon, multiprocessing)
-
-    # decorator with parameters
-    _validate_parameters(timeout, name, daemon)
-    mp_context = mp_context if mp_context is not None else multiprocessing
-
-    # without @pie syntax
-    if len(args) == 1 and callable(args[0]):
-        return _process_wrapper(args[0], timeout, name, daemon, multiprocessing)
-
-    # with @pie syntax
-    def decorating_function(function: Callable) -> Callable:
-        return _process_wrapper(function, timeout, name, daemon, mp_context)
-
-    return decorating_function
+    return common.decorate_function(_process_wrapper, *args, **kwargs)
 
 
 def _process_wrapper(
         function: Callable,
-        timeout: float,
         name: str,
         daemon: bool,
+        timeout: float,
         mp_context: multiprocessing.context.BaseContext
 ) -> Callable:
     if isinstance(function, types.FunctionType):
-        _register_function(function)
+        common.register_function(function)
 
     if hasattr(mp_context, 'get_start_method'):
         start_method = mp_context.get_start_method()
@@ -93,18 +67,13 @@ def _process_wrapper(
 
     @wraps(function)
     def wrapper(*args, **kwargs) -> asyncio.Future:
-        loop = _get_asyncio_loop()
+        loop = common.get_asyncio_loop()
         future = loop.create_future()
         reader, writer = mp_context.Pipe(duplex=False)
+        target, args = common.maybe_install_trampoline(function, args, start_method)
 
-        if isinstance(function, types.FunctionType) and start_method != 'fork':
-            target = _trampoline
-            args = [function.__qualname__, function.__module__] + list(args)
-        else:
-            target = function
-
-        worker = launch_process(
-            name, _function_handler, daemon, mp_context,
+        worker = common.launch_process(
+            name, common.function_handler, daemon, mp_context,
             target, args, kwargs, (reader, writer))
 
         writer.close()
@@ -131,12 +100,12 @@ async def _worker_handler(
     result = await _get_result(future, pipe, timeout)
 
     if worker.is_alive():
-        stop_process(worker)
+        common.stop_process(worker)
 
-    if result.status == SUCCESS:
+    if result.status == common.SUCCESS:
         future.set_result(result.value)
     else:
-        if result.status == ERROR:
+        if result.status == common.ERROR:
             result.value.exitcode = worker.exitcode
         if not isinstance(result.value, asyncio.CancelledError):
             future.set_exception(result.value)
@@ -148,96 +117,21 @@ async def _get_result(
         timeout: float
 ) -> Any:
     """Waits for result and handles communication errors."""
-    counter = count(step=SLEEP_UNIT)
+    counter = count(step=common.SLEEP_UNIT)
 
     try:
         while not pipe.poll():
             if timeout is not None and next(counter) >= timeout:
-                return Result(FAILURE, TimeoutError('Task Timeout', timeout))
+                error = TimeoutError('Task Timeout', timeout)
+                return common.Result(common.FAILURE, error)
             if future.cancelled():
-                return Result(FAILURE, asyncio.CancelledError())
+                return common.Result(common.FAILURE, asyncio.CancelledError())
 
-            await asyncio.sleep(SLEEP_UNIT)
+            await asyncio.sleep(common.SLEEP_UNIT)
 
         return pipe.recv()
     except (EOFError, OSError):
-        return Result(ERROR, ProcessExpired('Abnormal termination'))
+        error = common.ProcessExpired('Abnormal termination')
+        return common.Result(common.ERROR, error)
     except Exception as error:
-        return Result(ERROR, error)
-
-
-def _function_handler(
-        function: Callable,
-        args: list,
-        kwargs: dict,
-        pipe: multiprocessing.Pipe
-):
-    """Runs the actual function in separate process and returns its result."""
-    signal.signal(signal.SIGINT, signal.SIG_IGN)
-
-    reader, writer = pipe
-    reader.close()
-
-    result = process_execute(function, *args, **kwargs)
-
-    send_result(writer, result)
-
-
-def _validate_parameters(timeout: float, name: str, daemon: bool):
-    if timeout is not None and not isinstance(timeout, (int, float)):
-        raise TypeError('Timeout expected to be None or integer or float')
-    if name is not None and not isinstance(name, str):
-        raise TypeError('Name expected to be None or string')
-    if daemon is not None and not isinstance(daemon, bool):
-        raise TypeError('Daemon expected to be None or bool')
-
-
-def _get_asyncio_loop() -> asyncio.BaseEventLoop:
-    """Backwards compatible loop getter."""
-    try:
-        return asyncio.get_running_loop()
-    except AttributeError:
-        return asyncio.get_event_loop()
-
-
-################################################################################
-# Spawn process start method handling logic
-################################################################################
-
-_registered_functions = {}
-
-
-def _register_function(function: Callable) -> Callable:
-    _registered_functions[function.__qualname__] = function
-
-    return function
-
-
-def _trampoline(name: str, module: Any, *args, **kwargs) -> Any:
-    """Trampoline function for decorators.
-
-    Lookups the function between the registered ones;
-    if not found, forces its registering and then executes it.
-
-    """
-    function = _function_lookup(name, module)
-
-    return function(*args, **kwargs)
-
-
-def _function_lookup(name: str, module: Any) -> Callable:
-    """Searches the function between the registered ones.
-    If not found, it imports the module forcing its registration.
-
-    """
-    try:
-        return _registered_functions[name]
-    except KeyError:  # force function registering
-        __import__(module)
-        mod = sys.modules[module]
-        function = getattr(mod, name)
-
-        try:
-            return _registered_functions[name]
-        except KeyError:  # decorator without @pie syntax
-            return _register_function(function)
+        return common.Result(common.ERROR, error)

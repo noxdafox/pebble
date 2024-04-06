@@ -18,9 +18,8 @@ import asyncio
 
 from typing import Callable
 from functools import wraps
-from traceback import format_exc
 
-from pebble.common import execute, launch_thread, SUCCESS
+from pebble import common
 
 
 def thread(*args, **kwargs) -> Callable:
@@ -36,34 +35,17 @@ def thread(*args, **kwargs) -> Callable:
     Default is True.
 
     """
-    name = kwargs.get('name')
-    daemon = kwargs.get('daemon', True)
-
-    # decorator without parameters
-    if not kwargs and len(args) == 1 and callable(args[0]):
-        return _thread_wrapper(args[0], name, daemon)
-
-    # decorator with parameters
-    _validate_parameters(name, daemon)
-
-    # without @pie syntax
-    if len(args) == 1 and callable(args[0]):
-        return _thread_wrapper(args[0], name, daemon)
-
-    # with @pie syntax
-    def decorating_function(function: Callable) -> Callable:
-        return _thread_wrapper(function, name, daemon)
-
-    return decorating_function
+    return common.decorate_function(_thread_wrapper, *args, **kwargs)
 
 
-def _thread_wrapper(function: Callable, name: str, daemon: bool) -> Callable:
+def _thread_wrapper(function: Callable, name: str, daemon: bool, *_) -> Callable:
     @wraps(function)
     def wrapper(*args, **kwargs) -> asyncio.Future:
-        loop = _get_asyncio_loop()
+        loop = common.get_asyncio_loop()
         future = loop.create_future()
 
-        launch_thread(name, _function_handler, daemon, function, args, kwargs, future)
+        common.launch_thread(
+            name, _function_handler, daemon, function, args, kwargs, future)
 
         return future
 
@@ -79,24 +61,9 @@ def _function_handler(
     """Runs the actual function in separate thread and returns its result."""
     loop = future.get_loop()
 
-    result = execute(function, *args, **kwargs)
+    result = common.execute(function, *args, **kwargs)
 
-    if result.status == SUCCESS:
+    if result.status == common.SUCCESS:
         loop.call_soon_threadsafe(future.set_result, result.value)
     else:
         loop.call_soon_threadsafe(future.set_exception, result.value)
-
-
-def _validate_parameters(name: str, daemon: bool):
-    if name is not None and not isinstance(name, str):
-        raise TypeError('Name expected to be None or string')
-    if daemon is not None and not isinstance(daemon, bool):
-        raise TypeError('Daemon expected to be None or bool')
-
-
-def _get_asyncio_loop() -> asyncio.BaseEventLoop:
-    """Backwards compatible loop getter."""
-    try:
-        return asyncio.get_running_loop()
-    except AttributeError:
-        return asyncio.get_event_loop()

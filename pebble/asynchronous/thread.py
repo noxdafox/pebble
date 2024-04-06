@@ -19,8 +19,7 @@ import asyncio
 from typing import Callable
 from functools import wraps
 
-from pebble.common import execute, launch_thread
-from pebble.common import decorate_function, get_asyncio_loop, SUCCESS
+from pebble import common
 
 
 def thread(*args, **kwargs) -> Callable:
@@ -36,16 +35,17 @@ def thread(*args, **kwargs) -> Callable:
     Default is True.
 
     """
-    return decorate_function(_thread_wrapper, *args, **kwargs)
+    return common.decorate_function(_thread_wrapper, *args, **kwargs)
 
 
 def _thread_wrapper(function: Callable, name: str, daemon: bool, *_) -> Callable:
     @wraps(function)
     def wrapper(*args, **kwargs) -> asyncio.Future:
-        loop = get_asyncio_loop()
+        loop = common.get_asyncio_loop()
         future = loop.create_future()
 
-        launch_thread(name, _function_handler, daemon, function, args, kwargs, future)
+        common.launch_thread(
+            name, _function_handler, daemon, function, args, kwargs, future)
 
         return future
 
@@ -61,9 +61,9 @@ def _function_handler(
     """Runs the actual function in separate thread and returns its result."""
     loop = future.get_loop()
 
-    result = execute(function, *args, **kwargs)
+    result = common.execute(function, *args, **kwargs)
 
-    if result.status == SUCCESS:
+    if result.status == common.SUCCESS:
         loop.call_soon_threadsafe(future.set_result, result.value)
     else:
         loop.call_soon_threadsafe(future.set_exception, result.value)

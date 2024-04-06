@@ -18,7 +18,7 @@ from typing import Callable
 from functools import wraps
 from concurrent.futures import Future
 
-from pebble.common import decorate_function, execute, launch_thread, SUCCESS
+from pebble import common
 
 
 def thread(*args, **kwargs) -> Callable:
@@ -34,7 +34,7 @@ def thread(*args, **kwargs) -> Callable:
     Default is True.
 
     """
-    return decorate_function(_thread_wrapper, *args, **kwargs)
+    return common.decorate_function(_thread_wrapper, *args, **kwargs)
 
 
 def _thread_wrapper(function: Callable, name: str, daemon: bool, *_) -> Callable:
@@ -42,7 +42,8 @@ def _thread_wrapper(function: Callable, name: str, daemon: bool, *_) -> Callable
     def wrapper(*args, **kwargs) -> Future:
         future = Future()
 
-        launch_thread(name, _function_handler, daemon, function, args, kwargs, future)
+        common.launch_thread(
+            name, _function_handler, daemon, function, args, kwargs, future)
 
         return future
 
@@ -58,9 +59,9 @@ def _function_handler(
     """Runs the actual function in separate thread and returns its result."""
     future.set_running_or_notify_cancel()
 
-    result = execute(function, *args, **kwargs)
+    result = common.execute(function, *args, **kwargs)
 
-    if result.status == SUCCESS:
+    if result.status == common.SUCCESS:
         future.set_result(result.value)
     else:
         future.set_exception(result.value)

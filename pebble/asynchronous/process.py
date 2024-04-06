@@ -14,7 +14,6 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with Pebble.  If not, see <http://www.gnu.org/licenses/>.
 
-
 import os
 import types
 import asyncio
@@ -25,10 +24,7 @@ from functools import wraps
 from typing import Any, Callable
 from concurrent.futures import TimeoutError
 
-from pebble.common import ProcessExpired, get_asyncio_loop
-from pebble.common import Result, SUCCESS, FAILURE, ERROR, SLEEP_UNIT
-from pebble.common import register_function, trampoline, function_handler
-from pebble.common import decorate_function, launch_process, stop_process
+from pebble import common
 
 
 def process(*args, **kwargs) -> Callable:
@@ -51,7 +47,7 @@ def process(*args, **kwargs) -> Callable:
     object used for starting the process.
 
     """
-    return decorate_function(_process_wrapper, *args, **kwargs)
+    return common.decorate_function(_process_wrapper, *args, **kwargs)
 
 
 def _process_wrapper(
@@ -62,7 +58,7 @@ def _process_wrapper(
         mp_context: multiprocessing.context.BaseContext
 ) -> Callable:
     if isinstance(function, types.FunctionType):
-        register_function(function)
+        common.register_function(function)
 
     if hasattr(mp_context, 'get_start_method'):
         start_method = mp_context.get_start_method()
@@ -71,18 +67,13 @@ def _process_wrapper(
 
     @wraps(function)
     def wrapper(*args, **kwargs) -> asyncio.Future:
-        loop = get_asyncio_loop()
+        loop = common.get_asyncio_loop()
         future = loop.create_future()
         reader, writer = mp_context.Pipe(duplex=False)
+        target, args = common.maybe_install_trampoline(function, args, start_method)
 
-        if isinstance(function, types.FunctionType) and start_method != 'fork':
-            target = trampoline
-            args = [function.__qualname__, function.__module__] + list(args)
-        else:
-            target = function
-
-        worker = launch_process(
-            name, function_handler, daemon, mp_context,
+        worker = common.launch_process(
+            name, common.function_handler, daemon, mp_context,
             target, args, kwargs, (reader, writer))
 
         writer.close()
@@ -109,12 +100,12 @@ async def _worker_handler(
     result = await _get_result(future, pipe, timeout)
 
     if worker.is_alive():
-        stop_process(worker)
+        common.stop_process(worker)
 
-    if result.status == SUCCESS:
+    if result.status == common.SUCCESS:
         future.set_result(result.value)
     else:
-        if result.status == ERROR:
+        if result.status == common.ERROR:
             result.value.exitcode = worker.exitcode
         if not isinstance(result.value, asyncio.CancelledError):
             future.set_exception(result.value)
@@ -126,19 +117,21 @@ async def _get_result(
         timeout: float
 ) -> Any:
     """Waits for result and handles communication errors."""
-    counter = count(step=SLEEP_UNIT)
+    counter = count(step=common.SLEEP_UNIT)
 
     try:
         while not pipe.poll():
             if timeout is not None and next(counter) >= timeout:
-                return Result(FAILURE, TimeoutError('Task Timeout', timeout))
+                error = TimeoutError('Task Timeout', timeout)
+                return common.Result(common.FAILURE, error)
             if future.cancelled():
-                return Result(FAILURE, asyncio.CancelledError())
+                return common.Result(common.FAILURE, asyncio.CancelledError())
 
-            await asyncio.sleep(SLEEP_UNIT)
+            await asyncio.sleep(common.SLEEP_UNIT)
 
         return pipe.recv()
     except (EOFError, OSError):
-        return Result(ERROR, ProcessExpired('Abnormal termination'))
+        error = common.ProcessExpired('Abnormal termination')
+        return common.Result(common.ERROR, error)
     except Exception as error:
-        return Result(ERROR, error)
+        return common.Result(common.ERROR, error)

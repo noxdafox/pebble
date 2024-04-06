@@ -17,6 +17,7 @@
 
 import os
 import sys
+import types
 import pickle
 import signal
 import multiprocessing
@@ -109,7 +110,22 @@ def register_function(function: Callable) -> Callable:
     return function
 
 
-def trampoline(name: str, module: Any, *args, **kwargs) -> Any:
+def maybe_install_trampoline(
+        function: Callable,
+        args: list,
+        start_method: str
+) -> tuple:
+    """Install the trampoline on the right process start methods."""
+    if isinstance(function, types.FunctionType) and start_method != 'fork':
+        target = _trampoline
+        args = [function.__qualname__, function.__module__] + list(args)
+    else:
+        target = function
+
+    return target, args
+
+
+def _trampoline(name: str, module: Any, *args, **kwargs) -> Any:
     """Trampoline function for decorators.
 
     Lookups the function between the registered ones;

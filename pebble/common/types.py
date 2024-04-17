@@ -15,8 +15,8 @@
 # along with Pebble.  If not, see <http://www.gnu.org/licenses/>.
 
 from typing import Any
+from enum import Enum, IntEnum
 from dataclasses import dataclass
-from enum import IntEnum, StrEnum
 from concurrent.futures import Future
 
 
@@ -138,7 +138,7 @@ class Result:
     value: Any
 
 
-class FutureStatus(StrEnum):
+class FutureStatus(str, Enum):
     """Borrowed from concurrent.futures."""
     PENDING = 'PENDING'
     RUNNING = 'RUNNING'

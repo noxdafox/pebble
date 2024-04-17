@@ -367,7 +367,7 @@ class TestThreadPool(unittest.TestCase):
         with ThreadPool(max_workers=1) as pool:
             future = pool.map(long_function, elements, timeout=1)
             generator = future.result()
-            pool._context.state = PoolStatus.ERROR
+            pool._context.status = PoolStatus.ERROR
             while True:
                 try:
                     next(generator)

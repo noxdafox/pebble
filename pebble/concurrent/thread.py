@@ -61,7 +61,7 @@ def _function_handler(
 
     result = common.execute(function, *args, **kwargs)
 
-    if result.status == common.SUCCESS:
+    if result.status == common.ResultStatus.SUCCESS:
         future.set_result(result.value)
     else:
         future.set_exception(result.value)

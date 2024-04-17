@@ -13,7 +13,7 @@ from concurrent.futures import CancelledError, TimeoutError
 
 import pebble
 from pebble import ProcessPool, ProcessExpired
-from pebble.pool.base_pool import ERROR
+from pebble.pool.base_pool import PoolStatus
 
 
 # set start method
@@ -549,7 +549,7 @@ class TestProcessPool(unittest.TestCase):
         with ProcessPool(max_workers=1, context=mp_context) as pool:
             future = pool.map(long_function, elements, timeout=1)
             generator = future.result()
-            pool._context.state = ERROR
+            pool._context.status = PoolStatus.ERROR
             while True:
                 try:
                     next(generator)

@@ -63,7 +63,7 @@ def _function_handler(
 
     result = common.execute(function, *args, **kwargs)
 
-    if result.status == common.SUCCESS:
+    if result.status == common.ResultStatus.SUCCESS:
         loop.call_soon_threadsafe(future.set_result, result.value)
     else:
         loop.call_soon_threadsafe(future.set_exception, result.value)

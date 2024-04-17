@@ -18,13 +18,14 @@ import time
 import logging
 
 from queue import Queue
+from enum import IntEnum
 from threading import RLock
-from collections import namedtuple
+from dataclasses import dataclass
 from typing import Callable, Optional
 from itertools import chain, count, islice
 from concurrent.futures import Future, TimeoutError
 
-from pebble.common import Result, SUCCESS
+from pebble.common import Result, ResultStatus
 from pebble.common import PebbleFuture, ProcessFuture, SLEEP_UNIT
 
 
@@ -47,20 +48,20 @@ class BasePool:
 
     @property
     def active(self) -> bool:
-        self._update_pool_state()
+        self._update_pool_status()
 
-        return self._context.state in (CLOSED, RUNNING)
+        return self._context.status in (PoolStatus.CLOSED, PoolStatus.RUNNING)
 
     def close(self):
         """Closes the Pool preventing new tasks from being accepted.
 
         Pending tasks will be completed.
         """
-        self._context.state = CLOSED
+        self._context.status = PoolStatus.CLOSED
 
     def stop(self):
         """Stops the pool without performing any pending task."""
-        self._context.state = STOPPED
+        self._context.status = PoolStatus.STOPPED
 
     def join(self, timeout: float = None):
         """Joins the pool waiting until all workers exited.
@@ -68,9 +69,9 @@ class BasePool:
         If *timeout* is set, it block until all workers are done
         or raises TimeoutError.
         """
-        if self._context.state == RUNNING:
+        if self._context.status == PoolStatus.RUNNING:
             raise RuntimeError('The Pool is still running')
-        if self._context.state == CLOSED:
+        if self._context.status == PoolStatus.CLOSED:
             self._wait_queue_depletion(timeout)
             self.stop()
             self.join()
@@ -89,21 +90,21 @@ class BasePool:
             else:
                 return
 
-    def _check_pool_state(self):
-        self._update_pool_state()
+    def _check_pool_status(self):
+        self._update_pool_status()
 
-        if self._context.state == ERROR:
+        if self._context.status == PoolStatus.ERROR:
             raise RuntimeError('Unexpected error within the Pool')
-        elif self._context.state != RUNNING:
+        elif self._context.status != PoolStatus.RUNNING:
             raise RuntimeError('The Pool is not active')
 
-    def _update_pool_state(self):
-        if self._context.state == CREATED:
+    def _update_pool_status(self):
+        if self._context.status == PoolStatus.CREATED:
             self._start_pool()
 
         for loop in self._loops:
             if not loop.is_alive():
-                self._context.state = ERROR
+                self._context.status = PoolStatus.ERROR
 
     def _start_pool(self):
         raise NotImplementedError("Not implemented")
@@ -117,8 +118,8 @@ class PoolContext:
                  max_tasks: int,
                  initializer: Callable,
                  initargs: list):
-        self._state = CREATED
-        self.state_mutex = RLock()
+        self._status = PoolStatus.CREATED
+        self.status_mutex = RLock()
 
         self.task_queue = Queue()
         self.workers = max_workers
@@ -126,18 +127,18 @@ class PoolContext:
         self.worker_parameters = Worker(max_tasks, initializer, initargs)
 
     @property
-    def state(self) -> int:
-        return self._state
+    def status(self) -> int:
+        return self._status
 
-    @state.setter
-    def state(self, state: int):
-        with self.state_mutex:
+    @status.setter
+    def status(self, status: int):
+        with self.status_mutex:
             if self.alive:
-                self._state = state
+                self._status = status
 
     @property
     def alive(self) -> bool:
-        return self.state not in (ERROR, STOPPED)
+        return self.status not in (PoolStatus.ERROR, PoolStatus.STOPPED)
 
 
 class Task:
@@ -222,7 +223,7 @@ class MapResults:
         result = next(self._results)
 
         if isinstance(result, Result):
-            if result.status == SUCCESS:
+            if result.status == ResultStatus.SUCCESS:
                 return result.value
 
             result = result.value
@@ -280,13 +281,26 @@ def run_initializer(initializer: Callable, initargs: list):
         return False
 
 
-# Pool states
-CREATED = 0
-RUNNING = 1
-CLOSED = 2
-STOPPED = 3
-ERROR = 4
+class PoolStatus(IntEnum):
+    """Current status of the Pool."""
+    CREATED = 0
+    RUNNING = 1
+    CLOSED = 2
+    STOPPED = 3
+    ERROR = 4
 
 
-Worker = namedtuple('Worker', ('max_tasks', 'initializer', 'initargs'))
-TaskPayload = namedtuple('TaskPayload', ('function', 'args', 'kwargs'))
+@dataclass
+class Worker:
+    """Worker configuration."""
+    max_tasks: int
+    initializer: Callable
+    initargs: list
+
+
+@dataclass
+class TaskPayload:
+    """The work item wrapped within a Task."""
+    function: Callable
+    args: list
+    kwargs: dict

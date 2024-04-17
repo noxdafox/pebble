@@ -103,10 +103,10 @@ def _worker_handler(
     if worker.is_alive():
         common.stop_process(worker)
 
-    if result.status == common.SUCCESS:
+    if result.status == common.ResultStatus.SUCCESS:
         future.set_result(result.value)
     else:
-        if result.status == common.ERROR:
+        if result.status == common.ResultStatus.ERROR:
             result.value.exitcode = worker.exitcode
         if not isinstance(result.value, CancelledError):
             future.set_exception(result.value)
@@ -124,13 +124,14 @@ def _get_result(
         while not pipe.poll(common.SLEEP_UNIT):
             if timeout is not None and next(counter) >= timeout:
                 error = TimeoutError('Task Timeout', timeout)
-                return common.Result(common.FAILURE, error)
+                return common.Result(common.ResultStatus.FAILURE, error)
             if future.cancelled():
-                return common.Result(common.FAILURE, CancelledError())
+                error = CancelledError()
+                return common.Result(common.ResultStatus.FAILURE, error)
 
         return pipe.recv()
     except (EOFError, OSError):
         error = common.ProcessExpired('Abnormal termination')
-        return common.Result(common.ERROR, error)
+        return common.Result(common.ResultStatus.ERROR, error)
     except Exception as error:
-        return common.Result(common.ERROR, error)
+        return common.Result(common.ResultStatus.ERROR, error)

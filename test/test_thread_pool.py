@@ -8,7 +8,7 @@ from pebble import ThreadPool
 
 from concurrent.futures import CancelledError, TimeoutError
 
-from pebble.pool.base_pool import ERROR
+from pebble.pool.base_pool import PoolStatus
 
 initarg = 0
 
@@ -367,7 +367,7 @@ class TestThreadPool(unittest.TestCase):
         with ThreadPool(max_workers=1) as pool:
             future = pool.map(long_function, elements, timeout=1)
             generator = future.result()
-            pool._context.state = ERROR
+            pool._context.state = PoolStatus.ERROR
             while True:
                 try:
                     next(generator)

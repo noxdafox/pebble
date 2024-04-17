@@ -22,10 +22,9 @@ from itertools import count
 from typing import Callable
 from concurrent.futures import Future
 
-from pebble.common import execute, launch_thread, SUCCESS
-from pebble.pool.base_pool import MapFuture, map_results
+from pebble.common import ResultStatus, execute, launch_thread, SLEEP_UNIT
+from pebble.pool.base_pool import PoolStatus, MapFuture, map_results
 from pebble.pool.base_pool import iter_chunks, run_initializer
-from pebble.pool.base_pool import CREATED, ERROR, RUNNING, SLEEP_UNIT
 from pebble.pool.base_pool import PoolContext, BasePool, Task, TaskPayload
 
 
@@ -50,13 +49,13 @@ class ThreadPool(BasePool):
         self._pool_manager_loop = None
 
     def _start_pool(self):
-        with self._context.state_mutex:
-            if self._context.state == CREATED:
+        with self._context.status_mutex:
+            if self._context.status == PoolStatus.CREATED:
                 self._pool_manager.start()
                 self._pool_manager_loop = launch_thread(
                     None, pool_manager_loop, True, self._pool_manager)
 
-                self._context.state = RUNNING
+                self._context.status = PoolStatus.RUNNING
 
     def _stop_pool(self):
         if self._pool_manager_loop is not None:
@@ -72,7 +71,7 @@ class ThreadPool(BasePool):
         A *concurrent.futures.Future* object is returned.
 
         """
-        self._check_pool_state()
+        self._check_pool_status()
 
         future = Future()
         payload = TaskPayload(function, args, kwargs)
@@ -99,7 +98,7 @@ class ThreadPool(BasePool):
         the size will be controlled by the Pool.
 
         """
-        self._check_pool_state()
+        self._check_pool_status()
 
         timeout = kwargs.get('timeout')
         chunksize = kwargs.get('chunksize', 1)
@@ -164,7 +163,7 @@ def worker_thread(context: PoolContext):
 
     if parameters.initializer is not None:
         if not run_initializer(parameters.initializer, parameters.initargs):
-            context.state = ERROR
+            context.status = PoolStatus.ERROR
             return
 
     for task in get_next_task(context, parameters.max_tasks):
@@ -194,7 +193,7 @@ def execute_next_task(task: Task):
 
     result = execute(payload.function, *payload.args, **payload.kwargs)
 
-    if result.status == SUCCESS:
+    if result.status == ResultStatus.SUCCESS:
         task.future.set_result(result.value)
     else:
         task.future.set_exception(result.value)

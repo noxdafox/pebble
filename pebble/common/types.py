@@ -14,13 +14,14 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with Pebble.  If not, see <http://www.gnu.org/licenses/>.
 
-from collections import namedtuple
+from typing import Any
+from dataclasses import dataclass
+from enum import IntEnum, StrEnum
 from concurrent.futures import Future
 
 
 class ProcessExpired(OSError):
     """Raised when process dies unexpectedly."""
-
     def __init__(self, msg, code=0):
         super(ProcessExpired, self).__init__(msg)
         self.exitcode = code
@@ -51,14 +52,14 @@ class PebbleFuture(Future):
             RuntimeError: if set_result() or set_exception() was called.
         """
         with self._condition:
-            if self._state == CANCELLED:
-                self._state = CANCELLED_AND_NOTIFIED
+            if self._state == FutureStatus.CANCELLED:
+                self._state = FutureStatus.CANCELLED_AND_NOTIFIED
                 for waiter in self._waiters:
                     waiter.add_cancelled(self)
 
                 return False
-            elif self._state == PENDING:
-                self._state = RUNNING
+            elif self._state == FutureStatus.PENDING:
+                self._state = FutureStatus.RUNNING
 
                 return True
             else:
@@ -73,13 +74,14 @@ class ProcessFuture(PebbleFuture):
         cannot be cancelled if it has already completed.
         """
         with self._condition:
-            if self._state == FINISHED:
+            if self._state == FutureStatus.FINISHED:
                 return False
 
-            if self._state in (CANCELLED, CANCELLED_AND_NOTIFIED):
+            if self._state in (FutureStatus.CANCELLED,
+                               FutureStatus.CANCELLED_AND_NOTIFIED):
                 return True
 
-            self._state = CANCELLED
+            self._state = FutureStatus.CANCELLED
             self._condition.notify_all()
 
         self._invoke_callbacks()
@@ -122,16 +124,27 @@ class RemoteException:
         return exception
 
 
-Result = namedtuple('Result', ('status', 'value'))
+class ResultStatus(IntEnum):
+    """Status of results of a function execution."""
+    SUCCESS = 0
+    FAILURE = 1
+    ERROR = 2
 
 
-SUCCESS = 0
-FAILURE = 1
-ERROR = 2
+@dataclass
+class Result:
+    """Result of a function execution."""
+    status: ResultStatus
+    value: Any
+
+
+class FutureStatus(StrEnum):
+    """Borrowed from concurrent.futures."""
+    PENDING = 'PENDING'
+    RUNNING = 'RUNNING'
+    FINISHED = 'FINISHED'
+    CANCELLED = 'CANCELLED'
+    CANCELLED_AND_NOTIFIED = 'CANCELLED_AND_NOTIFIED'
+
+
 SLEEP_UNIT = 0.1
-# Borrowed from concurrent.futures
-PENDING = 'PENDING'
-RUNNING = 'RUNNING'
-FINISHED = 'FINISHED'
-CANCELLED = 'CANCELLED'
-CANCELLED_AND_NOTIFIED = 'CANCELLED_AND_NOTIFIED'

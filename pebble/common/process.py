@@ -25,7 +25,7 @@ import multiprocessing
 from traceback import format_exc
 from typing import Any, Callable
 
-from pebble.common.types import Result, RemoteException, SUCCESS, FAILURE, ERROR
+from pebble.common.types import Result, ResultStatus, RemoteException
 
 
 def launch_process(
@@ -62,9 +62,9 @@ def stop_process(process: multiprocessing.Process):
 def process_execute(function: Callable, *args, **kwargs) -> Result:
     """Runs the given function returning its results or exception."""
     try:
-        return Result(SUCCESS, function(*args, **kwargs))
+        return Result(ResultStatus.SUCCESS, function(*args, **kwargs))
     except BaseException as error:
-        return Result(FAILURE, RemoteException(error, format_exc()))
+        return Result(ResultStatus.FAILURE, RemoteException(error, format_exc()))
 
 
 def send_result(pipe: multiprocessing.Pipe, data: Any):
@@ -72,7 +72,7 @@ def send_result(pipe: multiprocessing.Pipe, data: Any):
     try:
         pipe.send(data)
     except (pickle.PicklingError, TypeError) as error:
-        pipe.send(Result(ERROR, RemoteException(error, format_exc())))
+        pipe.send(Result(ResultStatus.ERROR, RemoteException(error, format_exc())))
 
 
 def function_handler(

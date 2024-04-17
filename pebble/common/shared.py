@@ -21,7 +21,7 @@ from typing import Callable
 from threading import Thread
 from traceback import format_exc
 
-from pebble.common.types import Result, SUCCESS, FAILURE
+from pebble.common.types import Result, ResultStatus
 
 
 def launch_thread(name, function, daemon, *args, **kwargs):
@@ -35,14 +35,14 @@ def launch_thread(name, function, daemon, *args, **kwargs):
 def execute(function, *args, **kwargs):
     """Runs the given function returning its results or exception."""
     try:
-        return Result(SUCCESS, function(*args, **kwargs))
+        return Result(ResultStatus.SUCCESS, function(*args, **kwargs))
     except BaseException as error:
         try:
             error.traceback = format_exc()
         except AttributeError:  # Frozen exception
             pass
 
-        return Result(FAILURE, error)
+        return Result(ResultStatus.FAILURE, error)
 
 
 def get_asyncio_loop() -> asyncio.BaseEventLoop:

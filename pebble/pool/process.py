@@ -21,21 +21,20 @@ import pickle
 import multiprocessing
 
 from itertools import count
-from collections import namedtuple
+from dataclasses import dataclass
 from signal import SIG_IGN, SIGINT, signal
 from typing import Any, Callable, Optional
 from concurrent.futures.process import BrokenProcessPool
 from concurrent.futures import CancelledError, TimeoutError
 
-from pebble.pool.base_pool import ProcessMapFuture, map_results
-from pebble.pool.base_pool import CREATED, ERROR, RUNNING, SLEEP_UNIT
 from pebble.pool.base_pool import Worker, iter_chunks, run_initializer
 from pebble.pool.base_pool import PoolContext, BasePool, Task, TaskPayload
+from pebble.pool.base_pool import PoolStatus, ProcessMapFuture, map_results
 from pebble.pool.channel import ChannelError, WorkerChannel, channels
 from pebble.common import launch_process, stop_process
 from pebble.common import ProcessExpired, ProcessFuture
 from pebble.common import process_execute, launch_thread
-from pebble.common import Result, SUCCESS, FAILURE, ERROR as TASK_ERROR
+from pebble.common import Result, ResultStatus, SLEEP_UNIT
 
 
 class ProcessPool(BasePool):
@@ -64,8 +63,8 @@ class ProcessPool(BasePool):
         self._message_manager_loop = None
 
     def _start_pool(self):
-        with self._context.state_mutex:
-            if self._context.state == CREATED:
+        with self._context.status_mutex:
+            if self._context.status == PoolStatus.CREATED:
                 self._pool_manager.start()
 
                 self._task_scheduler_loop = launch_thread(
@@ -75,7 +74,7 @@ class ProcessPool(BasePool):
                 self._message_manager_loop = launch_thread(
                     None, message_manager_loop, True, self._pool_manager)
 
-                self._context.state = RUNNING
+                self._context.status = PoolStatus.RUNNING
 
     def _stop_pool(self):
         if self._pool_manager_loop is not None:
@@ -101,7 +100,7 @@ class ProcessPool(BasePool):
         A *pebble.ProcessFuture* object is returned.
 
         """
-        self._check_pool_state()
+        self._check_pool_status()
 
         future = ProcessFuture()
         payload = TaskPayload(function, args, kwargs)
@@ -138,7 +137,7 @@ class ProcessPool(BasePool):
         A *pebble.ProcessFuture* object is returned.
 
         """
-        self._check_pool_state()
+        self._check_pool_status()
 
         timeout = kwargs.get('timeout')
         chunksize = kwargs.get('chunksize', 1)
@@ -170,7 +169,7 @@ def task_scheduler_loop(pool_manager: 'PoolManager'):
             else:
                 task_queue.task_done()
     except BrokenProcessPool:
-        context.state = ERROR
+        context.status = PoolStatus.ERROR
 
 
 def pool_manager_loop(pool_manager: 'PoolManager'):
@@ -181,7 +180,7 @@ def pool_manager_loop(pool_manager: 'PoolManager'):
             pool_manager.update_status()
             time.sleep(SLEEP_UNIT)
     except BrokenProcessPool:
-        context.state = ERROR
+        context.status = PoolStatus.ERROR
 
 
 def message_manager_loop(pool_manager: 'PoolManager'):
@@ -191,7 +190,7 @@ def message_manager_loop(pool_manager: 'PoolManager'):
         while context.alive and not GLOBAL_SHUTDOWN:
             pool_manager.process_next_message(SLEEP_UNIT)
     except BrokenProcessPool:
-        context.state = ERROR
+        context.status = PoolStatus.ERROR
 
 
 class PoolManager:
@@ -240,12 +239,13 @@ class PoolManager:
             self.worker_manager.stop_worker(task.worker_id)
             self.task_manager.task_done(
                 task.id,
-                Result(FAILURE, TimeoutError("Task timeout", task.timeout)))
+                Result(ResultStatus.FAILURE,
+                       TimeoutError("Task timeout", task.timeout)))
 
         for task in self.task_manager.cancelled_tasks():
             self.worker_manager.stop_worker(task.worker_id)
             self.task_manager.task_done(
-                task.id, Result(FAILURE, CancelledError()))
+                task.id, Result(ResultStatus.FAILURE, CancelledError()))
 
     def update_workers(self):
         """Handles unexpected processes termination."""
@@ -263,7 +263,8 @@ class PoolManager:
             return
         else:
             error = ProcessExpired('Abnormal termination', code=exitcode)
-            self.task_manager.task_done(task.id, Result(TASK_ERROR, error))
+            self.task_manager.task_done(
+                task.id, Result(ResultStatus.ERROR, error))
 
     def find_expired_task(self, worker_id: int) -> Task:
         tasks = dictionary_values(self.task_manager.tasks)
@@ -303,7 +304,7 @@ class TaskManager:
         else:
             if task.future.cancelled():
                 task.set_running_or_notify_cancel()
-            elif result.status == SUCCESS:
+            elif result.status == ResultStatus.SUCCESS:
                 task.future.set_result(result.value)
             else:
                 task.future.set_exception(result.value)
@@ -313,7 +314,7 @@ class TaskManager:
     def task_problem(self, task_id: int, error: Exception):
         """Set the task with the error it caused within the Pool."""
         self.task_start(task_id, None)
-        self.task_done(task_id, Result(TASK_ERROR, error))
+        self.task_done(task_id, Result(ResultStatus.ERROR, error))
 
     def timeout_tasks(self) -> tuple:
         return tuple(t for t in dictionary_values(self.tasks)
@@ -509,8 +510,36 @@ atexit.register(interpreter_shutdown)
 
 GLOBAL_SHUTDOWN = False
 WORKERS_NAME = 'pebble_pool_worker'
-NoMessage = namedtuple('NoMessage', ())
-TaskResult = namedtuple('TaskResult', ('task', 'result'))
-TaskProblem = namedtuple('TaskProblem', ('task', 'error'))
-WorkerTask = namedtuple('WorkerTask', ('id', 'payload'))
-Acknowledgement = namedtuple('Acknowledgement', ('worker', 'task'))
+
+
+@dataclass
+class NoMessage:
+    pass
+
+
+@dataclass
+class TaskResult:
+    """The result of a Task."""
+    task: id
+    result: Any
+
+
+@dataclass
+class TaskProblem:
+    """Issue occurred within a Task."""
+    task: id
+    error: BaseException
+
+
+@dataclass
+class WorkerTask:
+    """A Task assigned to a worker."""
+    id: id
+    payload: TaskPayload
+
+
+@dataclass
+class Acknowledgement:
+    """Ack from a worker of a received Task."""
+    worker: id
+    task: id

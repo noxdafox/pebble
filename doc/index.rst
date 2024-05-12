@@ -108,8 +108,8 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
 
       *chunksize* controls the size of the chunks the iterables will be broken into before being passed to the function.
 
-      *timeout* is an integer or a float. If given, it will be assigned to chunk of the iterables.
-      If the computation of the given chunk will last longer than *timeout*, its execution will be terminated and iterating over its result will raise *TimeoutError*.
+      *timeout* is an integer or a float. If given, it will be assigned to each chunk of the iterables.
+      If the computation of the given chunk will last longer than *timeout*, its execution will be terminated. Iterating over its result will raise *TimeoutError*, all computations over the chunk will be lost.
 
       A pebble.ProcessMapFuture_ object is returned. Its *result* method will return an iterable containing the results of the computation in the same order as they were given.
 
@@ -220,11 +220,11 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
 .. _pebble.ProcessFuture:
 .. class:: pebble.ProcessFuture()
 
-   This class inherits from concurrent.futures.Future_. The sole difference with the parent class is the possibility to cancel running calls.
+   This class inherits from concurrent.futures.Future_. The sole difference with the parent class is the possibility to cancel running executions.
 
    .. function:: cancel()
 
-      Cancel a running or enqueued call. If the call has already completed then the method will return False, otherwise the call will be cancelled and the method will return True. If the call is running, the process executing it will be stopped allowing to reclaim its resources.
+      Cancel a running or enqueued call. If the call has already completed then the method will return False, otherwise the call will be cancelled and the method will return True. If the call is running, the process executing it will be stopped and replaced with a new one picking the next task.
 
 .. _pebble.MapFuture:
 .. class:: pebble.MapFuture()
@@ -254,7 +254,7 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
 
 .. exception:: pebble.ProcessExpired
 
-   Raised by *Future.result()* functions if the related process died unexpectedly during the execution.
+   Raised by *Future.result()* functions if the related process died unexpectedly during its execution.
 
    .. data:: exitcode
 
@@ -339,7 +339,7 @@ Quite often developers need to integrate in their projects third party code whic
 Asynchronous decorators
 +++++++++++++++++++++++
 
-As for the `concurrent` namespace, asynchronous decorators are `asyncio` compatible instead.
+Asynchronous decorators expose the same functionalities as for the `concurrent` namespace but are `asyncio` compatible instead.
 
 ::
 
@@ -449,6 +449,7 @@ The following example shows how to compute the Fibonacci sequence up to a certai
             future.cancel()
 
 To compute large collections of elements without incurring in IPC performance limitations, it is possible to use the *chunksize* parameter of the *map* function.
+If a `timeout` is provided, it will be applied to the whole chunk and not to the single element. If the computation of a chunk times out, the results for the whole chunk will be lost and a `TimeoutError` exception will be raised in place.
 
 ::
 

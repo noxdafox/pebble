@@ -147,7 +147,7 @@ class ProcessPool(BasePool):
 
         futures = [self.schedule(
             process_chunk, args=(function, chunk), timeout=timeout)
-            for chunk in iter_chunks(chunksize, *iterables)]
+            for chunk in iter_chunks(zip(*iterables), chunksize)]
 
         return map_results(ProcessMapFuture(futures), timeout)
 

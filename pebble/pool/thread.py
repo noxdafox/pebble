@@ -107,7 +107,7 @@ class ThreadPool(BasePool):
             raise ValueError("chunksize must be >= 1")
 
         futures = [self.schedule(process_chunk, args=(function, chunk))
-                   for chunk in iter_chunks(chunksize, *iterables)]
+                   for chunk in iter_chunks(zip(*iterables), chunksize)]
 
         return map_results(MapFuture(futures), timeout)
 

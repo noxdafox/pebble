@@ -16,13 +16,13 @@
 
 import time
 import logging
+import itertools
 
 from queue import Queue
 from enum import IntEnum
 from threading import RLock
 from dataclasses import dataclass
-from typing import Callable, Optional
-from itertools import chain, count, islice
+from typing import Any, Callable, Optional
 from concurrent.futures import Future, TimeoutError
 
 from pebble.common import Result, ResultStatus
@@ -37,7 +37,7 @@ class BasePool:
         self._context = PoolContext(
             max_workers, max_tasks, initializer, initargs)
         self._loops = ()
-        self._task_counter = count()
+        self._task_counter = itertools.count()
 
     def __enter__(self):
         return self
@@ -123,7 +123,7 @@ class PoolContext:
 
         self.task_queue = Queue()
         self.workers = max_workers
-        self.task_counter = count()
+        self.task_counter = itertools.count()
         self.worker_parameters = Worker(max_tasks, initializer, initargs)
 
     @property
@@ -213,7 +213,7 @@ class ProcessMapFuture(ProcessFuture):
 
 class MapResults:
     def __init__(self, futures: list, timeout: float = None):
-        self._results = chain.from_iterable(
+        self._results = itertools.chain.from_iterable(
             chunk_result(f, timeout) for f in futures)
 
     def __iter__(self):
@@ -250,20 +250,21 @@ def map_results(map_future: MapFuture, timeout: Optional[float]) -> MapFuture:
     return map_future
 
 
-def iter_chunks(chunksize: int, *iterables):
+def iter_chunks(iterable: iter, chunksize: int) -> iter:
     """Iterates over zipped iterables in chunks."""
-    iterables = iter(zip(*iterables))
+    try:
+        yield from itertools.batched(iterable, chunksize)
+    except AttributeError:  # < Python 3.12
+        while 1:
+            chunk = tuple(itertools.islice(iterable, chunksize))
 
-    while 1:
-        chunk = tuple(islice(iterables, chunksize))
+            if not chunk:
+                return
 
-        if not chunk:
-            return
-
-        yield chunk
+            yield chunk
 
 
-def chunk_result(future: ProcessFuture, timeout: Optional[float]):
+def chunk_result(future: ProcessFuture, timeout: Optional[float]) -> Any:
     """Returns the results of a processed chunk."""
     try:
         return future.result(timeout=timeout)
@@ -271,7 +272,7 @@ def chunk_result(future: ProcessFuture, timeout: Optional[float]):
         return (error, )
 
 
-def run_initializer(initializer: Callable, initargs: list):
+def run_initializer(initializer: Callable, initargs: list) -> bool:
     """Runs the Pool initializer dealing with errors."""
     try:
         initializer(*initargs)

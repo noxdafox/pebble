@@ -83,6 +83,7 @@ def function_handler(
 ):
     """Runs the actual function in separate process and returns its result."""
     signal.signal(signal.SIGINT, signal.SIG_IGN)
+    signal.signal(signal.SIGTERM, signal.SIG_DFL)
 
     reader, writer = pipe
     reader.close()

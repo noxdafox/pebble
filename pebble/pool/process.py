@@ -17,12 +17,12 @@
 import os
 import time
 import atexit
+import signal
 import pickle
 import multiprocessing
 
 from itertools import count
 from dataclasses import dataclass
-from signal import SIG_IGN, SIGINT, signal
 from typing import Any, Callable, Optional
 from concurrent.futures.process import BrokenProcessPool
 from concurrent.futures import CancelledError, TimeoutError
@@ -416,7 +416,8 @@ class WorkerManager:
 
 def worker_process(params: Worker, channel: WorkerChannel):
     """The worker process routines."""
-    signal(SIGINT, SIG_IGN)
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+    signal.signal(signal.SIGTERM, signal.SIG_DFL)
 
     channel.initialize()
 

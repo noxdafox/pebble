@@ -147,4 +147,19 @@ class FutureStatus(str, Enum):
     CANCELLED_AND_NOTIFIED = 'CANCELLED_AND_NOTIFIED'
 
 
-SLEEP_UNIT = 0.1
+@dataclass
+class Consts:
+    """Internal constants.
+
+    WARNING: changing these values will affect the behaviour
+    of Pools and decorators.
+
+    """
+    sleep_unit: float = 0.1
+    """Any cycle which needs to periodically assess the state."""
+    term_timeout: float = 3
+    """On UNIX once a SIGTERM signal is issued to a process,
+    the amount of seconds to wait before issuing a SIGKILL signal."""
+
+
+CONSTS = Consts()

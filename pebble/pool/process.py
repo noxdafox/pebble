@@ -31,10 +31,10 @@ from pebble.pool.base_pool import Worker, iter_chunks, run_initializer
 from pebble.pool.base_pool import PoolContext, BasePool, Task, TaskPayload
 from pebble.pool.base_pool import PoolStatus, ProcessMapFuture, map_results
 from pebble.pool.channel import ChannelError, WorkerChannel, channels
+from pebble.common import Result, ResultStatus, CONSTS
 from pebble.common import launch_process, stop_process
 from pebble.common import ProcessExpired, ProcessFuture
 from pebble.common import process_execute, launch_thread
-from pebble.common import Result, ResultStatus, SLEEP_UNIT
 
 
 class ProcessPool(BasePool):
@@ -112,7 +112,7 @@ class ProcessPool(BasePool):
 
     def submit(self, function: Callable,
                timeout: Optional[float],
-               *args, **kwargs) -> ProcessFuture:
+               /, *args, **kwargs) -> ProcessFuture:
         """This function is provided for compatibility with
         `asyncio.loop.run_in_executor`.
 
@@ -178,7 +178,7 @@ def pool_manager_loop(pool_manager: 'PoolManager'):
     try:
         while context.alive and not GLOBAL_SHUTDOWN:
             pool_manager.update_status()
-            time.sleep(SLEEP_UNIT)
+            time.sleep(CONSTS.sleep_unit)
     except BrokenProcessPool:
         context.status = PoolStatus.ERROR
 
@@ -188,7 +188,7 @@ def message_manager_loop(pool_manager: 'PoolManager'):
 
     try:
         while context.alive and not GLOBAL_SHUTDOWN:
-            pool_manager.process_next_message(SLEEP_UNIT)
+            pool_manager.process_next_message(CONSTS.sleep_unit)
     except BrokenProcessPool:
         context.status = PoolStatus.ERROR
 

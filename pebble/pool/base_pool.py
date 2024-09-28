@@ -26,7 +26,7 @@ from typing import Any, Callable, Optional
 from concurrent.futures import Future, TimeoutError
 
 from pebble.common import Result, ResultStatus
-from pebble.common import PebbleFuture, ProcessFuture, SLEEP_UNIT
+from pebble.common import PebbleFuture, ProcessFuture, CONSTS
 
 
 class BasePool:
@@ -86,7 +86,7 @@ class BasePool:
             if timeout is not None and time.time() - tick > timeout:
                 raise TimeoutError("Tasks are still being executed")
             elif self._context.task_queue.unfinished_tasks:
-                time.sleep(SLEEP_UNIT)
+                time.sleep(CONSTS.sleep_unit)
             else:
                 return
 

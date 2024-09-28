@@ -118,10 +118,10 @@ def _get_result(
         timeout: float
 ) -> Any:
     """Waits for result and handles communication errors."""
-    counter = count(step=common.SLEEP_UNIT)
+    counter = count(step=common.CONSTS.sleep_unit)
 
     try:
-        while not pipe.poll(common.SLEEP_UNIT):
+        while not pipe.poll(common.CONSTS.sleep_unit):
             if timeout is not None and next(counter) >= timeout:
                 error = TimeoutError('Task Timeout', timeout)
                 return common.Result(common.ResultStatus.FAILURE, error)

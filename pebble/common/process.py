@@ -25,7 +25,7 @@ import multiprocessing
 from traceback import format_exc
 from typing import Any, Callable
 
-from pebble.common.types import Result, ResultStatus, RemoteException
+from pebble.common.types import Result, ResultStatus, RemoteException, CONSTS
 
 
 def launch_process(
@@ -46,7 +46,7 @@ def launch_process(
 def stop_process(process: multiprocessing.Process):
     """Does its best to stop the process."""
     process.terminate()
-    process.join(3)
+    process.join(CONSTS.term_timeout)
 
     if process.is_alive() and os.name != 'nt':
         try:

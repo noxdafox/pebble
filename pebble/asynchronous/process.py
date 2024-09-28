@@ -117,7 +117,7 @@ async def _get_result(
         timeout: float
 ) -> Any:
     """Waits for result and handles communication errors."""
-    counter = count(step=common.SLEEP_UNIT)
+    counter = count(step=common.CONSTS.sleep_unit)
 
     try:
         while not pipe.poll():
@@ -128,7 +128,7 @@ async def _get_result(
                 error = asyncio.CancelledError()
                 return common.Result(common.ResultStatus.FAILURE, error)
 
-            await asyncio.sleep(common.SLEEP_UNIT)
+            await asyncio.sleep(common.CONSTS.sleep_unit)
 
         return pipe.recv()
     except (EOFError, OSError):

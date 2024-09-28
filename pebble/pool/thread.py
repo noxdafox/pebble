@@ -22,9 +22,9 @@ from itertools import count
 from typing import Callable
 from concurrent.futures import Future
 
-from pebble.common import ResultStatus, execute, launch_thread, SLEEP_UNIT
-from pebble.pool.base_pool import PoolStatus, MapFuture, map_results
+from pebble.common import ResultStatus, execute, launch_thread, CONSTS
 from pebble.pool.base_pool import iter_chunks, run_initializer
+from pebble.pool.base_pool import PoolStatus, MapFuture, map_results
 from pebble.pool.base_pool import PoolContext, BasePool, Task, TaskPayload
 
 
@@ -117,7 +117,7 @@ def pool_manager_loop(pool_manager: 'PoolManager'):
 
     while context.alive:
         pool_manager.update_status()
-        time.sleep(SLEEP_UNIT)
+        time.sleep(CONSTS.sleep_unit)
 
 
 class PoolManager:

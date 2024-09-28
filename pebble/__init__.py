@@ -15,6 +15,7 @@ __all__ = ['waitforthreads',
            'ThreadPool']
 
 
+from pebble import concurrent, asynchronous
 from pebble.decorators import synchronized, sighandler
 from pebble.functions import waitforqueues, waitforthreads
 from pebble.common import ProcessExpired, ProcessFuture, CONSTS

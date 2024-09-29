@@ -60,13 +60,14 @@ def get_asyncio_loop() -> asyncio.BaseEventLoop:
 def decorate_function(wrapper: Callable, *args, **kwargs) -> Callable:
     """Decorate the function taking care of all the possible uses."""
     name = kwargs.get('name')
+    pool = kwargs.get('pool')
     daemon = kwargs.get('daemon', True)
     timeout = kwargs.get('timeout')
     mp_context = kwargs.get('context')
 
     # decorator without parameters: @process/process(function)
     if not kwargs and len(args) == 1 and callable(args[0]):
-        return wrapper(args[0], name, daemon, timeout, multiprocessing)
+        return wrapper(args[0], name, daemon, timeout, multiprocessing, pool)
 
     # decorator with parameters
     _validate_parameters(name, daemon, timeout)
@@ -74,11 +75,11 @@ def decorate_function(wrapper: Callable, *args, **kwargs) -> Callable:
 
     ## without @pie syntax: process(function, timeout=12)
     if len(args) == 1 and callable(args[0]):
-        return wrapper(args[0], name, daemon, timeout, multiprocessing)
+        return wrapper(args[0], name, daemon, timeout, multiprocessing, pool)
 
     ## with @pie syntax: @process(timeout=12)
     def decorating_function(function: Callable) -> Callable:
-        return wrapper(function, name, daemon, timeout, mp_context)
+        return wrapper(function, name, daemon, timeout, mp_context, pool)
 
     return decorating_function
 
@@ -90,3 +91,5 @@ def _validate_parameters(name: str, daemon: bool, timeout: float):
         raise TypeError('Daemon expected to be None or bool')
     if timeout is not None and not isinstance(timeout, (int, float)):
         raise TypeError('Timeout expected to be None or integer or float')
+    # if pool is not None and not isinstance(pool, base_pool.BasePool):
+    #     raise TypeError('Pool expected to be ProcessPool or ThreadPool')

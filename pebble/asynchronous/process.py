@@ -25,6 +25,7 @@ from typing import Any, Callable
 from concurrent.futures import TimeoutError
 
 from pebble import common
+from pebble.pool.process import ProcessPool
 
 
 def process(*args, **kwargs) -> Callable:
@@ -46,6 +47,9 @@ def process(*args, **kwargs) -> Callable:
     The context parameter allows to provide the multiprocessing.context
     object used for starting the process.
 
+    The pool parameter accepts a pebble.ProcessPool instance to be used
+    instead of running the function in a new process.
+
     """
     return common.decorate_function(_process_wrapper, *args, **kwargs)
 
@@ -55,7 +59,8 @@ def _process_wrapper(
         name: str,
         daemon: bool,
         timeout: float,
-        mp_context: multiprocessing.context.BaseContext
+        mp_context: multiprocessing.context.BaseContext,
+        pool: ProcessPool
 ) -> Callable:
     if isinstance(function, types.FunctionType):
         common.register_function(function)
@@ -65,20 +70,29 @@ def _process_wrapper(
     else:
         start_method = 'spawn' if os.name == 'nt' else 'fork'
 
+    if pool is not None:
+        if not isinstance(pool, ProcessPool):
+            raise TypeError('Pool expected to be ProcessPool')
+        start_method = 'pool'
+
     @wraps(function)
     def wrapper(*args, **kwargs) -> asyncio.Future:
         loop = common.get_asyncio_loop()
-        future = loop.create_future()
-        reader, writer = mp_context.Pipe(duplex=False)
         target, args = common.maybe_install_trampoline(function, args, start_method)
 
-        worker = common.launch_process(
-            name, common.function_handler, daemon, mp_context,
-            target, args, kwargs, (reader, writer))
+        if pool is not None:
+            future = loop.run_in_executor(pool, target, timeout, *args, **kwargs)
+        else:
+            future = loop.create_future()
+            reader, writer = mp_context.Pipe(duplex=False)
 
-        writer.close()
+            worker = common.launch_process(
+                name, common.function_handler, daemon, mp_context,
+                target, args, kwargs, (reader, writer))
 
-        loop.create_task(_worker_handler(future, worker, reader, timeout))
+            writer.close()
+
+            loop.create_task(_worker_handler(future, worker, reader, timeout))
 
         return future
 

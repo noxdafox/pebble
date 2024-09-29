@@ -8,7 +8,7 @@ import dataclasses
 import multiprocessing
 from concurrent.futures import CancelledError, TimeoutError
 
-from pebble import concurrent, ProcessExpired
+from pebble import concurrent, ProcessExpired, ProcessPool
 
 
 # set start method
@@ -104,6 +104,11 @@ def name_keyword_decorated_and_argument(name='bar'):
 @concurrent.process(daemon=False, context=mp_context)
 def daemon_keyword_decorated():
     return multiprocessing.current_process().daemon
+
+
+@concurrent.process(pool=ProcessPool(1, context=mp_context))
+def pool_decorated(_argument, _keyword_argument=0):
+    return multiprocessing.current_process().pid
 
 
 class ProcessConcurrentObj:
@@ -344,3 +349,9 @@ class TestProcessConcurrent(unittest.TestCase):
         f = callable_object(1)
 
         self.assertEqual(f.result(), 1)
+
+    def test_pool_decorated(self):
+        """Process Fork pool decorated function."""
+        future1 = pool_decorated(1, 1)
+        future2 = pool_decorated(1, 1)
+        self.assertEqual(future1.result(), future2.result())

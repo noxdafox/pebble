@@ -48,16 +48,18 @@ class ProcessPool(BasePool):
     initializer must be callable, if passed, it will be called
     every time a worker is started, receiving initargs as arguments.
 
+    The context parameter can be used to specify the multiprocessing.context object
+    used for starting the worker processes.
+
     """
 
     def __init__(self, max_workers: int = multiprocessing.cpu_count(),
                  max_tasks: int = 0,
                  initializer: Callable = None,
                  initargs: list = (),
-                 context: multiprocessing.context.BaseContext = None):
+                 context: multiprocessing.context.BaseContext = multiprocessing):
         super().__init__(max_workers, max_tasks, initializer, initargs)
-        mp_context = multiprocessing if context is None else context
-        self._pool_manager = PoolManager(self._context, mp_context)
+        self._pool_manager = PoolManager(self._context, context)
         self._task_scheduler_loop = None
         self._pool_manager_loop = None
         self._message_manager_loop = None

@@ -28,6 +28,8 @@ if 'forkserver' in methods:
             raise Exception(mp_context.get_start_method())
     except RuntimeError:  # child process
         pass
+else:
+    mp_context = multiprocessing.get_context()
 
 
 def not_decorated(argument, keyword_argument=0):

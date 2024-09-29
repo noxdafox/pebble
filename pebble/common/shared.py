@@ -91,5 +91,3 @@ def _validate_parameters(name: str, daemon: bool, timeout: float):
         raise TypeError('Daemon expected to be None or bool')
     if timeout is not None and not isinstance(timeout, (int, float)):
         raise TypeError('Timeout expected to be None or integer or float')
-    # if pool is not None and not isinstance(pool, base_pool.BasePool):
-    #     raise TypeError('Pool expected to be ProcessPool or ThreadPool')

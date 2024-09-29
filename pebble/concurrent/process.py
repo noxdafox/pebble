@@ -24,6 +24,7 @@ from typing import Any, Callable
 from concurrent.futures import CancelledError, TimeoutError
 
 from pebble import common
+from pebble.pool.process import ProcessPool
 
 
 def process(*args, **kwargs) -> Callable:
@@ -45,6 +46,9 @@ def process(*args, **kwargs) -> Callable:
     The context parameter allows to provide the multiprocessing.context
     object used for starting the process.
 
+    The pool parameter accepts a pebble.ProcessPool instance to be used
+    instead of running the function in a new process.
+
     """
     return common.decorate_function(_process_wrapper, *args, **kwargs)
 
@@ -54,7 +58,8 @@ def _process_wrapper(
         name: str,
         daemon: bool,
         timeout: float,
-        mp_context: multiprocessing.context.BaseContext
+        mp_context: multiprocessing.context.BaseContext,
+        pool: ProcessPool
 ) -> Callable:
     if isinstance(function, types.FunctionType):
         common.register_function(function)
@@ -64,22 +69,31 @@ def _process_wrapper(
     else:
         start_method = 'spawn' if os.name == 'nt' else 'fork'
 
+    if pool is not None:
+        if not isinstance(pool, ProcessPool):
+            raise TypeError('Pool expected to be ProcessPool')
+        start_method = 'pool'
+
     @wraps(function)
     def wrapper(*args, **kwargs) -> common.ProcessFuture:
-        future = common.ProcessFuture()
-        reader, writer = mp_context.Pipe(duplex=False)
         target, args = common.maybe_install_trampoline(function, args, start_method)
 
-        worker = common.launch_process(
-            name, common.function_handler, daemon, mp_context,
-            target, args, kwargs, (reader, writer))
+        if pool is not None:
+            future = pool.schedule(target, args=args, kwargs=kwargs, timeout=timeout)
+        else:
+            future = common.ProcessFuture()
+            reader, writer = mp_context.Pipe(duplex=False)
 
-        writer.close()
+            worker = common.launch_process(
+                name, common.function_handler, daemon, mp_context,
+                target, args, kwargs, (reader, writer))
 
-        future.set_running_or_notify_cancel()
+            writer.close()
 
-        common.launch_thread(
-            name, _worker_handler, True, future, worker, reader, timeout)
+            future.set_running_or_notify_cancel()
+
+            common.launch_thread(
+                name, _worker_handler, True, future, worker, reader, timeout)
 
         return future
 

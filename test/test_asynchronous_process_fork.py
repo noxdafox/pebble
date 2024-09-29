@@ -9,7 +9,7 @@ import dataclasses
 import multiprocessing
 from concurrent.futures import CancelledError, TimeoutError
 
-from pebble import asynchronous, ProcessExpired
+from pebble import asynchronous, ProcessExpired, ProcessPool
 
 
 # set start method
@@ -105,6 +105,11 @@ def name_keyword_decorated_and_argument(name='bar'):
 @asynchronous.process(daemon=False, context=mp_context)
 def daemon_keyword_decorated():
     return multiprocessing.current_process().daemon
+
+
+@asynchronous.process(pool=ProcessPool(1, context=mp_context))
+def pool_decorated(_argument, _keyword_argument=0):
+    return multiprocessing.current_process().pid
 
 
 class ProcessAsynchronousObj:
@@ -431,3 +436,10 @@ class TestProcessAsynchronous(unittest.TestCase):
             return await callable_object(1)
 
         self.assertEqual(asyncio.run(test()), 1)
+
+    def test_pool_decorated(self):
+        """Process Fork results are produced."""
+        async def test():
+            return await pool_decorated(1, 1)
+
+        self.assertEqual(asyncio.run(test()), asyncio.run(test()))

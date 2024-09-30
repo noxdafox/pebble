@@ -19,7 +19,7 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
 `Concurrent Module`
 -------------------
 
-.. decorator:: concurrent.process(timeout=None, name=None, daemon=True, context=None)
+.. decorator:: concurrent.process(timeout=None, name=None, daemon=True, context=None, pool=None)
 
    Runs the decorated function in a concurrent process, taking care of the results and error management.
 
@@ -33,7 +33,9 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
 
    The *context* parameter can be used to specify the multiprocessing.context_ object used for starting the process.
 
-.. decorator:: concurrent.thread(name=None, daemon=True)
+   The *pool* parameter accepts a pebble.ProcessPool_ object. If provided, the pool will be used to run the function instead of a dedicated process. The *name*, *daemon* and *context* parameters will be ignored.
+
+.. decorator:: concurrent.thread(name=None, daemon=True, pool=None)
 
    Runs the decorated function in a concurrent thread, taking care of the results and error management.
 
@@ -43,11 +45,12 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
 
    The *daemon* parameter switches between daemon and non-daemon threads.
 
+   The *pool* parameter accepts a pebble.ThreadPool_ object. If provided, the pool will be used to run the function instead of a dedicated thread. The *name* and *daemon* parameters will be ignored.
 
 `Asynchronous Module`
 ---------------------
 
-.. decorator:: asynchronous.process(timeout=None, name=None, daemon=True, context=None)
+.. decorator:: asynchronous.process(timeout=None, name=None, daemon=True, context=None, pool=None)
 
    Runs the decorated function in a concurrent process, taking care of the results and error management.
 
@@ -61,7 +64,9 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
 
    The *context* parameter can be used to specify the multiprocessing.context_ object used for starting the process.
 
-.. decorator:: asynchronous.thread(name=None, daemon=True)
+   The *pool* parameter accepts a pebble.ProcessPool_ object. If provided, the pool will be used to run the function instead of a dedicated process. The *name*, *daemon* and *context* parameters will be ignored.
+
+.. decorator:: asynchronous.thread(name=None, daemon=True, pool=None)
 
    Runs the decorated function in a concurrent thread, taking care of the results and error management.
 
@@ -71,10 +76,13 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
 
    The *daemon* parameter switches between daemon and non-daemon threads.
 
+   The *pool* parameter accepts a pebble.ThreadPool_ object. If provided, the pool will be used to run the function instead of a dedicated thread. The *name* and *daemon* parameters will be ignored.
+
 
 `Pebble Module`
 ---------------
 
+.. _pebble.ProcessPool:
 .. class:: pebble.ProcessPool(max_workers=multiprocessing.cpu_count(), max_tasks=0, initializer=None, initargs=None, context=None)
 
    A Pool allows to schedule jobs into a Pool of Processes which will perform them concurrently.
@@ -130,6 +138,7 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
 
       The *join* function must be called only in the main loop. Calling it in a pebble.ProcessFuture_ callback will result in a deadlock.
 
+.. _pebble.ThreadPool:
 .. class:: pebble.ThreadPool(max_workers=multiprocessing.cpu_count(), max_tasks=0, initializer=None, initargs=None)
 
    A ThreadPool allows to schedule jobs into a Pool of Threads which will perform them concurrently.
@@ -473,6 +482,27 @@ If a `timeout` is provided, it will be applied to the whole chunk and not to the
         future = pool.map(function, elements, chunksize=chunksize, timeout=timeout)
 
         assert list(future.result()) == elements
+
+The `concurrent` and `asynchronous` decorators accept a *pool* parameter. This is useful to control how many instances of decorated functions can be run at the same time.
+
+::
+
+    from concurrent.futures import wait
+    from pebble import concurrent, ProcessPool
+
+    pool = ProcessPool(max_workers=4)
+
+    @concurrent.process(pool=pool)
+    def function(arg, kwarg=0):
+        return arg + kwarg
+
+    futures = []
+
+    # Maximum 4 executions of `function` will be executed in parallel
+    for _ in range(100):
+        futures.append(function(1, kwarg=1))
+
+    wait(futures)
 
 
 Pools and AsyncIO

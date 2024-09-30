@@ -19,6 +19,7 @@ from functools import wraps
 from concurrent.futures import Future
 
 from pebble import common
+from pebble.pool.thread import ThreadPool
 
 
 def thread(*args, **kwargs) -> Callable:
@@ -33,17 +34,35 @@ def thread(*args, **kwargs) -> Callable:
     The daemon parameter controls the underlying thread daemon flag.
     Default is True.
 
+    The pool parameter accepts a pebble.ThreadPool instance to be used
+    instead of running the function in a new process.
+
     """
     return common.decorate_function(_thread_wrapper, *args, **kwargs)
 
 
-def _thread_wrapper(function: Callable, name: str, daemon: bool, *_) -> Callable:
+def _thread_wrapper(
+        function: Callable,
+        name: str,
+        daemon: bool,
+        _timeout: float,
+        _mp_context,
+        pool: ThreadPool
+) -> Callable:
+    if pool is not None:
+        if not isinstance(pool, ThreadPool):
+            raise TypeError('Pool expected to be ThreadPool')
+
     @wraps(function)
     def wrapper(*args, **kwargs) -> Future:
-        future = Future()
+        if pool is not None:
+            future = pool.schedule(function, args=args, kwargs=kwargs)
+        else:
+            future = Future()
 
-        common.launch_thread(
-            name, _function_handler, daemon, function, args, kwargs, future)
+            common.launch_thread(
+                name, _function_handler, daemon,
+                function, args, kwargs, future)
 
         return future
 

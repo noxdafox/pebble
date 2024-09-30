@@ -440,7 +440,7 @@ class TestProcessAsynchronous(unittest.TestCase):
         self.assertEqual(asyncio.run(test()), 1)
 
     def test_pool_decorated(self):
-        """Process Fork results are produced."""
+        """Process Fork pool decorated function."""
         async def test():
             return await pool_decorated(1, 1)
 

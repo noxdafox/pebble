@@ -2,6 +2,7 @@ import unittest
 import threading
 
 from pebble import concurrent
+from pebble import ThreadPool
 
 
 def not_decorated(argument, keyword_argument=0):
@@ -42,6 +43,11 @@ def name_keyword_decorated_and_argument(name='bar'):
 @concurrent.thread(daemon=False)
 def daemon_keyword_decorated():
     return threading.current_thread().daemon
+
+
+@concurrent.thread(pool=ThreadPool(1))
+def pool_decorated(_argument, _keyword_argument=0):
+    return threading.current_thread().ident
 
 
 class ThreadConcurrentObj:
@@ -130,7 +136,7 @@ class TestThreadConcurrent(unittest.TestCase):
         self.assertIsInstance(future.result(), RuntimeError)
 
     def test_error_decorated_callback(self):
-        """Thread  errors are forwarded to callback."""
+        """Thread errors are forwarded to callback."""
         future = error_decorated()
         future.add_done_callback(self.callback)
         self.event.wait(timeout=1)
@@ -163,3 +169,9 @@ class TestThreadConcurrent(unittest.TestCase):
         f = daemon_keyword_decorated()
         dec_out = f.result()
         self.assertEqual(dec_out, False)
+
+    def test_pool_decorated(self):
+        """Thread pool decorated function."""
+        future1 = pool_decorated(1, 1)
+        future2 = pool_decorated(1, 1)
+        self.assertEqual(future1.result(), future2.result())

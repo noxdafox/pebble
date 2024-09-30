@@ -20,6 +20,7 @@ from typing import Callable
 from functools import wraps
 
 from pebble import common
+from pebble.pool.thread import ThreadPool
 
 
 def thread(*args, **kwargs) -> Callable:
@@ -38,14 +39,30 @@ def thread(*args, **kwargs) -> Callable:
     return common.decorate_function(_thread_wrapper, *args, **kwargs)
 
 
-def _thread_wrapper(function: Callable, name: str, daemon: bool, *_) -> Callable:
+def _thread_wrapper(
+        function: Callable,
+        name: str,
+        daemon: bool,
+        _timeout: float,
+        _mp_context,
+        pool: ThreadPool
+) -> Callable:
+    if pool is not None:
+        if not isinstance(pool, ThreadPool):
+            raise TypeError('Pool expected to be ThreadPool')
+
     @wraps(function)
     def wrapper(*args, **kwargs) -> asyncio.Future:
         loop = common.get_asyncio_loop()
-        future = loop.create_future()
 
-        common.launch_thread(
-            name, _function_handler, daemon, function, args, kwargs, future)
+        if pool is not None:
+            future = loop.run_in_executor(pool, function, *args, **kwargs)
+        else:
+            future = loop.create_future()
+
+            common.launch_thread(
+                name, _function_handler, daemon,
+                function, args, kwargs, future)
 
         return future
 

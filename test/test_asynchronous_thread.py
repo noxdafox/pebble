@@ -3,6 +3,7 @@ import unittest
 import threading
 import dataclasses
 
+from pebble import ThreadPool
 from pebble import asynchronous
 
 
@@ -54,6 +55,11 @@ def name_keyword_decorated_and_argument(name='bar'):
 @asynchronous.thread(daemon=False)
 def daemon_keyword_decorated():
     return threading.current_thread().daemon
+
+
+@asynchronous.thread(pool=ThreadPool(1))
+def pool_decorated(_argument, _keyword_argument=0):
+    return threading.current_thread().ident
 
 
 class ThreadAsynchronousObj:
@@ -218,3 +224,10 @@ class TestThreadAsynchronous(unittest.TestCase):
             return await daemon_keyword_decorated()
 
         self.assertEqual(asyncio.run(test()), False)
+
+    def test_pool_decorated(self):
+        """Thread pool decorated function."""
+        async def test():
+            return await pool_decorated(1, 1)
+
+        self.assertEqual(asyncio.run(test()), asyncio.run(test()))

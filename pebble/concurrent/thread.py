@@ -14,15 +14,23 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with Pebble.  If not, see <http://www.gnu.org/licenses/>.
 
-from typing import Callable
+from typing import Callable, Optional, TypeVar, Union, overload
 from functools import wraps
 from concurrent.futures import Future
 
 from pebble import common
 from pebble.pool.thread import ThreadPool
 
+_P = TypeVar("_P")
+_T = TypeVar("_T")
 
-def thread(*args, **kwargs) -> Callable:
+@overload
+def thread(func: Callable[[_P], _T]) -> Callable[[_P], Future[_T]]: ...
+
+@overload
+def thread(name: Optional[str] = None, daemon: bool = True) -> Callable[[Callable[[_P], _T]], Callable[[_P], Future[_T]]]: ...
+
+def thread(*args, **kwargs) -> Union[Callable[[_P], Future[_T]], Callable[[Callable[[_P], _T]], Callable[[_P], Future[_T]]]]:
     """Runs the decorated function within a concurrent thread,
     taking care of the result and error management.
 

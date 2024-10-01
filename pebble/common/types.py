@@ -14,7 +14,7 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with Pebble.  If not, see <http://www.gnu.org/licenses/>.
 
-from typing import Any
+from typing import Any, TypeVar
 from enum import Enum, IntEnum
 from dataclasses import dataclass
 from concurrent.futures import Future
@@ -26,8 +26,9 @@ class ProcessExpired(OSError):
         super(ProcessExpired, self).__init__(msg)
         self.exitcode = code
 
+_T = TypeVar("_T")
 
-class PebbleFuture(Future):
+class PebbleFuture(Future[_T]):
     # Same as base class, removed logline
     def set_running_or_notify_cancel(self):
         """Mark the future as running or process any cancel notifications.
@@ -64,9 +65,7 @@ class PebbleFuture(Future):
                 return True
             else:
                 raise RuntimeError('Future in unexpected state')
-
-
-class ProcessFuture(PebbleFuture):
+class ProcessFuture(PebbleFuture[_T]):
     def cancel(self):
         """Cancel the future.
 

@@ -429,7 +429,11 @@ class TestProcessPool(unittest.TestCase):
         """Process Pool Forkserver unexpect death of worker raises ProcessExpired."""
         with ProcessPool(max_workers=1, context=mp_context) as pool:
             future = pool.schedule(suicide_function)
-            self.assertRaises(ProcessExpired, future.result)
+            worker_pid = list(pool._pool_manager.worker_manager.workers)[0]
+            with self.assertRaises(ProcessExpired) as exc_ctx:
+                future.result()
+            self.assertEqual(exc_ctx.exception.exitcode, 1)
+            self.assertEqual(exc_ctx.exception.pid, worker_pid)
 
     def test_process_pool_map(self):
         """Process Pool Forkserver map simple."""

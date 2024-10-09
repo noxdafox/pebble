@@ -264,7 +264,7 @@ class PoolManager:
         except LookupError:
             return
         else:
-            error = ProcessExpired('Abnormal termination', code=exitcode)
+            error = ProcessExpired('Abnormal termination', code=exitcode, pid=worker_id)
             self.task_manager.task_done(
                 task.id, Result(ResultStatus.ERROR, error))
 

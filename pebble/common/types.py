@@ -22,9 +22,10 @@ from concurrent.futures import Future
 
 class ProcessExpired(OSError):
     """Raised when process dies unexpectedly."""
-    def __init__(self, msg, code=0):
+    def __init__(self, msg, code=0, pid=None):
         super(ProcessExpired, self).__init__(msg)
         self.exitcode = code
+        self.pid = pid
 
 
 class PebbleFuture(Future):

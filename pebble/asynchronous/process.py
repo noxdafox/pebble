@@ -121,6 +121,7 @@ async def _worker_handler(
     else:
         if result.status == common.ResultStatus.ERROR:
             result.value.exitcode = worker.exitcode
+            result.value.pid = worker.pid
         if not isinstance(result.value, asyncio.CancelledError):
             future.set_exception(result.value)
 

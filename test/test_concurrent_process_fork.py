@@ -294,8 +294,10 @@ class TestProcessConcurrent(unittest.TestCase):
     def test_decorated_dead_process(self):
         """Process Fork ProcessExpired is raised if process dies."""
         future = critical_decorated()
-        with self.assertRaises(ProcessExpired):
+        with self.assertRaises(ProcessExpired) as exc_ctx:
             future.result()
+        self.assertEqual(exc_ctx.exception.exitcode, 123)
+        self.assertIsInstance(exc_ctx.exception.pid, int)
 
     def test_timeout_decorated_callback(self):
         """Process Fork ProcessExpired is forwarded to callback."""

@@ -358,8 +358,10 @@ class TestProcessAsynchronous(unittest.TestCase):
         async def test():
             return await critical_decorated()
 
-        with self.assertRaises(ProcessExpired):
+        with self.assertRaises(ProcessExpired) as exc_ctx:
             asyncio.run(test())
+        self.assertEqual(exc_ctx.exception.exitcode, 123)
+        self.assertIsInstance(exc_ctx.exception.pid, int)
 
     def test_timeout_decorated_callback(self):
         """Process Fork ProcessExpired is forwarded to callback."""

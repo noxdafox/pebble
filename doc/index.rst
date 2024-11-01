@@ -269,6 +269,10 @@ Pebble aims to help managing threads and processes in an easier way. It wraps Py
 
       Integer representing the process' exit code.
 
+   .. data:: pid
+
+      Integer representing the process identifier or `None`.
+
 
 Programming Guidelines
 ----------------------

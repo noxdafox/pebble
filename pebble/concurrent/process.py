@@ -21,27 +21,36 @@ import multiprocessing.context
 
 from itertools import count
 from functools import wraps
-from typing import Any, Callable, Optional, TypeVar, Union, overload
+from typing import Any, Callable, Optional, Union, overload
 from concurrent.futures import CancelledError, TimeoutError
 
 from pebble import common
 from pebble.pool.process import ProcessPool
 
-_P = TypeVar("_P")
-_T = TypeVar("_T")
 
 @overload
-def process(func: Callable[[_P], _T]) -> Callable[[_P], common.ProcessFuture[_T]]: ...
+def process(
+        func: Callable[[common.P], common.T]
+) -> Callable[[common.P], common.ProcessFuture[common.T]]:
+    ...
 
 @overload
 def process(
         name: Optional[str] = None,
         daemon: bool = True,
         timeout: Optional[float] = None,
-        mp_context: Optional[multiprocessing.context.BaseContext] = None
-    ) -> Callable[[Callable[[_P], _T]], Callable[[_P], common.ProcessFuture[_T]]]: ...
+        mp_context: Optional[multiprocessing.context.BaseContext] = None,
+        pool: Optional[ProcessPool] = None
+) -> Callable[[Callable[[common.P], common.T]],
+              Callable[[common.P], common.ProcessFuture[common.T]]]:
+    ...
 
-def process(*args, **kwargs) -> Union[Callable[[_P], common.ProcessFuture[_T]], Callable[[Callable[[_P], _T]], Callable[[_P], common.ProcessFuture[_T]]]]:
+def process(
+        *args: list,
+        **kwargs: dict
+) -> Union[Callable[[common.P], common.ProcessFuture[common.T]],
+           Callable[[Callable[[common.P], common.T]],
+                    Callable[[common.P], common.ProcessFuture[common.T]]]]:
     """Runs the decorated function in a concurrent process,
     taking care of the result and error management.
 

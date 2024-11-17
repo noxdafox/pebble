@@ -24,7 +24,7 @@ setup(
     url="https://github.com/noxdafox/pebble",
     packages=find_packages(exclude=["test"]),
     long_description=open(os.path.join(CWD, 'README.rst')).read(),
-    python_requires=">=3.9",
+    python_requires=">=3.8",
     classifiers=[
         "Programming Language :: Python :: 3",
         "Development Status :: 5 - Production/Stable",

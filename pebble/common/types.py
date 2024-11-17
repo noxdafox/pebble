@@ -20,6 +20,10 @@ from dataclasses import dataclass
 from concurrent.futures import Future
 
 
+P = TypeVar("P")
+T = TypeVar("T")
+
+
 class ProcessExpired(OSError):
     """Raised when process dies unexpectedly."""
     def __init__(self, msg, code=0, pid=None):
@@ -27,9 +31,8 @@ class ProcessExpired(OSError):
         self.exitcode = code
         self.pid = pid
 
-_T = TypeVar("_T")
 
-class PebbleFuture(Future[_T]):
+class PebbleFuture(Future[T]):
     # Same as base class, removed logline
     def set_running_or_notify_cancel(self):
         """Mark the future as running or process any cancel notifications.
@@ -66,7 +69,9 @@ class PebbleFuture(Future[_T]):
                 return True
             else:
                 raise RuntimeError('Future in unexpected state')
-class ProcessFuture(PebbleFuture[_T]):
+
+
+class ProcessFuture(PebbleFuture[T]):
     def cancel(self):
         """Cancel the future.
 

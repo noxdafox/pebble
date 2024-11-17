@@ -21,14 +21,34 @@ import multiprocessing
 
 from itertools import count
 from functools import wraps
-from typing import Any, Callable
 from concurrent.futures import TimeoutError
+from typing import Any, Callable, Optional, Union, overload
 
 from pebble import common
 from pebble.pool.process import ProcessPool
 
 
-def process(*args, **kwargs) -> Callable:
+@overload
+def process(
+        func: Callable[[common.P], common.T]
+) -> Callable[[common.P], asyncio.Future[common.T]]:
+    ...
+
+@overload
+def process(
+        name: Optional[str] = None,
+        daemon: bool = True,
+        timeout: Optional[float] = None,
+        mp_context: Optional[multiprocessing.context.BaseContext] = None,
+        pool: Optional[ProcessPool] = None
+) -> Callable[[Callable[[common.P], common.T]],
+              Callable[[common.P], asyncio.Future[common.T]]]:
+    ...
+
+def process(
+        *args: list,
+        **kwargs: dict
+) -> Callable:
     """Runs the decorated function in a concurrent process,
     taking care of the result and error management.
 

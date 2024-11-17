@@ -16,14 +16,32 @@
 
 import asyncio
 
-from typing import Callable
 from functools import wraps
+from typing import Callable, Optional, Union, overload
 
 from pebble import common
 from pebble.pool.thread import ThreadPool
 
 
-def thread(*args, **kwargs) -> Callable:
+@overload
+def thread(
+        func: Callable[[common.P], common.T]
+) -> Callable[[common.P], asyncio.Future[common.T]]:
+    ...
+
+@overload
+def thread(
+        name: Optional[str] = None,
+        daemon: bool = True,
+        pool: Optional[ThreadPool] = None
+) -> Callable[[Callable[[common.P], common.T]],
+              Callable[[common.P], asyncio.Future[common.T]]]:
+    ...
+
+def thread(
+        *args: list,
+        **kwargs: dict
+) -> Callable:
     """Runs the decorated function within a concurrent thread,
     taking care of the result and error management.
 
@@ -34,6 +52,9 @@ def thread(*args, **kwargs) -> Callable:
 
     The daemon parameter controls the underlying thread daemon flag.
     Default is True.
+
+    The pool parameter accepts a pebble.ThreadPool instance to be used
+    instead of running the function in a new process.
 
     """
     return common.decorate_function(_thread_wrapper, *args, **kwargs)

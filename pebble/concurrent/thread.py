@@ -26,7 +26,6 @@ def thread(
         func: Callable[[common.P], common.T]
 ) -> Callable[[common.P], Future[common.T]]:
     ...
-
 @overload
 def thread(
         name: Optional[str] = None,
@@ -35,13 +34,7 @@ def thread(
 ) -> Callable[[Callable[[common.P], common.T]],
               Callable[[common.P], Future[common.T]]]:
     ...
-
-def thread(
-        *args: list,
-        **kwargs: dict
-) -> Union[Callable[[common.P], Future[common.T]],
-           Callable[[Callable[[common.P], common.T]],
-                    Callable[[common.P], Future[common.T]]]]:
+def thread(*args, **kwargs):
     """Runs the decorated function within a concurrent thread,
     taking care of the result and error management.
 

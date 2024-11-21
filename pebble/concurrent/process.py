@@ -21,7 +21,7 @@ import multiprocessing.context
 
 from itertools import count
 from functools import wraps
-from typing import Any, Callable, Optional, Union, overload
+from typing import Any, Callable, Optional, overload
 from concurrent.futures import CancelledError, TimeoutError
 
 from pebble import common
@@ -33,7 +33,6 @@ def process(
         func: Callable[[common.P], common.T]
 ) -> Callable[[common.P], common.ProcessFuture[common.T]]:
     ...
-
 @overload
 def process(
         name: Optional[str] = None,
@@ -44,13 +43,7 @@ def process(
 ) -> Callable[[Callable[[common.P], common.T]],
               Callable[[common.P], common.ProcessFuture[common.T]]]:
     ...
-
-def process(
-        *args: list,
-        **kwargs: dict
-) -> Union[Callable[[common.P], common.ProcessFuture[common.T]],
-           Callable[[Callable[[common.P], common.T]],
-                    Callable[[common.P], common.ProcessFuture[common.T]]]]:
+def process(*args, **kwargs):
     """Runs the decorated function in a concurrent process,
     taking care of the result and error management.
 

@@ -17,7 +17,7 @@
 import asyncio
 
 from functools import wraps
-from typing import Callable, Optional, Union, overload
+from typing import Callable, Optional, overload
 
 from pebble import common
 from pebble.pool.thread import ThreadPool
@@ -28,7 +28,6 @@ def thread(
         func: Callable[[common.P], common.T]
 ) -> Callable[[common.P], asyncio.Future[common.T]]:
     ...
-
 @overload
 def thread(
         name: Optional[str] = None,
@@ -37,11 +36,7 @@ def thread(
 ) -> Callable[[Callable[[common.P], common.T]],
               Callable[[common.P], asyncio.Future[common.T]]]:
     ...
-
-def thread(
-        *args: list,
-        **kwargs: dict
-) -> Callable:
+def thread(*args, **kwargs):
     """Runs the decorated function within a concurrent thread,
     taking care of the result and error management.
 

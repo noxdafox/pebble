@@ -32,7 +32,7 @@ class ProcessExpired(OSError):
         self.pid = pid
 
 
-class PebbleFuture(Future[T]):
+class PebbleFuture(Future):
     # Same as base class, removed logline
     def set_running_or_notify_cancel(self):
         """Mark the future as running or process any cancel notifications.
@@ -71,7 +71,7 @@ class PebbleFuture(Future[T]):
                 raise RuntimeError('Future in unexpected state')
 
 
-class ProcessFuture(PebbleFuture[T]):
+class ProcessFuture(PebbleFuture):
     def cancel(self):
         """Cancel the future.
 

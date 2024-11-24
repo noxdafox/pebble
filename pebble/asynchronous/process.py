@@ -29,9 +29,7 @@ from pebble.pool.process import ProcessPool
 
 
 @overload
-def process(
-        func: Callable[[common.P], common.T]
-) -> Callable[[common.P], asyncio.Future[common.T]]:
+def process(func: common.CallableType) -> common.AsyncIODecoratorReturnType:
     ...
 @overload
 def process(
@@ -40,8 +38,7 @@ def process(
         timeout: Optional[float] = None,
         mp_context: Optional[multiprocessing.context.BaseContext] = None,
         pool: Optional[ProcessPool] = None
-) -> Callable[[Callable[[common.P], common.T]],
-              Callable[[common.P], asyncio.Future[common.T]]]:
+) -> common.AsyncIODecoratorParamsReturnType:
     ...
 def process(*args, **kwargs):
     """Runs the decorated function in a concurrent process,

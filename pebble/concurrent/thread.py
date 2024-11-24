@@ -16,23 +16,20 @@
 
 from functools import wraps
 from concurrent.futures import Future
-from typing import Callable, Optional, Union, overload
+from typing import Callable, Optional, overload
 
 from pebble import common
 from pebble.pool.thread import ThreadPool
 
 @overload
-def thread(
-        func: Callable[[common.P], common.T]
-) -> Callable[[common.P], Future[common.T]]:
+def thread(func: common.CallableType) -> common.ThreadDecoratorReturnType:
     ...
 @overload
 def thread(
         name: Optional[str] = None,
         daemon: bool = True,
         pool: Optional[ThreadPool] = None
-) -> Callable[[Callable[[common.P], common.T]],
-              Callable[[common.P], Future[common.T]]]:
+) -> common.ThreadDecoratorParamsReturnType:
     ...
 def thread(*args, **kwargs):
     """Runs the decorated function within a concurrent thread,

@@ -14,14 +14,22 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with Pebble.  If not, see <http://www.gnu.org/licenses/>.
 
-from typing import Any, TypeVar
+import asyncio
+
 from enum import Enum, IntEnum
 from dataclasses import dataclass
 from concurrent.futures import Future
+from typing import Any, TypeVar, Callable
 
 
 P = TypeVar("P")
 T = TypeVar("T")
+
+
+try:
+    FutureType = Future[T]
+except TypeError:
+    FutureType = Future
 
 
 class ProcessExpired(OSError):
@@ -32,7 +40,7 @@ class ProcessExpired(OSError):
         self.pid = pid
 
 
-class PebbleFuture(Future):
+class PebbleFuture(FutureType):
     # Same as base class, removed logline
     def set_running_or_notify_cancel(self):
         """Mark the future as running or process any cancel notifications.
@@ -71,7 +79,13 @@ class PebbleFuture(Future):
                 raise RuntimeError('Future in unexpected state')
 
 
-class ProcessFuture(PebbleFuture):
+try:
+    PebbleFutureType = PebbleFuture[T]
+except TypeError:
+    PebbleFutureType = PebbleFuture
+
+
+class ProcessFuture(PebbleFutureType):
     def cancel(self):
         """Cancel the future.
 
@@ -165,6 +179,27 @@ class Consts:
     term_timeout: float = 3
     """On UNIX once a SIGTERM signal is issued to a process,
     the amount of seconds to wait before issuing a SIGKILL signal."""
+
+
+try:
+    CallableType = Callable[[P], T]
+    AsyncIODecoratorReturnType = Callable[[P], asyncio.Future[T]]
+    AsyncIODecoratorParamsReturnType = Callable[[Callable[[P], T]],
+                                                Callable[[P], asyncio.Future[T]]]
+    ThreadDecoratorReturnType = Callable[[P], Future[T]]
+    ThreadDecoratorParamsReturnType = Callable[[Callable[[P], T]],
+                                               Callable[[P], Future[T]]]
+    ProcessDecoratorReturnType = Callable[[P], ProcessFuture[T]]
+    ProcessDecoratorParamsReturnType = Callable[[Callable[[P], T]],
+                                                Callable[[P], ProcessFuture[T]]]
+except TypeError:
+    ReturnType = Callable
+    AsyncIODecoratorReturnType = Callable
+    AsyncIODecoratorParamsReturnType = Callable
+    ThreadDecoratorReturnType = Callable
+    ThreadDecoratorParamsReturnType = Callable
+    ProcessDecoratorReturnType = Callable
+    ProcessDecoratorParamsReturnType = Callable
 
 
 CONSTS = Consts()

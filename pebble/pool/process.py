@@ -217,7 +217,7 @@ class PoolManager:
         self.task_manager.register(task)
         try:
             self.worker_manager.dispatch(task)
-        except (pickle.PicklingError, TypeError) as error:
+        except PICKLING_ERRORS as error:
             self.task_manager.task_problem(task.id, error)
 
     def process_next_message(self, timeout: float):
@@ -352,7 +352,7 @@ class WorkerManager:
     def dispatch(self, task: Task):
         try:
             self.pool_channel.send(WorkerTask(task.id, task.payload))
-        except (pickle.PicklingError, TypeError) as error:
+        except PICKLING_ERRORS as error:
             raise error
         except OSError as error:
             raise BrokenProcessPool from error
@@ -513,6 +513,7 @@ atexit.register(interpreter_shutdown)
 
 GLOBAL_SHUTDOWN = False
 WORKERS_NAME = 'pebble_pool_worker'
+PICKLING_ERRORS = AttributeError, pickle.PicklingError, TypeError
 
 
 @dataclass

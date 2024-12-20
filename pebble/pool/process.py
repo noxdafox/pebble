@@ -189,7 +189,7 @@ def message_manager_loop(pool_manager: 'PoolManager'):
     context = pool_manager.context
 
     try:
-        # Keep pumping the message pipe as long as the pool manager does. In
+        # Keep pumping the message pipe as long as the pool manager lives. In
         # particular, during the pool stopping procedure we want to avoid any
         # worker from being blocked on writing to the pipe, as this would result
         # in deadlocking on the channel mutex.

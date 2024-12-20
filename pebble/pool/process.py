@@ -189,7 +189,11 @@ def message_manager_loop(pool_manager: 'PoolManager'):
     context = pool_manager.context
 
     try:
-        while context.alive and not GLOBAL_SHUTDOWN:
+        # Keep pumping the message pipe as long as the pool manager does. In
+        # particular, during the pool stopping procedure we want to avoid any
+        # worker from being blocked on writing to the pipe, as this would result
+        # in deadlocking on the channel mutex.
+        while pool_manager.alive and not GLOBAL_SHUTDOWN:
             pool_manager.process_next_message(CONSTS.sleep_unit)
     except BrokenProcessPool:
         context.status = PoolStatus.ERROR
@@ -200,6 +204,7 @@ class PoolManager:
     def __init__(self, context: PoolContext,
                  mp_context: multiprocessing.context.BaseContext):
         self.context = context
+        self.alive = True
         self.task_manager = TaskManager(context.task_queue.task_done)
         self.worker_manager = WorkerManager(context.workers,
                                             context.worker_parameters,
@@ -211,6 +216,7 @@ class PoolManager:
     def stop(self):
         self.worker_manager.close_channels()
         self.worker_manager.stop_workers()
+        self.alive = False
 
     def schedule(self, task: Task):
         """Schedules a new Task in the PoolManager."""

@@ -33,9 +33,10 @@ class BasePool:
     def __init__(self, max_workers: int,
                  max_tasks: int,
                  initializer: Optional[Callable],
-                 initargs: list):
+                 initargs: list,
+                 max_queue_size: int = 0):
         self._context = PoolContext(
-            max_workers, max_tasks, initializer, initargs)
+            max_workers, max_tasks, initializer, initargs,  max_queue_size)
         self._loops = ()
         self._task_counter = itertools.count()
 
@@ -117,11 +118,12 @@ class PoolContext:
     def __init__(self, max_workers: int,
                  max_tasks: int,
                  initializer: Callable,
-                 initargs: list):
+                 initargs: list,
+                 max_queue_size: int = 0):
         self._status = PoolStatus.CREATED
         self.status_mutex = RLock()
 
-        self.task_queue = Queue()
+        self.task_queue = Queue(maxsize=max_queue_size)
         self.workers = max_workers
         self.task_counter = itertools.count()
         self.worker_parameters = Worker(max_tasks, initializer, initargs)
@@ -269,7 +271,7 @@ def chunk_result(future: ProcessFuture, timeout: Optional[float]) -> Any:
     try:
         return future.result(timeout=timeout)
     except BaseException as error:
-        return (error, )
+        return (error,)
 
 
 def run_initializer(initializer: Callable, initargs: list) -> bool:

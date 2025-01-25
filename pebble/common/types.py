@@ -179,6 +179,9 @@ class Consts:
     term_timeout: float = 3
     """On UNIX once a SIGTERM signal is issued to a process,
     the amount of seconds to wait before issuing a SIGKILL signal."""
+    channel_lock_timeout: float = 60
+    """The process pool relies on a pipe protected by a lock.
+    The timeout when attempting to acquire the lock."""
 
 
 try:

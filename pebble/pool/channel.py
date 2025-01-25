@@ -19,8 +19,10 @@ import os
 import select
 import multiprocessing
 
+from typing import Any, Callable
 from contextlib import contextmanager
-from typing import Any, Callable, Tuple
+
+from pebble.common import CONSTS
 
 
 class ChannelError(OSError):
@@ -150,11 +152,15 @@ class ChannelMutex:
 
     def _make_acquire_method(self) -> Callable:
         def unix_acquire() -> bool:
-            return (self.reader_mutex.acquire(timeout=LOCK_TIMEOUT) and
-                    self.writer_mutex.acquire(timeout=LOCK_TIMEOUT))
+            return (
+                self.reader_mutex.acquire(timeout=CONSTS.channel_lock_timeout)
+                and
+                self.writer_mutex.acquire(timeout=CONSTS.channel_lock_timeout)
+            )
 
         def windows_acquire() -> bool:
-            return self.reader_mutex.acquire(timeout=LOCK_TIMEOUT)
+            return self.reader_mutex.acquire(
+                timeout=CONSTS.channel_lock_timeout)
 
         return unix_acquire if os.name != 'nt' else windows_acquire
 
@@ -171,7 +177,7 @@ class ChannelMutex:
     @property
     @contextmanager
     def reader(self):
-        if self.reader_mutex.acquire(timeout=LOCK_TIMEOUT):
+        if self.reader_mutex.acquire(timeout=CONSTS.channel_lock_timeout):
             try:
                 yield self
             finally:
@@ -182,7 +188,7 @@ class ChannelMutex:
     @property
     @contextmanager
     def writer(self):
-        if self.writer_mutex.acquire(timeout=LOCK_TIMEOUT):
+        if self.writer_mutex.acquire(timeout=CONSTS.channel_lock_timeout):
             try:
                 yield self
             finally:
@@ -192,4 +198,3 @@ class ChannelMutex:
 
 
 MILLISECONDS = 1000
-LOCK_TIMEOUT = 60

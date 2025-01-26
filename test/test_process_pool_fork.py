@@ -800,11 +800,11 @@ class TestProcessPoolDeadlockOnNewFutures(unittest.TestCase):
     def setUp(self):
         self.worker_process = pebble.pool.process.worker_process
         pebble.pool.process.worker_process = broken_worker_process_tasks
-        pebble.pool.channel.LOCK_TIMEOUT = 0.1
+        pebble.CONSTS.channel_lock_timeout = 0.1
 
     def tearDown(self):
         pebble.pool.process.worker_process = self.worker_process
-        pebble.pool.channel.LOCK_TIMEOUT = 60
+        pebble.CONSTS.channel_lock_timeout = 60
 
     def test_pool_deadlock_stop(self):
         """Process Pool Fork reading deadlocks are stopping the Pool."""
@@ -820,11 +820,11 @@ class TestProcessPoolDeadlockOnResult(unittest.TestCase):
     def setUp(self):
         self.worker_process = pebble.pool.process.worker_process
         pebble.pool.process.worker_process = broken_worker_process_result
-        pebble.pool.channel.LOCK_TIMEOUT = 0.1
+        pebble.CONSTS.channel_lock_timeout = 0.1
 
     def tearDown(self):
         pebble.pool.process.worker_process = self.worker_process
-        pebble.pool.channel.LOCK_TIMEOUT = 60
+        pebble.CONSTS.channel_lock_timeout = 60
 
     def test_pool_deadlock(self):
         """Process Pool Fork no deadlock if writing worker dies locking channel."""

@@ -1,17 +1,29 @@
 from concurrent.futures import FIRST_COMPLETED, wait
+from dataclasses import dataclass
 import time
 import unittest
 
 from pebble import ProcessPool
-from pebble.common.types import CONSTS
-from pebble.pool.base_pool import PoolStatus
+from pebble.common.types import CONSTS, FutureStatus
 
 def function(argument, sleep_interval):
     time.sleep(sleep_interval)
     return argument
 
+g_pool = None
+
+@dataclass
+class SpamMessage:
+    pass
+
+def flooding_function():
+    workers_channel = g_pool._pool_manager.worker_manager.workers_channel
+    while True:
+        workers_channel.send(SpamMessage())
+
 class TestProcessPoolGeneric(unittest.TestCase):
     def test_big_values_and_cancellation(self):
+        """Test that the pool handles workers with big tasks and can cancel them."""
         # Ideally this should be bigger than the multiprocessing pipe's internal
         # buffer.
         BIG_VALUE = [0] * 10 * 1000 * 1000
@@ -33,3 +45,21 @@ class TestProcessPoolGeneric(unittest.TestCase):
             time.sleep(EPS * CNT / 2)
             pool.stop()
             pool.join()
+
+    def test_message_flood_from_worker(self):
+        """Test that the pool stops despite the worker spamming the message pipe."""
+        with ProcessPool() as pool:
+            # Use a global variable to pass channels to the worker.
+            global g_pool
+            g_pool = pool
+
+            future = pool.schedule(flooding_function)
+
+            # Wait until the worker starts running the (spammy) task.
+            while future._state == FutureStatus.PENDING:
+                time.sleep(0.1)
+            assert future._state == FutureStatus.RUNNING
+
+            pool.stop()
+            pool.join()
+            g_pool = None

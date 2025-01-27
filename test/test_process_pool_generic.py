@@ -58,7 +58,7 @@ class TestProcessPoolGeneric(unittest.TestCase):
             # Wait until the worker starts running the (spammy) task.
             while future._state == FutureStatus.PENDING:
                 time.sleep(0.1)
-            assert future._state == FutureStatus.RUNNING
+            self.assertEqual(future._state, FutureStatus.RUNNING)
 
             pool.stop()
             pool.join()

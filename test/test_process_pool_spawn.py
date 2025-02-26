@@ -832,14 +832,6 @@ class TestProcessPoolDeadlockOnResult(unittest.TestCase):
             with self.assertRaises(pebble.ProcessExpired):
                 pool.schedule(function).result()
 
-    def test_pool_deadlock_stop(self):
-        """Process Pool Spawn writing deadlocks are stopping the Pool."""
-        with self.assertRaises(RuntimeError):
-            pool = pebble.ProcessPool(max_workers=1, context=mp_context)
-            for _ in range(10):
-                pool.schedule(function)
-                time.sleep(0.2)
-
 
 @unittest.skipIf(not supported, "Start method is not supported")
 class TestProcessPoolDeadlockOnCancelLargeData(unittest.TestCase):

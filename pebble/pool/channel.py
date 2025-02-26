@@ -141,7 +141,7 @@ class ChannelMutex:
     def __getstate__(self):
         return self.reader_mutex, self.writer_mutex
 
-    def __setstate__(self, state):
+    def __setstate__(self, state: tuple):
         self.reader_mutex, self.writer_mutex = state
         self.acquire = self._make_acquire_method()
         self.release = self._make_release_method()

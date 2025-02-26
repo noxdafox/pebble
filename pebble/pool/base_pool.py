@@ -76,7 +76,7 @@ class BasePool:
             self.stop()
             self.join()
         else:
-            self._context.task_queue.put(None)
+            self._context.task_queue.put(None)  # Pool termination sentinel
             self._stop_pool()
 
     def _wait_queue_depletion(self, timeout: Optional[float]):

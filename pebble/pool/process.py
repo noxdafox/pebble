@@ -169,7 +169,7 @@ def task_scheduler_loop(pool_manager: 'PoolManager'):
                 else:
                     pool_manager.schedule(task)
             else:
-                task_queue.task_done()
+                task_queue.task_done()  # Termination sentinel received
     except BrokenProcessPool:
         context.status = PoolStatus.ERROR
 
@@ -324,7 +324,7 @@ class TaskManager:
 
     def cancelled_tasks(self) -> tuple:
         return tuple(t for t in dictionary_values(self.tasks)
-                     if t.timestamp != 0 and t.future.cancelled())
+                     if t.started and t.future.cancelled())
 
     @staticmethod
     def timeout(task: Task) -> bool:

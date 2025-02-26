@@ -405,7 +405,7 @@ class WorkerManager:
 
     def maybe_stop_worker(self, worker_id: int) -> bool:
         """Try to stop the assigned worker.
-        Returns True if the worker existed and could be stopped.
+        Returns True if the worker did not exist or could be stopped.
 
         """
         with self.workers_channel.lock(block=False) as locked:

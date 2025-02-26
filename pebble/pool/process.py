@@ -210,7 +210,7 @@ class PoolManager:
 
     def stop(self):
         self.worker_manager.close_channels()
-        self.worker_manager.stop_workers()
+        self.worker_manager.force_stop_workers()
 
     def schedule(self, task: Task):
         """Schedules a new Task in the PoolManager."""
@@ -238,16 +238,16 @@ class PoolManager:
     def update_tasks(self):
         """Handles timing out Tasks."""
         for task in self.task_manager.timeout_tasks():
-            self.worker_manager.stop_worker(task.worker_id)
-            self.task_manager.task_done(
-                task.id,
-                Result(ResultStatus.FAILURE,
-                       TimeoutError("Task timeout", task.timeout)))
+            if self.worker_manager.maybe_stop_worker(task.worker_id):
+                self.task_manager.task_done(
+                    task.id,
+                    Result(ResultStatus.FAILURE,
+                           TimeoutError("Task timeout", task.timeout)))
 
         for task in self.task_manager.cancelled_tasks():
-            self.worker_manager.stop_worker(task.worker_id)
-            self.task_manager.task_done(
-                task.id, Result(ResultStatus.FAILURE, CancelledError()))
+            if self.worker_manager.maybe_stop_worker(task.worker_id):
+                self.task_manager.task_done(
+                    task.id, Result(ResultStatus.FAILURE, CancelledError()))
 
     def update_workers(self):
         """Handles unexpected processes termination."""
@@ -390,9 +390,9 @@ class WorkerManager:
         self.pool_channel.close()
         self.workers_channel.close()
 
-    def stop_workers(self):
+    def force_stop_workers(self):
         for worker_id in tuple(self.workers.keys()):
-            self.stop_worker(worker_id, force=True)
+            stop_process(self.workers.pop(worker_id))
 
     def new_worker(self):
         try:
@@ -403,17 +403,18 @@ class WorkerManager:
         except OSError as error:
             raise BrokenProcessPool from error
 
-    def stop_worker(self, worker_id: int, force=False):
-        try:
-            if force:
-                stop_process(self.workers.pop(worker_id))
-            else:
-                with self.workers_channel.lock:
-                    stop_process(self.workers.pop(worker_id))
-        except ChannelError as error:
-            raise BrokenProcessPool from error
-        except KeyError:
-            return  # worker already expired
+    def maybe_stop_worker(self, worker_id: int) -> bool:
+        """Try to stop the assigned worker.
+        Returns True if the worker existed and could be stopped.
+
+        """
+        with self.workers_channel.lock(block=False) as locked:
+            if locked:
+                worker = self.workers.pop(worker_id, None)
+                if worker is not None:  # Worker have already ended
+                    stop_process(worker)
+
+            return locked
 
 
 def worker_process(params: Worker, channel: WorkerChannel):
@@ -465,7 +466,7 @@ def fetch_task(channel: WorkerChannel) -> Task:
 
 def task_transaction(channel: WorkerChannel) -> Task:
     """Ensures a task is fetched and acknowledged atomically."""
-    with channel.lock:
+    with channel.lock():
         if channel.poll(0):
             task = channel.recv()
             channel.send(Acknowledgement(os.getpid(), task.id))

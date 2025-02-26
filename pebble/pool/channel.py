@@ -114,11 +114,16 @@ class WorkerChannel(Channel):
 
         return unix_send if os.name != 'nt' else windows_send
 
-    @property
     @contextmanager
-    def lock(self):
-        with self.mutex:
-            yield self
+    def lock(self, block: bool = True, timeout: int = None) -> bool:
+        """Lock the channel, yields True if channel is locked."""
+        acquired = self.mutex.acquire(block=block, timeout=timeout)
+
+        try:
+            yield acquired
+        finally:
+            if acquired:
+                self.mutex.release()
 
     def initialize(self):
         """Close unused connections."""
@@ -151,32 +156,45 @@ class ChannelMutex:
         self.release()
 
     def _make_acquire_method(self) -> Callable:
-        def unix_acquire() -> bool:
-            return (
-                self.reader_mutex.acquire(timeout=CONSTS.channel_lock_timeout)
-                and
-                self.writer_mutex.acquire(timeout=CONSTS.channel_lock_timeout)
-            )
+        def unix_acquire(
+                block: bool = True, timeout: int = CONSTS.channel_lock_timeout
+        ) -> bool:
+            """Acquire both locks. Returns True if both locks where acquired.
+            Otherwise, handle the locks state.
 
-        def windows_acquire() -> bool:
-            return self.reader_mutex.acquire(
-                timeout=CONSTS.channel_lock_timeout)
+            """
+            if self.reader_mutex.acquire(block=block, timeout=timeout):
+                if self.writer_mutex.acquire(block=block, timeout=timeout):
+                    return True
 
-        return unix_acquire if os.name != 'nt' else windows_acquire
+                self.reader_mutex.release()
+
+            return False
+
+        def windows_acquire(
+                block: bool = True, timeout: int = CONSTS.channel_lock_timeout
+        ) -> bool:
+            """Acquire the reader lock (on NT OS, writes are atomic)."""
+            return self.reader_mutex.acquire(block=block, timeout=timeout)
+
+        return windows_acquire if os.name == 'nt' else unix_acquire
 
     def _make_release_method(self) -> Callable:
         def unix_release():
+            """Release both the locks."""
             self.reader_mutex.release()
             self.writer_mutex.release()
 
         def windows_release():
+            """Release the reader lock (on NT OS, writes are atomic)."""
             self.reader_mutex.release()
 
-        return unix_release if os.name != 'nt' else windows_release
+        return windows_release if os.name == 'nt' else unix_release
 
     @property
     @contextmanager
     def reader(self):
+        """Reader lock context manager."""
         if self.reader_mutex.acquire(timeout=CONSTS.channel_lock_timeout):
             try:
                 yield self
@@ -188,6 +206,7 @@ class ChannelMutex:
     @property
     @contextmanager
     def writer(self):
+        """Writer lock context manager."""
         if self.writer_mutex.acquire(timeout=CONSTS.channel_lock_timeout):
             try:
                 yield self

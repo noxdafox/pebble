@@ -6,6 +6,7 @@ import signal
 import asyncio
 import unittest
 import threading
+import concurrent
 import dataclasses
 import multiprocessing
 
@@ -775,3 +776,68 @@ class TestAsyncIOProcessPool(unittest.TestCase):
 
         with ProcessPool(max_workers=1, context=mp_context) as pool:
             asyncio.run(test(pool))
+
+
+# DEADLOCK TESTS
+
+
+def broken_worker_process_tasks(_, channel):
+    """Process failing in receiving new tasks."""
+    with channel.mutex.reader:
+        os._exit(1)
+
+
+def broken_worker_process_result(_, channel):
+    """Process failing in delivering result."""
+    try:
+        for _ in pebble.pool.process.worker_get_next_task(channel, 2):
+            with channel.mutex.writer:
+                os._exit(1)
+    except OSError:
+        os._exit(1)
+
+
+@unittest.skipIf(not supported, "Start method is not supported")
+class TestProcessPoolDeadlockOnNewFutures(unittest.TestCase):
+    def setUp(self):
+        self.worker_process = pebble.pool.process.worker_process
+        pebble.pool.process.worker_process = broken_worker_process_tasks
+        pebble.CONSTS.channel_lock_timeout = 0.1
+
+    def tearDown(self):
+        pebble.pool.process.worker_process = self.worker_process
+        pebble.CONSTS.channel_lock_timeout = 60
+
+    def test_pool_deadlock_stop(self):
+        """Process Pool Forkserver reading deadlocks are stopping the Pool."""
+        with self.assertRaises(RuntimeError):
+            pool = pebble.ProcessPool(max_workers=1, context=mp_context)
+            for _ in range(10):
+                pool.schedule(function)
+                time.sleep(0.2)
+
+
+@unittest.skipIf(not supported, "Start method is not supported")
+class TestProcessPoolDeadlockOnResult(unittest.TestCase):
+    def setUp(self):
+        self.worker_process = pebble.pool.process.worker_process
+        pebble.pool.process.worker_process = broken_worker_process_result
+        pebble.CONSTS.channel_lock_timeout = 0.1
+
+    def tearDown(self):
+        pebble.pool.process.worker_process = self.worker_process
+        pebble.CONSTS.channel_lock_timeout = 60
+
+    def test_pool_deadlock(self):
+        """Process Pool Forkserver no deadlock if writing worker dies locking channel."""
+        with pebble.ProcessPool(max_workers=1, context=mp_context) as pool:
+            with self.assertRaises(pebble.ProcessExpired):
+                pool.schedule(function).result()
+
+    def test_pool_deadlock_stop(self):
+        """Process Pool Forkserver writing deadlocks are stopping the Pool."""
+        with self.assertRaises(RuntimeError):
+            pool = pebble.ProcessPool(max_workers=1, context=mp_context)
+            for _ in range(10):
+                pool.schedule(function)
+                time.sleep(0.2)

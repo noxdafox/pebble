@@ -839,3 +839,20 @@ class TestProcessPoolDeadlockOnResult(unittest.TestCase):
             for _ in range(10):
                 pool.schedule(function)
                 time.sleep(0.2)
+
+
+@unittest.skipIf(not supported, "Start method is not supported")
+class TestProcessPoolDeadlockOnCancelLargeData(unittest.TestCase):
+    def test_pool_deadlock_stop_cancel(self):
+        """Process Pool Spawn is stopped when futures are cancelled on large data."""
+        data = b'A' * 1024 * 1024 * 100
+
+        with pebble.ProcessPool() as pool:
+            futures = [pool.schedule(function, args=[data]) for _ in range(10)]
+            concurrent.futures.wait(
+                futures,
+                return_when=concurrent.futures.FIRST_COMPLETED
+            )
+            for f in futures:
+                f.cancel()
+            pool.stop()

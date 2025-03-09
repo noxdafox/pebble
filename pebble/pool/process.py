@@ -236,7 +236,7 @@ class PoolManager:
         self.update_workers()
 
     def update_tasks(self):
-        """Handles timing out Tasks."""
+        """Handles cancelled and timing out Tasks."""
         for task in self.task_manager.timeout_tasks():
             if self.worker_manager.maybe_stop_worker(task.worker_id):
                 self.task_manager.task_done(
@@ -405,7 +405,8 @@ class WorkerManager:
 
     def maybe_stop_worker(self, worker_id: int) -> bool:
         """Try to stop the assigned worker.
-        Returns True if the worker did not exist or could be stopped.
+        Returns True if the worker was stopped successfully
+        or did already expire by its own.
 
         """
         with self.workers_channel.lock(block=False) as locked:

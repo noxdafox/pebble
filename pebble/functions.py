@@ -82,32 +82,32 @@ def waitforthreads(threads: list, timeout: float = None) -> filter:
     The function returns a list containing the ready *Threads*.
 
     """
-    old_function = None
+    old_get_ident = None
     event = threading.Event()
 
-    def new_function(*args):
-        retval = old_function(*args)
+    def new_get_ident(*args) -> int:
+        retval = old_get_ident(*args)
         event.set()
 
         return retval
 
-    old_function = prepare_threads(new_function)
+    old_get_ident = prepare_threads(new_get_ident)
     try:
         wait_threads(threads, event, timeout)
     finally:
-        reset_threads(old_function)
+        reset_threads(old_get_ident)
 
     return filter(lambda t: not t.is_alive(), threads)
 
 
-def prepare_threads(new_function: Callable) -> Callable:
+def prepare_threads(new_get_ident: Callable) -> Callable:
     """Replaces threading.get_ident() function in order to notify
     the waiting Condition."""
     with threading._active_limbo_lock:
-        old_function = threading.get_ident
-        threading.get_ident = new_function
+        old_get_ident = threading.get_ident
+        threading.get_ident = new_get_ident
 
-        return old_function
+        return old_get_ident
 
 
 def wait_threads(threads: list,

@@ -83,7 +83,7 @@ def waitforthreads(threads: list, timeout: float = None) -> filter:
 
     """
     old_function = None
-    lock = threading.Condition(threading.Lock())
+    event = threading.Event()
 
     def new_function(*args):
         retval = old_function(*args)
@@ -93,7 +93,7 @@ def waitforthreads(threads: list, timeout: float = None) -> filter:
 
     old_function = prepare_threads(new_function)
     try:
-        wait_threads(threads, lock, timeout)
+        wait_threads(threads, event, timeout)
     finally:
         reset_threads(old_function)
 
@@ -111,18 +111,17 @@ def prepare_threads(new_function: Callable) -> Callable:
 
 
 def wait_threads(threads: list,
-                 lock: threading.Condition,
+                 event: threading.Event,
                  timeout: Optional[float]):
     timestamp = time()
 
-    with lock:
-        while not any(map(lambda t: not t.is_alive(), threads)):
-            if timeout is None:
-                lock.wait()
-            elif timeout - (time() - timestamp) > 0:
-                lock.wait(timeout - (time() - timestamp))
-            else:
-                return
+    while not any(map(lambda t: not t.is_alive(), threads)):
+        if timeout is None:
+            event.wait()
+        elif timeout - (time() - timestamp) > 0:
+            event.wait(timeout - (time() - timestamp))
+        else:
+            return
 
 
 def reset_threads(old_function: Callable):

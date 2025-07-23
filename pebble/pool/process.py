@@ -490,6 +490,7 @@ def process_chunk(function: Callable, chunk: list) -> list:
     return [process_execute(function, *args) for args in chunk]
 
 
+@atexit.register
 def interpreter_shutdown():
     global GLOBAL_SHUTDOWN
     GLOBAL_SHUTDOWN = True
@@ -508,9 +509,6 @@ def dictionary_values(dictionary: dict) -> tuple:
             return tuple(dictionary.values())
         except RuntimeError:  # race condition
             pass
-
-
-atexit.register(interpreter_shutdown)
 
 
 GLOBAL_SHUTDOWN = False

@@ -144,15 +144,12 @@ class TestWaitForThreads(unittest.TestCase):
         """Waitforthreads get_ident is restored to original one."""
         if hasattr(threading, 'get_ident'):
             expected = threading.get_ident
-        else:
-            expected = threading._get_ident
+
         thread = launch_thread(None, thread_function, True, 0)
         time.sleep(0.01)
         waitforthreads([thread])
         if hasattr(threading, 'get_ident'):
             self.assertEqual(threading.get_ident, expected)
-        else:
-            self.assertEqual(threading._get_ident, expected)
 
     def test_waitforthreads_spurious(self):
         """Waitforthreads tolerates spurious wakeups."""

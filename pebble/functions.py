@@ -20,8 +20,6 @@ from time import time
 from types import MethodType
 from typing import Callable, Optional
 
-_waitforthreads_lock = threading.Lock()
-
 
 def waitforqueues(queues: list, timeout: float = None) -> filter:
     """Waits for one or more *Queue* to be ready or until *timeout* expires.
@@ -102,9 +100,9 @@ def waitforthreads(threads: list, timeout: float = None) -> filter:
 
 
 def prepare_threads(new_function: Callable) -> Callable:
-    """Replaces threading._get_ident() function in order to notify
+    """Replaces threading.get_ident() function in order to notify
     the waiting Condition."""
-    with _waitforthreads_lock:
+    with threading._active_limbo_lock:
         old_function = threading.get_ident
         threading.get_ident = new_function
 
@@ -128,7 +126,7 @@ def wait_threads(threads: list,
 
 def reset_threads(old_function: Callable):
     """Resets original threading.get_ident() function."""
-    with _waitforthreads_lock:
+    with threading._active_limbo_lock:
         threading.get_ident = old_function
 
 

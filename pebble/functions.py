@@ -86,9 +86,10 @@ def waitforthreads(threads: list, timeout: float = None) -> filter:
     lock = threading.Condition(threading.Lock())
 
     def new_function(*args):
-        old_function(*args)
-        with lock:
-            lock.notify_all()
+        retval = old_function(*args)
+        event.set()
+
+        return retval
 
     old_function = prepare_threads(new_function)
     try:

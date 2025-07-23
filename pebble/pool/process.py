@@ -22,7 +22,7 @@ import pickle
 import multiprocessing
 
 from itertools import count
-from dataclasses import dataclass
+from dataclasses import astuple, dataclass
 from typing import Any, Callable, Optional
 from concurrent.futures.process import BrokenProcessPool
 from concurrent.futures import CancelledError, TimeoutError
@@ -430,16 +430,19 @@ def worker_process(params: Worker, channel: WorkerChannel):
             os._exit(1)
 
     try:
-        for task in worker_get_next_task(channel, params.max_tasks):
-            payload = task.payload
-            result = process_execute(
-                payload.function, *payload.args, **payload.kwargs)
-            send_result(channel, TaskResult(task.id, result))
+        process_tasks(params, channel)
     except (OSError, RuntimeError) as error:
-        errno = getattr(error, 'errno', 1)
-        os._exit(errno if isinstance(errno, int) else 1)
-    except EOFError as error:
-        os._exit(0)
+        os._exit(getattr(error, 'errno', None) or 1)
+    except EOFError:  # pipe closed on main loop
+        pass
+
+
+def process_tasks(params: Worker, channel: WorkerChannel):
+    for task in worker_get_next_task(channel, params.max_tasks):
+        function, args, kwargs = astuple(task.payload)
+        result = process_execute(function, *args, **kwargs)
+
+        send_result(channel, TaskResult(task.id, result))
 
 
 def worker_get_next_task(channel: WorkerChannel, max_tasks: int):

@@ -582,6 +582,13 @@ class TestProcessPool(unittest.TestCase):
             future = pool.schedule(pebble_function)
         self.assertEqual(future.result(), 1)
 
+    def test_process_pool_pickle_function(self):
+        """Process Pool Spawn picklable functions."""
+        queue = mp_context.Manager().Queue()
+        with ProcessPool(max_workers=1, context=mp_context) as pool:
+            pool.schedule(queue.put, args=[1])
+        self.assertEqual(queue.get(timeout=1), 1)
+
 
 @unittest.skipIf(not supported, "Start method is not supported")
 class TestAsyncIOProcessPool(unittest.TestCase):

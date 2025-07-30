@@ -1,5 +1,5 @@
 __author__ = 'Matteo Cafasso'
-__version__ = '5.1.2'
+__version__ = '5.1.3'
 __license__ = 'LGPL'
 
 

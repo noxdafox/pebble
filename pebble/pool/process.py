@@ -22,7 +22,7 @@ import pickle
 import multiprocessing
 
 from itertools import count
-from dataclasses import astuple, dataclass
+from dataclasses import dataclass
 from typing import Any, Callable, Optional
 from concurrent.futures.process import BrokenProcessPool
 from concurrent.futures import CancelledError, TimeoutError
@@ -439,8 +439,9 @@ def worker_process(params: Worker, channel: WorkerChannel):
 
 def process_tasks(params: Worker, channel: WorkerChannel):
     for task in worker_get_next_task(channel, params.max_tasks):
-        function, args, kwargs = astuple(task.payload)
-        result = process_execute(function, *args, **kwargs)
+        result = process_execute(task.payload.function,
+                                 *task.payload.args,
+                                 **task.payload.kwargs)
 
         send_result(channel, TaskResult(task.id, result))
 

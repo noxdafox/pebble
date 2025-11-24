@@ -116,7 +116,7 @@ def pool_function():
 
 
 def pebble_function():
-    with ProcessPool(max_workers=1) as pool:
+    with ProcessPool(max_workers=1, context=mp_context) as pool:
         f = pool.schedule(function, args=[1])
 
     return f.result()
@@ -846,7 +846,7 @@ class TestProcessPoolDeadlockOnCancelLargeData(unittest.TestCase):
         """Process Pool Spawn is stopped when futures are cancelled on large data."""
         data = b'A' * 1024 * 1024 * 100
 
-        with pebble.ProcessPool() as pool:
+        with pebble.ProcessPool(context=mp_context) as pool:
             futures = [pool.schedule(function, args=[data]) for _ in range(10)]
             concurrent.futures.wait(
                 futures,

@@ -107,6 +107,7 @@ def process_function():
 
 
 def pool_function():
+    signal.signal(signal.SIGTERM, lambda _n, _s: sys.exit(0))
     pool = multiprocessing.Pool(1)
     result = pool.apply(function, args=[1])
     pool.close()
@@ -116,6 +117,7 @@ def pool_function():
 
 
 def pebble_function():
+    signal.signal(signal.SIGTERM, lambda _n, _s: sys.exit(0))
     with ProcessPool(max_workers=1, context=mp_context) as pool:
         f = pool.schedule(function, args=[1])
 

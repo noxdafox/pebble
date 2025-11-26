@@ -79,14 +79,12 @@ def function_handler(
         function: Callable,
         args: list,
         kwargs: dict,
-        pipe: multiprocessing.Pipe
+        writer: multiprocessing.Pipe
 ):
     """Runs the actual function in separate process and returns its result."""
     signal.signal(signal.SIGINT, signal.SIG_IGN)
     signal.signal(signal.SIGTERM, signal.SIG_DFL)
 
-    reader, writer = pipe
-    reader.close()
 
     result = process_execute(function, *args, **kwargs)
 

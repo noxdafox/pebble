@@ -96,13 +96,11 @@ def _process_wrapper(
         else:
             future = common.ProcessFuture()
             reader, writer = mp_context.Pipe(duplex=False)
-
             worker = common.launch_process(
                 name, common.function_handler, daemon, mp_context,
-                target, args, kwargs, (reader, writer))
+                target, args, kwargs, writer)
 
             writer.close()
-
             future.set_running_or_notify_cancel()
 
             common.launch_thread(

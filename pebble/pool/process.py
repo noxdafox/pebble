@@ -206,6 +206,7 @@ class PoolManager:
                                             mp_context)
 
     def start(self):
+        self.worker_manager.create_channels()
         self.worker_manager.create_workers()
 
     def stop(self):
@@ -346,8 +347,9 @@ class WorkerManager:
         self.workers = {}
         self.workers_number = workers
         self.worker_parameters = worker_parameters
-        self.pool_channel, self.workers_channel = channels(mp_context)
         self.mp_context = mp_context
+        self.pool_channel = None
+        self.workers_channel = None
 
     def dispatch(self, task: Task):
         try:
@@ -382,13 +384,18 @@ class WorkerManager:
 
         return tuple((w.pid, w.exitcode) for w in expired if w.exitcode != 0)
 
+    def create_channels(self):
+        self.pool_channel, self.workers_channel = channels(self.mp_context)
+
+    def close_channels(self):
+        if self.pool_channel is not None:
+            self.pool_channel.close()
+        if self.workers_channel is not None:
+            self.workers_channel.close()
+
     def create_workers(self):
         for _ in range(self.workers_number - len(self.workers)):
             self.new_worker()
-
-    def close_channels(self):
-        self.pool_channel.close()
-        self.workers_channel.close()
 
     def force_stop_workers(self):
         for worker_id in tuple(self.workers.keys()):

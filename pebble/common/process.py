@@ -31,7 +31,8 @@ from pebble.common.types import Result, ResultStatus, RemoteException, CONSTS
 def launch_process(
         name: str,
         function: Callable,
-        daemon: bool, mp_context: multiprocessing.context,
+        daemon: bool,
+        mp_context: multiprocessing.context,
         *args,
         **kwargs
 ) -> multiprocessing.Process:
@@ -83,8 +84,7 @@ def function_handler(
 ):
     """Runs the actual function in separate process and returns its result."""
     signal.signal(signal.SIGINT, signal.SIG_IGN)
-    signal.signal(signal.SIGTERM, signal.SIG_DFL)
-
+    signal.signal(signal.SIGTERM, process_exit)
 
     result = process_execute(function, *args, **kwargs)
 

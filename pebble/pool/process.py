@@ -32,9 +32,9 @@ from pebble.pool.base_pool import PoolContext, BasePool, Task, TaskPayload
 from pebble.pool.base_pool import PoolStatus, ProcessMapFuture, map_results
 from pebble.pool.channel import ChannelError, WorkerChannel, channels
 from pebble.common import Result, ResultStatus, CONSTS
-from pebble.common import launch_process, stop_process
 from pebble.common import ProcessExpired, ProcessFuture
 from pebble.common import process_execute, launch_thread
+from pebble.common import launch_process, stop_process, process_exit
 
 
 class ProcessPool(BasePool):
@@ -428,18 +428,18 @@ class WorkerManager:
 def worker_process(params: Worker, channel: WorkerChannel):
     """The worker process routines."""
     signal.signal(signal.SIGINT, signal.SIG_IGN)
-    signal.signal(signal.SIGTERM, signal.SIG_DFL)
+    signal.signal(signal.SIGTERM, process_exit)
 
     channel.initialize()
 
     if params.initializer is not None:
         if not run_initializer(params.initializer, params.initargs):
-            os._exit(1)
+            process_exit(1)
 
     try:
         process_tasks(params, channel)
     except (OSError, RuntimeError) as error:
-        os._exit(getattr(error, 'errno', None) or 1)
+        process_exit(getattr(error, 'errno', None) or 1)
     except EOFError:  # pipe closed on main loop
         pass
 

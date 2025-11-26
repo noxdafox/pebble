@@ -91,6 +91,12 @@ def function_handler(
     send_result(writer, result)
 
 
+def process_exit(exitcode, *_):
+    """Ensure mltiprocessing cleanup is performed to avoid resources leak."""
+    multiprocessing.util._exit_function()
+    os._exit(exitcode)
+
+
 ################################################################################
 # Spawn process start method handling logic.                                   #
 #                                                                              #

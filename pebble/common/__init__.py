@@ -9,6 +9,6 @@ from pebble.common.types import ThreadDecoratorReturnType
 from pebble.common.types import ThreadDecoratorParamsReturnType
 from pebble.common.types import ProcessDecoratorReturnType
 from pebble.common.types import ProcessDecoratorParamsReturnType
-from pebble.common.process import launch_process, stop_process
+from pebble.common.process import launch_process, stop_process, process_exit
 from pebble.common.process import register_function, maybe_install_trampoline
 from pebble.common.process import process_execute, send_result, function_handler

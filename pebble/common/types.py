@@ -22,7 +22,6 @@ from concurrent.futures import Future
 from typing import Any, TypeVar, Callable
 
 
-P = TypeVar("P")
 T = TypeVar("T")
 
 
@@ -185,17 +184,21 @@ class Consts:
 
 
 try:
-    CallableType = Callable[[P], T]
-    AsyncIODecoratorReturnType = Callable[[P], asyncio.Future[T]]
-    AsyncIODecoratorParamsReturnType = Callable[[Callable[[P], T]],
-                                                Callable[[P], asyncio.Future[T]]]
-    ThreadDecoratorReturnType = Callable[[P], Future[T]]
-    ThreadDecoratorParamsReturnType = Callable[[Callable[[P], T]],
-                                               Callable[[P], Future[T]]]
-    ProcessDecoratorReturnType = Callable[[P], ProcessFuture[T]]
-    ProcessDecoratorParamsReturnType = Callable[[Callable[[P], T]],
-                                                Callable[[P], ProcessFuture[T]]]
-except TypeError:
+    from typing_extensions import ParamSpec
+    P = ParamSpec("P")
+    CallableType = Callable[P, T]
+    AsyncIODecoratorReturnType = Callable[P, asyncio.Future[T]]
+    AsyncIODecoratorParamsReturnType = Callable[[Callable[P, T]],
+                                                Callable[P, asyncio.Future[T]]]
+    ThreadDecoratorReturnType = Callable[P, Future[T]]
+    ThreadDecoratorParamsReturnType = Callable[[Callable[P, T]],
+                                               Callable[P, Future[T]]]
+    ProcessDecoratorReturnType = Callable[P, ProcessFuture[T]]
+    ProcessDecoratorParamsReturnType = Callable[[Callable[P, T]],
+                                                Callable[P, ProcessFuture[T]]]
+except (TypeError, ImportError):
+    P = TypeVar("P")
+    CallableType = Callable
     ReturnType = Callable
     AsyncIODecoratorReturnType = Callable
     AsyncIODecoratorParamsReturnType = Callable

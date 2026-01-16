@@ -27,10 +27,10 @@ from typing import Any, Callable, Optional
 from concurrent.futures.process import BrokenProcessPool
 from concurrent.futures import CancelledError, TimeoutError
 
+from pebble.pool.channel import WorkerChannel, channels
 from pebble.pool.base_pool import Worker, iter_chunks, run_initializer
 from pebble.pool.base_pool import PoolContext, BasePool, Task, TaskPayload
 from pebble.pool.base_pool import PoolStatus, ProcessMapFuture, map_results
-from pebble.pool.channel import ChannelError, WorkerChannel, channels
 from pebble.common import Result, ResultStatus, CONSTS
 from pebble.common import ProcessExpired, ProcessFuture
 from pebble.common import process_execute, launch_thread

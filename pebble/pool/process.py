@@ -378,7 +378,9 @@ class WorkerManager:
                 return self.pool_channel.recv()
             else:
                 return NoMessage()
-        except (OSError, TypeError) as error:
+        except PICKLING_ERRORS as error:
+            raise BrokenProcessPool("Unpicklable object from worker") from error
+        except OSError as error:
             raise BrokenProcessPool from error
         except EOFError:  # Pool shutdown
             return NoMessage()

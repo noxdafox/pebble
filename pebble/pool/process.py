@@ -155,12 +155,11 @@ class ProcessPool(BasePool):
 
 
 def task_scheduler_loop(pool_manager: 'PoolManager'):
-    context = pool_manager.context
-    task_queue = context.task_queue
+    task_queue = pool_manager.context.task_queue
 
     try:
-        while context.alive and not GLOBAL_SHUTDOWN:
-            task = task_queue.get()
+        while pool_manager.context.alive and not GLOBAL_SHUTDOWN:
+            task = pool_manager.context.task_queue.get()
 
             if task is not None:
                 if task.future.cancelled():
@@ -170,29 +169,25 @@ def task_scheduler_loop(pool_manager: 'PoolManager'):
                     pool_manager.schedule(task)
             else:
                 task_queue.task_done()  # Termination sentinel received
-    except BrokenProcessPool:
-        context.status = PoolStatus.ERROR
+    except BrokenProcessPool as error:
+        pool_manager.handle_broken_pool(error)
 
 
 def pool_manager_loop(pool_manager: 'PoolManager'):
-    context = pool_manager.context
-
     try:
-        while context.alive and not GLOBAL_SHUTDOWN:
+        while pool_manager.context.alive and not GLOBAL_SHUTDOWN:
             pool_manager.update_status()
             time.sleep(CONSTS.sleep_unit)
-    except BrokenProcessPool:
-        context.status = PoolStatus.ERROR
+    except BrokenProcessPool as error:
+        pool_manager.handle_broken_pool(error)
 
 
 def message_manager_loop(pool_manager: 'PoolManager'):
-    context = pool_manager.context
-
     try:
-        while context.alive and not GLOBAL_SHUTDOWN:
+        while pool_manager.context.alive and not GLOBAL_SHUTDOWN:
             pool_manager.process_next_message(CONSTS.sleep_unit)
-    except BrokenProcessPool:
-        context.status = PoolStatus.ERROR
+    except BrokenProcessPool as error:
+        pool_manager.handle_broken_pool(error)
 
 
 class PoolManager:

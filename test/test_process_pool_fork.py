@@ -10,6 +10,7 @@ import concurrent
 import dataclasses
 import multiprocessing
 
+from concurrent.futures.process import BrokenProcessPool
 from concurrent.futures import CancelledError, TimeoutError
 
 import pebble
@@ -64,6 +65,19 @@ def error_function():
 
 def return_error_function():
     return BaseException("BOOM!")
+
+
+def unpickleable_error_function():
+    raise UnpickleableException()
+
+
+class UnpickleableException(Exception):
+    """This exception cannot be correctly re-constructed
+    on the main side of the pool.
+    """
+    def __init__(self):
+        self.message = "BOOM!"
+        super().__init__(self.message)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -199,6 +213,13 @@ class TestProcessPool(unittest.TestCase):
         with ProcessPool(max_workers=1, context=mp_context) as pool:
             future = pool.schedule(pickle_error_function)
             self.assertRaises((pickle.PicklingError, TypeError), future.result)
+
+    def test_process_pool_broken_pickling_error(self):
+        """Process Pool Fork pickling errors breaking the pool
+        are raised by future.result."""
+        with ProcessPool(max_workers=1, context=mp_context) as pool:
+            future = pool.schedule(unpickleable_error_function)
+            self.assertRaises(BrokenProcessPool, future.result)
 
     def test_process_pool_frozen_error(self):
         """Process Pool Fork frozen errors are raised by future get."""

@@ -277,6 +277,10 @@ class PoolManager:
 
         raise BrokenProcessPool("All workers expired")
 
+    def handle_broken_pool(self, error: BrokenProcessPool):
+        self.context.status = PoolStatus.ERROR
+        self.task_manager.tasks_abort(error)
+
 
 class TaskManager:
     """Manages the tasks flow within the Pool.
@@ -293,10 +297,14 @@ class TaskManager:
         self.tasks[task.id] = task
 
     def task_start(self, task_id: int, worker_id: Optional[int]):
-        task = self.tasks[task_id]
-        task.worker_id = worker_id
-        task.timestamp = time.time()
-        task.set_running_or_notify_cancel()
+        try:
+            task = self.tasks[task_id]
+        except KeyError:
+            return  # task already completed
+        else:
+            task.worker_id = worker_id
+            task.timestamp = time.time()
+            task.set_running_or_notify_cancel()
 
     def task_done(self, task_id: int, result: Result):
         """Set the tasks result and run the callback."""
@@ -318,6 +326,11 @@ class TaskManager:
         """Set the task with the error it caused within the Pool."""
         self.task_start(task_id, None)
         self.task_done(task_id, Result(ResultStatus.ERROR, error))
+
+    def tasks_abort(self, error: Exception):
+        """Abort all tasks due to critical error."""
+        for task_id in dictionary_keys(self.tasks):
+            self.task_problem(task_id, error)
 
     def timeout_tasks(self) -> tuple:
         return tuple(t for t in dictionary_values(self.tasks)
@@ -511,6 +524,15 @@ def interpreter_shutdown():
 
     for worker in workers:
         stop_process(worker)
+
+
+def dictionary_keys(dictionary: dict) -> tuple:
+    """Returns a snapshot of the dictionary keys handling race conditions."""
+    while True:
+        try:
+            return tuple(dictionary.keys())
+        except RuntimeError:  # race condition
+            pass
 
 
 def dictionary_values(dictionary: dict) -> tuple:

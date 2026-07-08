@@ -72,6 +72,7 @@ class Channel:
         return self.writer.send(obj)
 
     def close(self):
+        """Close the channel."""
         self.reader.close()
         self.writer.close()
 
@@ -79,19 +80,19 @@ class Channel:
 class WorkerChannel(Channel):
     def __init__(self, reader: multiprocessing.connection.Connection,
                  writer: multiprocessing.connection.Connection,
-                 unused: tuple,
+                 unused_connections: tuple,
                  mp_context: multiprocessing.context.BaseContext):
         super().__init__(reader, writer)
         self.mutex = ChannelMutex(mp_context)
         self.recv = self._make_recv_method()
         self.send = self._make_send_method()
-        self.unused = unused
+        self.unused_connections = unused_connections
 
     def __getstate__(self) -> tuple:
-        return self.reader, self.writer, self.mutex, self.unused
+        return self.reader, self.writer, self.mutex, self.unused_connections
 
     def __setstate__(self, state: tuple):
-        self.reader, self.writer, self.mutex, self.unused = state
+        self.reader, self.writer, self.mutex, self.unused_connections = state
 
         self.poll = self._make_poll_method()
         self.recv = self._make_recv_method()
@@ -127,8 +128,12 @@ class WorkerChannel(Channel):
 
     def initialize(self):
         """Close unused connections."""
-        for connection in self.unused:
+        for connection in self.unused_connections:
             connection.close()
+
+    def close(self):
+        super().close()
+        self.mutex.unlink()
 
 
 class ChannelMutex:
@@ -190,6 +195,12 @@ class ChannelMutex:
             self.reader_mutex.release()
 
         return windows_release if os.name == 'nt' else unix_release
+
+    def unlink(self):
+        """Ensure named semaphores are cleaned up on Posix OSes using spawn."""
+        del self.reader_mutex
+        del self.writer_mutex
+        self.reader_mutex = self.reader_mutex = None
 
     @property
     @contextmanager

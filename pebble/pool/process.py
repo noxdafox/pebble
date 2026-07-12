@@ -488,7 +488,7 @@ def fetch_task(channel: WorkerChannel) -> Task:
 
 def task_transaction(channel: WorkerChannel) -> Task:
     """Ensures a task is fetched and acknowledged atomically."""
-    with channel.lock():
+    with channel.lock(timeout=CONSTS.channel_lock_timeout):
         if channel.poll(0):
             task = channel.recv()
             channel.send(Acknowledgement(os.getpid(), task.id))

@@ -152,7 +152,7 @@ class ChannelMutex:
         self.release = self._make_release_method()
 
     def __enter__(self):
-        if self.acquire():
+        if self.acquire(timeout=CONSTS.channel_lock_timeout):
             return self
 
         raise ChannelError("Channel mutex time out")
@@ -161,9 +161,7 @@ class ChannelMutex:
         self.release()
 
     def _make_acquire_method(self) -> Callable:
-        def unix_acquire(
-                block: bool = True, timeout: int = CONSTS.channel_lock_timeout
-        ) -> bool:
+        def unix_acquire(block: bool = True, timeout: int = None) -> bool:
             """Acquire both locks. Returns True if both locks where acquired.
             Otherwise, handle the locks state.
 
@@ -176,9 +174,7 @@ class ChannelMutex:
 
             return False
 
-        def windows_acquire(
-                block: bool = True, timeout: int = CONSTS.channel_lock_timeout
-        ) -> bool:
+        def windows_acquire(block: bool = True, timeout: int = None) -> bool:
             """Acquire the reader lock (on NT OS, writes are atomic)."""
             return self.reader_mutex.acquire(block=block, timeout=timeout)
 

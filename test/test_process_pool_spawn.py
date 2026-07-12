@@ -837,7 +837,7 @@ def broken_worker_process_result(channel, *_):
         os._exit(1)
 
 
-@unittest.skipIf(not supported, "Start method is not supported")
+@unittest.skipIf(not supported, "Start method not supported")
 class TestProcessPoolDeadlockOnNewFutures(unittest.TestCase):
     def test_pool_deadlock_stop(self):
         """Process Pool Spawn reading deadlocks are stopping the Pool."""
@@ -858,7 +858,7 @@ class TestProcessPoolDeadlockOnNewFutures(unittest.TestCase):
                 pool.schedule(function, args=[1])
 
 
-@unittest.skipIf(not supported, "Start method is not supported")
+@unittest.skipIf(not supported or os.name == 'nt', "Start method/OS not supported")
 class TestProcessPoolDeadlockOnResult(unittest.TestCase):
     def test_pool_deadlock(self):
         """Process Pool Spawn no deadlock if writing worker dies locking channel."""
@@ -879,7 +879,7 @@ class TestProcessPoolDeadlockOnResult(unittest.TestCase):
                 pool.schedule(function, args=[1])
 
 
-@unittest.skipIf(not supported, "Start method is not supported")
+@unittest.skipIf(not supported, "Start method not supported")
 class TestProcessPoolDeadlockOnCancelLargeData(unittest.TestCase):
     def test_pool_deadlock_stop_cancel(self):
         """Process Pool Spawn is stopped when futures are cancelled on large data."""

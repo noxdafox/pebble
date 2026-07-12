@@ -808,60 +808,72 @@ class TestAsyncIOProcessPool(unittest.TestCase):
 
 
 # DEADLOCK TESTS
-
-
-def broken_worker_process_tasks(_, channel):
+def broken_worker_process_tasks(channel, *_):
     """Process failing in receiving new tasks."""
     with channel.mutex.reader:
         os._exit(1)
 
 
-def broken_worker_process_result(_, channel):
+def broken_worker_process_result(channel, *_):
     """Process failing in delivering result."""
-    try:
-        for _ in pebble.pool.process.worker_get_next_task(channel, 2):
-            with channel.mutex.writer:
-                os._exit(1)
-    except OSError:
+    with channel.mutex.writer:
         os._exit(1)
 
 
 @unittest.skipIf(not supported, "Start method is not supported")
 class TestProcessPoolDeadlockOnNewFutures(unittest.TestCase):
     def setUp(self):
-        self.worker_process = pebble.pool.process.worker_process
-        pebble.pool.process.worker_process = broken_worker_process_tasks
+        self.send_results = pebble.pool.process.send_result
+        pebble.pool.process.send_result = broken_worker_process_tasks
         pebble.CONSTS.channel_lock_timeout = 0.1
 
     def tearDown(self):
-        pebble.pool.process.worker_process = self.worker_process
+        pebble.pool.process.send_result = self.send_results
         pebble.CONSTS.channel_lock_timeout = 60
 
     def test_pool_deadlock_stop(self):
         """Process Pool Fork reading deadlocks are stopping the Pool."""
-        with self.assertRaises(RuntimeError):
-            pool = pebble.ProcessPool(max_workers=1, context=mp_context)
-            for _ in range(10):
-                pool.schedule(function)
-                time.sleep(0.2)
+        with pebble.ProcessPool(max_workers=1, context=mp_context) as pool:
+            # First task crashes the worker
+            f = pool.schedule(function, args=[1])
+            self.assertRaises(ProcessExpired, f.result)
+            time.sleep(0.1)
+            # Second task acknowledges the pool to be broken
+            f = pool.schedule(function, args=[1])
+            self.assertRaises(BrokenProcessPool, f.result)
+            time.sleep(0.1)
+            # Third task cannot be scheduled since the pool is broken
+            with self.assertRaisesRegex(RuntimeError,
+                                        "Unexpected error within the Pool"):
+                pool.schedule(function, args=[1])
 
 
 @unittest.skipIf(not supported, "Start method is not supported")
 class TestProcessPoolDeadlockOnResult(unittest.TestCase):
     def setUp(self):
-        self.worker_process = pebble.pool.process.worker_process
-        pebble.pool.process.worker_process = broken_worker_process_result
+        self.send_results = pebble.pool.process.send_result
+        pebble.pool.process.send_result = broken_worker_process_result
         pebble.CONSTS.channel_lock_timeout = 0.1
 
     def tearDown(self):
-        pebble.pool.process.worker_process = self.worker_process
+        pebble.pool.process.send_result = self.send_results
         pebble.CONSTS.channel_lock_timeout = 60
 
     def test_pool_deadlock(self):
         """Process Pool Fork no deadlock if writing worker dies locking channel."""
         with pebble.ProcessPool(max_workers=1, context=mp_context) as pool:
-            with self.assertRaises(pebble.ProcessExpired):
-                pool.schedule(function).result()
+            # First task crashes the worker
+            f = pool.schedule(function, args=[1])
+            self.assertRaises(ProcessExpired, f.result)
+            time.sleep(0.1)
+            # Second task acknowledges the pool to be broken
+            f = pool.schedule(function, args=[1])
+            self.assertRaises(BrokenProcessPool, f.result)
+            time.sleep(0.1)
+            # Third task cannot be scheduled since the pool is broken
+            with self.assertRaisesRegex(RuntimeError,
+                                        "Unexpected error within the Pool"):
+                pool.schedule(function, args=[1])
 
 
 @unittest.skipIf(not supported, "Start method is not supported")

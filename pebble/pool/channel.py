@@ -196,7 +196,7 @@ class ChannelMutex:
         """Ensure named semaphores are cleaned up on Posix OSes using spawn."""
         del self.reader_mutex
         del self.writer_mutex
-        self.reader_mutex = self.reader_mutex = None
+        self.reader_mutex = self.writer_mutex = None
 
     @property
     @contextmanager

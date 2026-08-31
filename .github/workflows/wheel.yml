@@ -1,12 +1,12 @@
-name: Types
-on: [push, pull_request]
+name: Dist
+on: [push]
 jobs:
-  typecheck:
+  wheel:
     runs-on: 'ubuntu-latest'
 
     strategy:
       matrix:
-        python-version: ['3.10', '3.14']
+        python-version: ['3.14']
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -16,7 +16,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip pyright
-      - name: Run check
+          python -m pip install --upgrade pip build pytest
+      - name: Build wheel package
         run: |
-          python -m pyright pebble/
+          python -m build --sdist --wheel

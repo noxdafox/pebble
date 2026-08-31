@@ -23,6 +23,8 @@ setup(
     keywords="thread process pool decorator",
     url="https://github.com/noxdafox/pebble",
     packages=find_packages(exclude=["test"]),
+    package_data={"pebble": ["py.typed"]},
+    zip_safe=False,
     long_description=open(os.path.join(CWD, 'README.rst')).read(),
     python_requires=">=3.8",
     classifiers=[

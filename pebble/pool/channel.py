@@ -19,8 +19,10 @@ import os
 import select
 import multiprocessing
 
-from typing import Any, Callable
+from types import ModuleType
 from contextlib import contextmanager
+from multiprocessing import connection
+from typing import Any, Callable, Iterator
 
 from pebble.common import CONSTS
 
@@ -29,7 +31,7 @@ class ChannelError(OSError):
     """Error occurring within the process channel."""
 
 
-def channels(mp_context: multiprocessing.context.BaseContext) -> tuple:
+def channels(mp_context: ModuleType) -> tuple:
     read0, write0 = mp_context.Pipe(duplex=False)
     read1, write1 = mp_context.Pipe(duplex=False)
 
@@ -38,14 +40,14 @@ def channels(mp_context: multiprocessing.context.BaseContext) -> tuple:
 
 
 class Channel:
-    def __init__(self, reader: multiprocessing.connection.Connection,
-                 writer: multiprocessing.connection.Connection):
+    def __init__(self, reader: connection.Connection,
+                 writer: connection.Connection):
         self.reader = reader
         self.writer = writer
         self.poll = self._make_poll_method()
 
     def _make_poll_method(self):
-        def unix_poll(timeout: float = None) -> bool:
+        def unix_poll(timeout: float | None = None) -> bool:
             readonly_mask = (select.POLLIN  |
                              select.POLLPRI |
                              select.POLLHUP |
@@ -60,7 +62,7 @@ class Channel:
 
             return bool(poll.poll(timeout))
 
-        def windows_poll(timeout: float = None) -> bool:
+        def windows_poll(timeout: float | None = None) -> bool:
             return self.reader.poll(timeout)
 
         return unix_poll if os.name != 'nt' else windows_poll
@@ -78,15 +80,18 @@ class Channel:
 
 
 class WorkerChannel(Channel):
-    def __init__(self, reader: multiprocessing.connection.Connection,
-                 writer: multiprocessing.connection.Connection,
-                 unused_connections: tuple,
-                 mp_context: multiprocessing.context.BaseContext):
+    def __init__(
+            self,
+            reader: connection.Connection,
+            writer: connection.Connection,
+            unused_connections: tuple,
+            mp_context: ModuleType
+    ):
         super().__init__(reader, writer)
-        self.mutex = ChannelMutex(mp_context)
-        self.recv = self._make_recv_method()
-        self.send = self._make_send_method()
-        self.unused_connections = unused_connections
+        self.mutex: ChannelMutex = ChannelMutex(mp_context)
+        self.recv: Callable = self._make_recv_method()
+        self.send: Callable = self._make_send_method()
+        self.unused_connections: tuple = unused_connections
 
     def __getstate__(self) -> tuple:
         return self.reader, self.writer, self.mutex, self.unused_connections
@@ -94,9 +99,9 @@ class WorkerChannel(Channel):
     def __setstate__(self, state: tuple):
         self.reader, self.writer, self.mutex, self.unused_connections = state
 
-        self.poll = self._make_poll_method()
-        self.recv = self._make_recv_method()
-        self.send = self._make_send_method()
+        self.poll: Callable = self._make_poll_method()
+        self.recv: Callable = self._make_recv_method()  # type: ignore[no-redef]
+        self.send: Callable = self._make_send_method()  # type: ignore[no-redef]
 
     def _make_recv_method(self) -> Callable:
         def recv():
@@ -116,7 +121,7 @@ class WorkerChannel(Channel):
         return unix_send if os.name != 'nt' else windows_send
 
     @contextmanager
-    def lock(self, block: bool = True, timeout: int = None) -> bool:
+    def lock(self, block: bool = True, timeout: float | None = None) -> Iterator[bool]:
         """Lock the channel, yields True if channel is locked."""
         acquired = self.mutex.acquire(block=block, timeout=timeout)
 
@@ -137,11 +142,12 @@ class WorkerChannel(Channel):
 
 
 class ChannelMutex:
-    def __init__(self, mp_context: multiprocessing.context.BaseContext):
+    def __init__(self, mp_context: ModuleType):
+        # Not typing locks until multiprocessing and threading fixes it
         self.reader_mutex = mp_context.RLock()
         self.writer_mutex = mp_context.RLock() if os.name != 'nt' else None
-        self.acquire = self._make_acquire_method()
-        self.release = self._make_release_method()
+        self.acquire: Callable = self._make_acquire_method()
+        self.release: Callable = self._make_release_method()
 
     def __getstate__(self):
         return self.reader_mutex, self.writer_mutex
@@ -161,34 +167,34 @@ class ChannelMutex:
         self.release()
 
     def _make_acquire_method(self) -> Callable:
-        def unix_acquire(block: bool = True, timeout: int = None) -> bool:
+        def unix_acquire(block: bool = True, timeout: int | None = None) -> bool:
             """Acquire both locks. Returns True if both locks where acquired.
             Otherwise, handle the locks state.
 
             """
-            if self.reader_mutex.acquire(block=block, timeout=timeout):
-                if self.writer_mutex.acquire(block=block, timeout=timeout):
+            if self.reader_mutex.acquire(block=block, timeout=timeout):  # type: ignore[union-attr]
+                if self.writer_mutex.acquire(block=block, timeout=timeout):  # type: ignore[union-attr]
                     return True
 
-                self.reader_mutex.release()
+                self.reader_mutex.release()  # type: ignore[union-attr]
 
             return False
 
-        def windows_acquire(block: bool = True, timeout: int = None) -> bool:
+        def windows_acquire(block: bool = True, timeout: int | None = None) -> bool:
             """Acquire the reader lock (on NT OS, writes are atomic)."""
-            return self.reader_mutex.acquire(block=block, timeout=timeout)
+            return self.reader_mutex.acquire(block=block, timeout=timeout)  # type: ignore[union-attr]
 
         return windows_acquire if os.name == 'nt' else unix_acquire
 
     def _make_release_method(self) -> Callable:
         def unix_release():
             """Release both the locks."""
-            self.reader_mutex.release()
-            self.writer_mutex.release()
+            self.reader_mutex.release()  # type: ignore[union-attr]
+            self.writer_mutex.release()  # type: ignore[union-attr]
 
         def windows_release():
             """Release the reader lock (on NT OS, writes are atomic)."""
-            self.reader_mutex.release()
+            self.reader_mutex.release()  # type: ignore[union-attr]
 
         return windows_release if os.name == 'nt' else unix_release
 
@@ -196,17 +202,17 @@ class ChannelMutex:
         """Ensure named semaphores are cleaned up on Posix OSes using spawn."""
         del self.reader_mutex
         del self.writer_mutex
-        self.reader_mutex = self.writer_mutex = None
+        self.reader_mutex = self.writer_mutex = None  # type: ignore[assignment]
 
     @property
     @contextmanager
     def reader(self):
         """Reader lock context manager."""
-        if self.reader_mutex.acquire(timeout=CONSTS.channel_lock_timeout):
+        if self.reader_mutex.acquire(timeout=CONSTS.channel_lock_timeout):  # type: ignore[union-attr]
             try:
                 yield self
             finally:
-                self.reader_mutex.release()
+                self.reader_mutex.release()  # type: ignore[union-attr]
         else:
             raise ChannelError("Channel mutex time out")
 
@@ -214,11 +220,11 @@ class ChannelMutex:
     @contextmanager
     def writer(self):
         """Writer lock context manager."""
-        if self.writer_mutex.acquire(timeout=CONSTS.channel_lock_timeout):
+        if self.writer_mutex.acquire(timeout=CONSTS.channel_lock_timeout):  # type: ignore[union-attr]
             try:
                 yield self
             finally:
-                self.writer_mutex.release()
+                self.writer_mutex.release()  # type: ignore[union-attr]
         else:
             raise ChannelError("Channel mutex time out")
 

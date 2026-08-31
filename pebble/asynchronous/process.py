@@ -14,32 +14,34 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with Pebble.  If not, see <http://www.gnu.org/licenses/>.
 
+from __future__ import annotations
+
 import os
-import types
 import asyncio
 import multiprocessing
 
 from itertools import count
 from functools import wraps
+from multiprocessing import connection
+from types import FunctionType, ModuleType
 from concurrent.futures import TimeoutError
-from typing import Any, Callable, Optional, overload
+from typing import Any, Callable, overload
 
 from pebble import common
+from pebble.common.types import P, T
 from pebble.pool.process import ProcessPool
 
 
 @overload
-def process(func: common.CallableType) -> common.AsyncIODecoratorReturnType:
-    ...
+def process(func: Callable[P, T]) -> Callable[P, asyncio.Future[T]]: ...
 @overload
 def process(
-        name: Optional[str] = None,
-        daemon: bool = True,
-        timeout: Optional[float] = None,
-        mp_context: Optional[multiprocessing.context.BaseContext] = None,
-        pool: Optional[ProcessPool] = None
-) -> common.AsyncIODecoratorParamsReturnType:
-    ...
+    name: str | None = None,
+    daemon: bool = True,
+    timeout: float | None = None,
+    mp_context: ModuleType | None = None,
+    pool: ProcessPool | None = None,
+) -> Callable[[Callable[P, T]], Callable[P, asyncio.Future[T]]]: ...
 def process(*args, **kwargs):
     """Runs the decorated function in a concurrent process,
     taking care of the result and error management.
@@ -67,39 +69,51 @@ def process(*args, **kwargs):
 
 
 def _process_wrapper(
-        function: Callable,
-        name: str,
-        daemon: bool,
-        timeout: float,
-        mp_context: multiprocessing.context.BaseContext,
-        pool: ProcessPool
+    function: Callable[P, T],
+    name: str,
+    daemon: bool,
+    timeout: float,
+    mp_context: ModuleType,
+    pool: ProcessPool | None,
 ) -> Callable:
-    if isinstance(function, types.FunctionType):
+    if isinstance(function, FunctionType):
         common.register_function(function)
 
-    if hasattr(mp_context, 'get_start_method'):
-        start_method = mp_context.get_start_method()
+    if hasattr(mp_context, "get_start_method"):
+        start_method: str = mp_context.get_start_method()
     else:
-        start_method = 'spawn' if os.name == 'nt' else 'fork'
+        start_method = "spawn" if os.name == "nt" else "fork"
 
     if pool is not None:
         if not isinstance(pool, ProcessPool):
-            raise TypeError('Pool expected to be ProcessPool')
-        start_method = 'pool'
+            raise TypeError("Pool expected to be ProcessPool")
+        start_method = "pool"
 
-    @wraps(function)
-    def wrapper(*args, **kwargs) -> asyncio.Future:
-        loop = common.get_asyncio_loop()
+    @wraps(function)  # type: ignore[arg-type] - FunctionType confuses pyright
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> asyncio.Future[T]:
+        loop: asyncio.AbstractEventLoop = asyncio.get_running_loop()
         target, args = common.maybe_install_trampoline(function, args, start_method)
 
         if pool is not None:
-            future = loop.run_in_executor(pool, target, timeout, *args, **kwargs)
+            future = loop.run_in_executor(
+                pool,  # type: ignore[arg-type] - Executor compatible API
+                target,
+                timeout,
+                *args
+            )
         else:
-            future = loop.create_future()
+            future: asyncio.Future = loop.create_future()
             reader, writer = mp_context.Pipe(duplex=False)
-            worker = common.launch_process(
-                name, common.function_handler, daemon, mp_context,
-                target, args, kwargs, writer)
+            worker: multiprocessing.Process = common.launch_process(
+                name,
+                common.function_handler,
+                daemon,
+                mp_context,
+                target,
+                args,
+                kwargs,
+                writer,
+            )
 
             writer.close()
             loop.create_task(_worker_handler(future, worker, reader, timeout))
@@ -110,10 +124,10 @@ def _process_wrapper(
 
 
 async def _worker_handler(
-        future: asyncio.Future,
-        worker: multiprocessing.Process,
-        pipe: multiprocessing.Pipe,
-        timeout: float
+    future: asyncio.Future,
+    worker: multiprocessing.Process,
+    pipe: connection.Connection,
+    timeout: float
 ):
     """Worker lifecycle manager.
 
@@ -121,7 +135,7 @@ async def _worker_handler(
     collects result, runs the callback and cleans up the process.
 
     """
-    result = await _get_result(future, pipe, timeout)
+    result: common.Result = await _get_result(future, pipe, timeout)
 
     if worker.is_alive():
         common.stop_process(worker)
@@ -137,17 +151,16 @@ async def _worker_handler(
 
 
 async def _get_result(
-        future: asyncio.Future,
-        pipe: multiprocessing.Pipe,
-        timeout: float
+    future: asyncio.Future, pipe: connection.Connection, timeout: float
 ) -> Any:
     """Waits for result and handles communication errors."""
-    counter = count(step=common.CONSTS.sleep_unit)
+    error: BaseException | None = None
+    counter: count = count(step=common.CONSTS.sleep_unit)
 
     try:
         while not pipe.poll():
             if timeout is not None and next(counter) >= timeout:
-                error = TimeoutError('Task Timeout', timeout)
+                error = TimeoutError("Task Timeout", timeout)
                 return common.Result(common.ResultStatus.FAILURE, error)
             if future.cancelled():
                 error = asyncio.CancelledError()
@@ -157,7 +170,7 @@ async def _get_result(
 
         return pipe.recv()
     except (EOFError, OSError):
-        error = common.ProcessExpired('Abnormal termination')
+        error = common.ProcessExpired("Abnormal termination")
         return common.Result(common.ResultStatus.ERROR, error)
     except Exception as error:
         return common.Result(common.ResultStatus.ERROR, error)

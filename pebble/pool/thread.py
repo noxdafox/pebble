@@ -14,16 +14,21 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with Pebble.  If not, see <http://www.gnu.org/licenses/>.
 
+from __future__ import annotations
 
 import time
 import multiprocessing
 
+from queue import Queue
 from itertools import count
-from typing import Callable
+from threading import Thread
 from concurrent.futures import Future
+from typing import Any, Callable, Mapping, Iterable, List
 
 from pebble.common import ResultStatus, execute, launch_thread, CONSTS
+from pebble.common.types import P, T
 from pebble.pool.base_pool import iter_chunks, run_initializer
+from pebble.pool.base_pool import MapResults, Worker, Result
 from pebble.pool.base_pool import PoolStatus, MapFuture, map_results
 from pebble.pool.base_pool import PoolContext, BasePool, Task, TaskPayload
 
@@ -40,13 +45,16 @@ class ThreadPool(BasePool):
     every time a worker is started, receiving initargs as arguments.
 
     """
-    def __init__(self, max_workers: int = multiprocessing.cpu_count(),
-                 max_tasks: int = 0,
-                 initializer: Callable = None,
-                 initargs: list = ()):
+    def __init__(
+            self,
+            max_workers: int = multiprocessing.cpu_count(),
+            max_tasks: int = 0,
+            initializer: Callable | None = None,
+            initargs: Iterable[Any] = ()
+    ):
         super().__init__(max_workers, max_tasks, initializer, initargs)
-        self._pool_manager = PoolManager(self._context)
-        self._pool_manager_loop = None
+        self._pool_manager: PoolManager = PoolManager(self._context)
+        self._pool_manager_loop: Thread | None = None
 
     def _start_pool(self):
         with self._context.status_mutex:
@@ -62,7 +70,12 @@ class ThreadPool(BasePool):
             self._pool_manager_loop.join()
         self._pool_manager.stop()
 
-    def schedule(self, function, args=(), kwargs={}) -> Future:
+    def schedule(
+            self,
+            function: Callable[P, T],
+            args: Iterable[Any] = (),
+            kwargs: Mapping[str, Any] = {}
+    ) -> Future[T]:
         """Schedules *function* to be run the Pool.
 
         *args* and *kwargs* will be forwareded to the scheduled function
@@ -73,15 +86,21 @@ class ThreadPool(BasePool):
         """
         self._check_pool_status()
 
-        future = Future()
-        payload = TaskPayload(function, args, kwargs)
-        task = Task(next(self._task_counter), future, None, payload)
+        future: Future = Future()
+        payload: TaskPayload = TaskPayload(function, args, kwargs)
+        task: Task = Task(next(self._task_counter), future, None, payload)
 
         self._context.task_queue.put(task)
 
         return future
 
-    def submit(self, function: Callable, *args, **kwargs) -> Future:
+    def submit(
+            self,
+            function: Callable[P, T],
+            /,
+            *args: P.args,
+            **kwargs: P.kwargs
+    ) -> Future[T]:
         """This function is provided for compatibility with
         `asyncio.loop.run_in_executor`.
 
@@ -90,7 +109,8 @@ class ThreadPool(BasePool):
         """
         return self.schedule(function, args=args, kwargs=kwargs)
 
-    def map(self, function: Callable, *iterables, **kwargs) -> MapFuture:
+    def map(self, function: Callable[..., T],
+            *iterables, **kwargs) -> MapFuture[MapResults[T]]:
         """Returns an iterator equivalent to map(function, iterables).
 
         *chunksize* controls the size of the chunks the iterable will
@@ -100,20 +120,23 @@ class ThreadPool(BasePool):
         """
         self._check_pool_status()
 
-        timeout = kwargs.get('timeout')
-        chunksize = kwargs.get('chunksize', 1)
+        timeout: float | None = kwargs.get('timeout')
+        chunksize: int = kwargs.get('chunksize', 1)
 
         if chunksize < 1:
             raise ValueError("chunksize must be >= 1")
 
-        futures = [self.schedule(process_chunk, args=(function, chunk))
-                   for chunk in iter_chunks(zip(*iterables), chunksize)]
+        futures: List[Future] = [
+            self.schedule(process_chunk, args=(function, chunk))
+            for chunk in iter_chunks(zip(*iterables), chunksize)
+        ]
+        future: MapFuture = MapFuture(futures)
 
-        return map_results(MapFuture(futures), timeout)
+        return map_results(future, timeout)
 
 
-def pool_manager_loop(pool_manager: 'PoolManager'):
-    context = pool_manager.context
+def pool_manager_loop(pool_manager: PoolManager):
+    context: PoolContext = pool_manager.context
 
     while context.alive:
         pool_manager.update_status()
@@ -122,8 +145,8 @@ def pool_manager_loop(pool_manager: 'PoolManager'):
 
 class PoolManager:
     def __init__(self, context: PoolContext):
-        self.workers = []
-        self.context = context
+        self.context: PoolContext = context
+        self.workers: List[Thread] = []
 
     def start(self):
         self.create_workers()
@@ -135,7 +158,7 @@ class PoolManager:
             self.join_worker(worker)
 
     def update_status(self):
-        expired = self.inspect_workers()
+        expired: Iterable[Thread] = self.inspect_workers()
 
         for worker in expired:
             self.join_worker(worker)
@@ -147,19 +170,24 @@ class PoolManager:
 
     def create_workers(self):
         for _ in range(self.context.workers - len(self.workers)):
-            worker = launch_thread(None, worker_thread, True, self.context)
+            worker: Thread = launch_thread(
+                None,
+                worker_thread,
+                True,
+                self.context
+            )
 
             self.workers.append(worker)
 
-    def join_worker(self, worker):
+    def join_worker(self, worker: Thread):
         worker.join()
         self.workers.remove(worker)
 
 
 def worker_thread(context: PoolContext):
     """The worker thread routines."""
-    queue = context.task_queue
-    parameters = context.worker_parameters
+    queue: Queue[Task | None] = context.task_queue
+    parameters: Worker = context.worker_parameters
 
     if parameters.initializer is not None:
         if not run_initializer(parameters.initializer, parameters.initargs):
@@ -172,11 +200,11 @@ def worker_thread(context: PoolContext):
 
 
 def get_next_task(context: PoolContext, max_tasks: int):
-    counter = count()
-    queue = context.task_queue
+    counter: count = count()
+    queue: Queue[Task | None] = context.task_queue
 
     while context.alive and (max_tasks == 0 or next(counter) < max_tasks):
-        task = queue.get()
+        task: Task | None = queue.get()
 
         if task is not None:
             if task.future.cancelled():
@@ -187,11 +215,11 @@ def get_next_task(context: PoolContext, max_tasks: int):
 
 
 def execute_next_task(task: Task):
-    payload = task.payload
+    payload: TaskPayload = task.payload
     task.timestamp = time.time()
     task.set_running_or_notify_cancel()
 
-    result = execute(payload.function, *payload.args, **payload.kwargs)
+    result: Result = execute(payload.function, *payload.args, **payload.kwargs)
 
     if result.status == ResultStatus.SUCCESS:
         task.future.set_result(result.value)

@@ -14,32 +14,33 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with Pebble.  If not, see <http://www.gnu.org/licenses/>.
 
+from __future__ import annotations
+
 import os
-import types
 import multiprocessing
-import multiprocessing.context
 
 from itertools import count
 from functools import wraps
-from typing import Any, Callable, Optional, overload
+from typing import Callable, overload
+from multiprocessing import connection
+from types import FunctionType, ModuleType
 from concurrent.futures import CancelledError, TimeoutError
 
 from pebble import common
+from pebble.common.types import P, T
 from pebble.pool.process import ProcessPool
 
 
 @overload
-def process(func: common.CallableType) -> common.ProcessDecoratorReturnType:
-    ...
+def process(func: Callable[P, T]) -> Callable[P, common.ProcessFuture[T]]: ...
 @overload
 def process(
-        name: Optional[str] = None,
+        name: str | None = None,
         daemon: bool = True,
-        timeout: Optional[float] = None,
-        mp_context: Optional[multiprocessing.context.BaseContext] = None,
-        pool: Optional[ProcessPool] = None
-) -> common.ProcessDecoratorParamsReturnType:
-    ...
+        timeout: float | None = None,
+        mp_context: ModuleType | None = None,
+        pool: ProcessPool | None = None
+) -> Callable[[Callable[P, T]], Callable[P, common.ProcessFuture[T]]]: ...
 def process(*args, **kwargs):
     """Runs the decorated function in a concurrent process,
     taking care of the result and error management.
@@ -67,18 +68,18 @@ def process(*args, **kwargs):
 
 
 def _process_wrapper(
-        function: Callable,
+        function: Callable[P, T],
         name: str,
         daemon: bool,
         timeout: float,
-        mp_context: multiprocessing.context.BaseContext,
-        pool: ProcessPool
+        mp_context: ModuleType,
+        pool: ProcessPool | None
 ) -> Callable:
-    if isinstance(function, types.FunctionType):
+    if isinstance(function, FunctionType):
         common.register_function(function)
 
     if hasattr(mp_context, 'get_start_method'):
-        start_method = mp_context.get_start_method()
+        start_method: str = mp_context.get_start_method()
     else:
         start_method = 'spawn' if os.name == 'nt' else 'fork'
 
@@ -87,24 +88,34 @@ def _process_wrapper(
             raise TypeError('Pool expected to be ProcessPool')
         start_method = 'pool'
 
-    @wraps(function)
-    def wrapper(*args, **kwargs) -> common.ProcessFuture:
+    @wraps(function)  # type: ignore[arg-type] - FunctionType confuses pyright
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> common.ProcessFuture[T]:
         target, args = common.maybe_install_trampoline(function, args, start_method)
 
         if pool is not None:
-            future = pool.schedule(target, args=args, kwargs=kwargs, timeout=timeout)
+            future: common.ProcessFuture = pool.schedule(
+                target, args=args, kwargs=kwargs, timeout=timeout
+            )
         else:
-            future = common.ProcessFuture()
+            future: common.ProcessFuture = common.ProcessFuture()
             reader, writer = mp_context.Pipe(duplex=False)
-            worker = common.launch_process(
-                name, common.function_handler, daemon, mp_context,
-                target, args, kwargs, writer)
+            worker: multiprocessing.Process = common.launch_process(
+                name,
+                common.function_handler,
+                daemon,
+                mp_context,
+                target,
+                args,
+                kwargs,
+                writer
+            )
 
             writer.close()
             future.set_running_or_notify_cancel()
 
             common.launch_thread(
-                name, _worker_handler, True, future, worker, reader, timeout)
+                name, _worker_handler, True, future, worker, reader, timeout
+            )
 
         return future
 
@@ -114,7 +125,7 @@ def _process_wrapper(
 def _worker_handler(
         future: common.ProcessFuture,
         worker: multiprocessing.Process,
-        pipe: multiprocessing.Pipe,
+        pipe: connection.Connection,
         timeout: float
 ):
     """Worker lifecycle manager.
@@ -123,7 +134,7 @@ def _worker_handler(
     collects result, runs the callback and cleans up the process.
 
     """
-    result = _get_result(future, pipe, timeout)
+    result: common.Result = _get_result(future, pipe, timeout)
 
     if worker.is_alive():
         common.stop_process(worker)
@@ -139,12 +150,11 @@ def _worker_handler(
 
 
 def _get_result(
-        future: common.ProcessFuture,
-        pipe: multiprocessing.Pipe,
-        timeout: float
-) -> Any:
+        future: common.ProcessFuture, pipe: connection.Connection, timeout: float
+) -> common.Result:
     """Waits for result and handles communication errors."""
-    counter = count(step=common.CONSTS.sleep_unit)
+    error: BaseException | None = None
+    counter: count = count(step=common.CONSTS.sleep_unit)
 
     try:
         while not pipe.poll(common.CONSTS.sleep_unit):

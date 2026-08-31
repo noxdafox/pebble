@@ -14,17 +14,25 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with Pebble.  If not, see <http://www.gnu.org/licenses/>.
 
+from __future__ import annotations
+
 import signal
 import threading
 
 from functools import wraps
-from typing import Any, Callable
+from typing import Callable, Iterable, overload
+
+from pebble.common.types import P, T
 
 
-_synchronized_lock = threading.Lock()
+_synchronized_lock: threading.Lock = threading.Lock()
 
 
-def synchronized(*args) -> Callable:
+@overload
+def synchronized(function: Callable[P, T]) -> Callable[P, T]: ...
+@overload
+def synchronized(lock: threading.Lock | None) -> Callable[[Callable[P, T]], Callable[P, T]]: ...
+def synchronized(*args, **kwargs):
     """A synchronized function prevents two or more callers to interleave
     its execution preventing race conditions.
 
@@ -39,33 +47,36 @@ def synchronized(*args) -> Callable:
     if callable(args[0]):
         return decorate_synchronized(args[0], _synchronized_lock)
     else:
-        def wrap(function) -> type:
+        def wrap(function: Callable[P, T]) -> Callable[P, T]:
             return decorate_synchronized(function, args[0])
 
         return wrap
 
 
-def decorate_synchronized(function: Callable, lock: threading.Lock) -> Callable:
+def decorate_synchronized(
+    function: Callable[P, T], lock: threading.Lock
+) -> Callable[P, T]:
     @wraps(function)
-    def wrapper(*args, **kwargs) -> Any:
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
         with lock:
             return function(*args, **kwargs)
 
     return wrapper
 
 
-def sighandler(signals: list) -> Callable:
+def sighandler(signals: int | Iterable[int]) -> Callable:
     """Sets the decorated function as signal handler of given *signals*.
 
     *signals* can be either a single signal or a list/tuple
     of multiple ones.
 
     """
-    def wrap(function):
+
+    def wrap(function: Callable[P, T]):
         set_signal_handlers(signals, function)
 
         @wraps(function)
-        def wrapper(*args, **kwargs):
+        def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
             return function(*args, **kwargs)
 
         return wrapper
@@ -73,9 +84,10 @@ def sighandler(signals: list) -> Callable:
     return wrap
 
 
-def set_signal_handlers(signals: list, function: Callable):
-    if isinstance(signals, (list, tuple)):
+def set_signal_handlers(signals: int | Iterable[int], function: Callable):
+    if isinstance(signals, int):
+        signal.signal(signals, function)
+    else:
         for signum in signals:
             signal.signal(signum, function)
-    else:
-        signal.signal(signals, function)
+            signal.signal(signum, function)

@@ -14,6 +14,9 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with Pebble.  If not, see <http://www.gnu.org/licenses/>.
 
+
+from __future__ import annotations
+
 import os
 import time
 import atexit
@@ -21,18 +24,24 @@ import signal
 import pickle
 import multiprocessing
 
+from queue import Queue
+from types import ModuleType
 from itertools import count
+from threading import Thread
 from dataclasses import dataclass
-from typing import Any, Callable, Optional
+from multiprocessing import Process
 from concurrent.futures.process import BrokenProcessPool
 from concurrent.futures import CancelledError, TimeoutError
+from typing import Any, Callable, Dict, Mapping, Iterable, Iterator, List, Tuple
 
-from pebble.pool.channel import WorkerChannel, channels
+from pebble.pool.channel import Channel, WorkerChannel, channels
 from pebble.pool.base_pool import Worker, iter_chunks, run_initializer
 from pebble.pool.base_pool import PoolContext, BasePool, Task, TaskPayload
+from pebble.pool.base_pool import MapResults
 from pebble.pool.base_pool import PoolStatus, ProcessMapFuture, map_results
 from pebble.common import Result, ResultStatus, CONSTS
 from pebble.common import ProcessExpired, ProcessFuture
+from pebble.common.types import P, T
 from pebble.common import process_execute, launch_thread
 from pebble.common import launch_process, stop_process, process_exit
 
@@ -53,16 +62,19 @@ class ProcessPool(BasePool):
 
     """
 
-    def __init__(self, max_workers: int = multiprocessing.cpu_count(),
-                 max_tasks: int = 0,
-                 initializer: Callable = None,
-                 initargs: list = (),
-                 context: multiprocessing.context.BaseContext = multiprocessing):
+    def __init__(
+            self,
+            max_workers: int = multiprocessing.cpu_count(),
+            max_tasks: int = 0,
+            initializer: Callable | None = None,
+            initargs: Iterable[Any] = (),
+            context: ModuleType = multiprocessing
+    ):
         super().__init__(max_workers, max_tasks, initializer, initargs)
-        self._pool_manager = PoolManager(self._context, context)
-        self._task_scheduler_loop = None
-        self._pool_manager_loop = None
-        self._message_manager_loop = None
+        self._pool_manager: PoolManager = PoolManager(self._context, context)
+        self._task_scheduler_loop: Thread | None = None
+        self._pool_manager_loop: Thread | None = None
+        self._message_manager_loop: Thread | None = None
 
     def _start_pool(self):
         with self._context.status_mutex:
@@ -87,10 +99,13 @@ class ProcessPool(BasePool):
         if self._message_manager_loop is not None:
             self._message_manager_loop.join()
 
-    def schedule(self, function: Callable,
-                 args: list = (),
-                 kwargs: dict = {},
-                 timeout: float = None) -> ProcessFuture:
+    def schedule(
+            self,
+            function: Callable[P, T],
+            args: Iterable[Any] = (),
+            kwargs: Mapping[str, Any] = {},
+            timeout: float | None = None
+    ) -> ProcessFuture[T]:
         """Schedules *function* to be run the Pool.
 
         *args* and *kwargs* will be forwareded to the scheduled function
@@ -104,17 +119,22 @@ class ProcessPool(BasePool):
         """
         self._check_pool_status()
 
-        future = ProcessFuture()
-        payload = TaskPayload(function, args, kwargs)
-        task = Task(next(self._task_counter), future, timeout, payload)
+        future: ProcessFuture = ProcessFuture()
+        payload: TaskPayload = TaskPayload(function, args, kwargs)
+        task: Task = Task(next(self._task_counter), future, timeout, payload)
 
         self._context.task_queue.put(task)
 
         return future
 
-    def submit(self, function: Callable,
-               timeout: Optional[float],
-               /, *args, **kwargs) -> ProcessFuture:
+    def submit(
+            self,
+            function: Callable[P, T],
+            timeout: float | None,
+            /,
+            *args: P.args,
+            **kwargs: P.kwargs
+    ) -> ProcessFuture[T]:
         """This function is provided for compatibility with
         `asyncio.loop.run_in_executor`.
 
@@ -124,8 +144,12 @@ class ProcessPool(BasePool):
         return self.schedule(
             function, args=args, kwargs=kwargs, timeout=timeout)
 
-    def map(self, function: Callable,
-            *iterables, **kwargs) -> ProcessMapFuture:
+    def map(
+            self,
+            function: Callable[..., T],
+            *iterables,
+            **kwargs
+    ) -> ProcessMapFuture[MapResults[T]]:
         """Computes the *function* using arguments from
         each of the iterables. Stops when the shortest iterable is exhausted.
 
@@ -141,25 +165,26 @@ class ProcessPool(BasePool):
         """
         self._check_pool_status()
 
-        timeout = kwargs.get('timeout')
-        chunksize = kwargs.get('chunksize', 1)
+        timeout: float | None = kwargs.get('timeout')
+        chunksize: int = kwargs.get('chunksize', 1)
 
         if chunksize < 1:
             raise ValueError("chunksize must be >= 1")
 
-        futures = [self.schedule(
+        futures: List[ProcessFuture] = [self.schedule(
             process_chunk, args=(function, chunk), timeout=timeout)
             for chunk in iter_chunks(zip(*iterables), chunksize)]
+        future: ProcessMapFuture = ProcessMapFuture(futures)
 
-        return map_results(ProcessMapFuture(futures), timeout)
+        return map_results(future, timeout)
 
 
-def task_scheduler_loop(pool_manager: 'PoolManager'):
-    task_queue = pool_manager.context.task_queue
+def task_scheduler_loop(pool_manager: PoolManager):
+    task_queue: Queue = pool_manager.context.task_queue
 
     try:
         while pool_manager.context.alive and not GLOBAL_SHUTDOWN:
-            task = pool_manager.context.task_queue.get()
+            task: Task | None = pool_manager.context.task_queue.get()
 
             if task is not None:
                 if task.future.cancelled():
@@ -173,7 +198,7 @@ def task_scheduler_loop(pool_manager: 'PoolManager'):
         pool_manager.handle_broken_pool(error)
 
 
-def pool_manager_loop(pool_manager: 'PoolManager'):
+def pool_manager_loop(pool_manager: PoolManager):
     try:
         while pool_manager.context.alive and not GLOBAL_SHUTDOWN:
             pool_manager.update_status()
@@ -182,7 +207,7 @@ def pool_manager_loop(pool_manager: 'PoolManager'):
         pool_manager.handle_broken_pool(error)
 
 
-def message_manager_loop(pool_manager: 'PoolManager'):
+def message_manager_loop(pool_manager: PoolManager):
     try:
         while pool_manager.context.alive and not GLOBAL_SHUTDOWN:
             pool_manager.process_next_message(CONSTS.sleep_unit)
@@ -192,13 +217,18 @@ def message_manager_loop(pool_manager: 'PoolManager'):
 
 class PoolManager:
     """Combines Task and Worker Managers providing a higher level one."""
-    def __init__(self, context: PoolContext,
-                 mp_context: multiprocessing.context.BaseContext):
-        self.context = context
-        self.task_manager = TaskManager(context.task_queue.task_done)
-        self.worker_manager = WorkerManager(context.workers,
-                                            context.worker_parameters,
-                                            mp_context)
+    def __init__(
+            self,
+            context: PoolContext,
+            mp_context: ModuleType
+    ):
+        self.context: PoolContext = context
+        self.task_manager: TaskManager = TaskManager(context.task_queue.task_done)
+        self.worker_manager: WorkerManager = WorkerManager(
+            context.workers,
+            context.worker_parameters,
+            mp_context
+        )
 
     def start(self):
         self.worker_manager.create_channels()
@@ -218,7 +248,7 @@ class PoolManager:
 
     def process_next_message(self, timeout: float):
         """Processes the next message coming from the workers."""
-        message = self.worker_manager.receive(timeout)
+        message: Message | NoMessage = self.worker_manager.receive(timeout)
 
         if isinstance(message, Acknowledgement):
             self.task_manager.task_start(message.task, message.worker)
@@ -285,26 +315,26 @@ class TaskManager:
     """
 
     def __init__(self, task_done_callback: Callable):
-        self.tasks = {}
-        self.task_done_callback = task_done_callback
+        self.tasks: Dict[int, Task] = {}
+        self.task_done_callback: Callable = task_done_callback
 
     def register(self, task: Task):
         self.tasks[task.id] = task
 
-    def task_start(self, task_id: int, worker_id: Optional[int]):
+    def task_start(self, task_id: int, worker_id: int | None):
         try:
-            task = self.tasks[task_id]
+            task: Task = self.tasks[task_id]
         except KeyError:
             return  # task already completed
         else:
-            task.worker_id = worker_id
+            task.worker_id = worker_id  # type: ignore[assignment]
             task.timestamp = time.time()
             task.set_running_or_notify_cancel()
 
     def task_done(self, task_id: int, result: Result):
         """Set the tasks result and run the callback."""
         try:
-            task = self.tasks.pop(task_id)
+            task: Task = self.tasks.pop(task_id)
         except KeyError:
             return  # result of previously timeout Task
         else:
@@ -317,7 +347,7 @@ class TaskManager:
 
             self.task_done_callback()
 
-    def task_problem(self, task_id: int, error: Exception):
+    def task_problem(self, task_id: int, error: BaseException):
         """Set the task with the error it caused within the Pool."""
         self.task_start(task_id, None)
         self.task_done(task_id, Result(ResultStatus.ERROR, error))
@@ -349,28 +379,30 @@ class WorkerManager:
     Maintains the workers active and encapsulates their communication logic.
     """
 
-    def __init__(self, workers:int,
-                 worker_parameters: Worker,
-                 mp_context: multiprocessing.context.BaseContext):
-        self.workers = {}
-        self.workers_number = workers
-        self.worker_parameters = worker_parameters
-        self.mp_context = mp_context
-        self.pool_channel = None
-        self.workers_channel = None
+    def __init__(
+            self,
+            workers: int,
+            worker_parameters: Worker,
+            mp_context: ModuleType):
+        self.workers: Dict[int, Process] = {}
+        self.workers_number: int = workers
+        self.worker_parameters: Worker = worker_parameters
+        self.mp_context: ModuleType = mp_context
+        self.pool_channel: Channel | None = None
+        self.workers_channel: WorkerChannel | None = None
 
     def dispatch(self, task: Task):
         try:
-            self.pool_channel.send(WorkerTask(task.id, task.payload))
+            self.pool_channel.send(WorkerTask(task.id, task.payload))  # type: ignore[union-attr]
         except PICKLING_ERRORS as error:
             raise error
         except OSError as error:
             raise BrokenProcessPool from error
 
-    def receive(self, timeout: float):
+    def receive(self, timeout: float) -> Message | NoMessage:
         try:
-            if self.pool_channel.poll(timeout):
-                return self.pool_channel.recv()
+            if self.pool_channel.poll(timeout):  # type: ignore[union-attr]
+                return self.pool_channel.recv()  # type: ignore[union-attr]
             else:
                 return NoMessage()
         except PICKLING_ERRORS as error:
@@ -386,11 +418,12 @@ class WorkerManager:
         Returns the workers which have unexpectedly ended.
 
         """
-        expired = tuple(w for w in dictionary_values(self.workers)
-                        if not w.is_alive())
+        expired: Tuple[Process] = tuple(
+            w for w in dictionary_values(self.workers) if not w.is_alive())
 
         for worker in expired:
-            self.workers.pop(worker.pid)
+            if worker.pid is not None:
+                self.workers.pop(worker.pid)
 
         return tuple((w.pid, w.exitcode) for w in expired if w.exitcode != 0)
 
@@ -413,10 +446,16 @@ class WorkerManager:
 
     def new_worker(self):
         try:
-            worker = launch_process(
-                WORKERS_NAME, worker_process, False, self.mp_context,
-                self.worker_parameters, self.workers_channel)
-            self.workers[worker.pid] = worker
+            worker: Process = launch_process(
+                WORKERS_NAME,
+                worker_process,
+                False,
+                self.mp_context,
+                self.worker_parameters,
+                self.workers_channel  # type: ignore[arg-type]
+            )
+
+            self.workers[worker.pid] = worker  # type: ignore[index]
         except OSError as error:
             raise BrokenProcessPool from error
 
@@ -426,7 +465,7 @@ class WorkerManager:
         or did already expire by its own.
 
         """
-        with self.workers_channel.lock(block=False) as locked:
+        with self.workers_channel.lock(block=False) as locked:  # type: ignore[union-attr]
             if locked:
                 worker = self.workers.pop(worker_id, None)
                 if worker is not None:  # Worker have already ended
@@ -463,7 +502,7 @@ def process_tasks(params: Worker, channel: WorkerChannel):
         send_result(channel, TaskResult(task.id, result))
 
 
-def worker_get_next_task(channel: WorkerChannel, max_tasks: int):
+def worker_get_next_task(channel: WorkerChannel, max_tasks: int) -> Iterator[Task]:
     counter = count()
 
     while max_tasks == 0 or next(counter) < max_tasks:
@@ -478,7 +517,7 @@ def send_result(channel: WorkerChannel, result: Any):
         channel.send(TaskProblem(result.task, error))
 
 
-def fetch_task(channel: WorkerChannel) -> Task:
+def fetch_task(channel: WorkerChannel) -> Task:  # type: ignore[return]
     while channel.poll():
         try:
             return task_transaction(channel)
@@ -516,11 +555,13 @@ def interpreter_shutdown():
     global GLOBAL_SHUTDOWN
     GLOBAL_SHUTDOWN = True
 
-    workers = [p for p in multiprocessing.active_children()
-               if p.name == WORKERS_NAME]
+    workers = [
+        p for p in multiprocessing.active_children()
+        if p.name == WORKERS_NAME
+    ]
 
     for worker in workers:
-        stop_process(worker)
+        stop_process(worker)  # type: ignore[arg-type]
 
 
 def dictionary_keys(dictionary: dict) -> tuple:
@@ -541,11 +582,6 @@ def dictionary_values(dictionary: dict) -> tuple:
             pass
 
 
-GLOBAL_SHUTDOWN = False
-WORKERS_NAME = 'pebble_pool_worker'
-PICKLING_ERRORS = AttributeError, pickle.PicklingError, TypeError
-
-
 @dataclass
 class NoMessage:
     pass
@@ -554,26 +590,32 @@ class NoMessage:
 @dataclass
 class TaskResult:
     """The result of a Task."""
-    task: id
+    task: int
     result: Any
 
 
 @dataclass
 class TaskProblem:
     """Issue occurred within a Task."""
-    task: id
+    task: int
     error: BaseException
 
 
 @dataclass
 class WorkerTask:
     """A Task assigned to a worker."""
-    id: id
+    id: int
     payload: TaskPayload
 
 
 @dataclass
 class Acknowledgement:
     """Ack from a worker of a received Task."""
-    worker: id
-    task: id
+    worker: int
+    task: int
+
+
+GLOBAL_SHUTDOWN = False
+WORKERS_NAME = 'pebble_pool_worker'
+PICKLING_ERRORS = AttributeError, pickle.PicklingError, TypeError
+Message = TaskResult | TaskProblem | WorkerTask | Acknowledgement

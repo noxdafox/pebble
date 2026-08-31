@@ -14,6 +14,8 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with Pebble.  If not, see <http://www.gnu.org/licenses/>.
 
+from __future__ import annotations
+
 import time
 import logging
 import itertools
@@ -22,22 +24,23 @@ from queue import Queue
 from enum import IntEnum
 from threading import RLock
 from dataclasses import dataclass
-from typing import Any, Callable, Optional
 from concurrent.futures import Future, TimeoutError
+from typing import Any, Callable, Generic, Iterable
+from typing import Iterator, TypeVar, Mapping
 
-from pebble.common import Result, ResultStatus
-from pebble.common import PebbleFuture, ProcessFuture, CONSTS
+from pebble.common.types import T
+from pebble.common import Result, ResultStatus, ProcessFuture, CONSTS
 
 
 class BasePool:
     def __init__(self, max_workers: int,
                  max_tasks: int,
-                 initializer: Optional[Callable],
-                 initargs: list):
-        self._context = PoolContext(
+                 initializer: Callable | None,
+                 initargs: Iterable[Any]):
+        self._context: PoolContext = PoolContext(
             max_workers, max_tasks, initializer, initargs)
-        self._loops = ()
-        self._task_counter = itertools.count()
+        self._loops: Iterable[Any] = ()
+        self._task_counter: itertools.count = itertools.count()
 
     def __enter__(self):
         return self
@@ -63,7 +66,7 @@ class BasePool:
         """Stops the pool without performing any pending task."""
         self._context.status = PoolStatus.STOPPED
 
-    def join(self, timeout: float = None):
+    def join(self, timeout: float | None = None):
         """Joins the pool waiting until all workers exited.
 
         If *timeout* is set, it block until all workers are done
@@ -79,8 +82,8 @@ class BasePool:
             self._context.task_queue.put(None)  # Pool termination sentinel
             self._stop_pool()
 
-    def _wait_queue_depletion(self, timeout: Optional[float]):
-        tick = time.time()
+    def _wait_queue_depletion(self, timeout: float | None):
+        tick: float = time.time()
 
         while self.active:
             if timeout is not None and time.time() - tick > timeout:
@@ -102,7 +105,7 @@ class BasePool:
         if self._context.status == PoolStatus.CREATED:
             self._start_pool()
 
-        for loop in self._loops:
+        for loop in self._loops:  # type: ignore[var-annotated]
             if not loop.is_alive():
                 self._context.status = PoolStatus.ERROR
 
@@ -116,22 +119,22 @@ class BasePool:
 class PoolContext:
     def __init__(self, max_workers: int,
                  max_tasks: int,
-                 initializer: Callable,
-                 initargs: list):
-        self._status = PoolStatus.CREATED
-        self.status_mutex = RLock()
+                 initializer: Callable | None,
+                 initargs: Iterable[Any]):
+        self._status: PoolStatus = PoolStatus.CREATED
+        self.status_mutex: RLock = RLock()
 
-        self.task_queue = Queue()
-        self.workers = max_workers
-        self.task_counter = itertools.count()
-        self.worker_parameters = Worker(max_tasks, initializer, initargs)
+        self.task_queue: Queue[Task | None] = Queue()
+        self.workers: int = max_workers
+        self.task_counter: itertools.count = itertools.count()
+        self.worker_parameters: Worker = Worker(max_tasks, initializer, initargs)
 
     @property
-    def status(self) -> int:
+    def status(self) -> PoolStatus:
         return self._status
 
     @status.setter
-    def status(self, status: int):
+    def status(self, status: PoolStatus):
         with self.status_mutex:
             if self.alive:
                 self._status = status
@@ -144,24 +147,25 @@ class PoolContext:
 class Task:
     def __init__(self, identifier: int,
                  future: Future,
-                 timeout: Optional[float],
-                 payload: 'TaskPayload'):
-        self.id = identifier
-        self.future = future
-        self.timeout = timeout
-        self.payload = payload
-        self.timestamp = 0.0
-        self.worker_id = 0
+                 timeout: float | None,
+                 payload: TaskPayload):
+        self.id: int = identifier
+        self.future: Future = future
+        self.timeout: float | None = timeout
+        self.payload: TaskPayload = payload
+        self.timestamp: float = 0.0
+        self.worker_id: int = 0
 
     @property
     def started(self) -> bool:
         return bool(self.timestamp > 0)
 
     def set_running_or_notify_cancel(self):
-        if hasattr(self.future, 'map_future'):
-            if not self.future.map_future.done():
+        map_future: MapFuture | None = getattr(self.future, 'map_future', None)
+        if map_future is not None:
+            if not map_future.done():
                 try:
-                    self.future.map_future.set_running_or_notify_cancel()
+                    map_future.set_running_or_notify_cancel()
                 except RuntimeError:
                     pass
 
@@ -171,13 +175,13 @@ class Task:
             pass
 
 
-class MapFuture(PebbleFuture):
-    def __init__(self, futures: list):
+class MapFuture(Future[T]):
+    def __init__(self, futures: Iterable[Future[T]]):
         super().__init__()
-        self._futures = futures
+        self._futures: Iterable[Future[T]] = futures
 
     @property
-    def futures(self) -> list:
+    def futures(self) -> Iterable[Future[T]]:
         return self._futures
 
     def cancel(self) -> bool:
@@ -191,13 +195,13 @@ class MapFuture(PebbleFuture):
         return any(tuple(f.cancel() for f in self._futures))
 
 
-class ProcessMapFuture(ProcessFuture):
-    def __init__(self, futures: list):
+class ProcessMapFuture(ProcessFuture[T]):
+    def __init__(self, futures: Iterable[ProcessFuture[T]]):
         super().__init__()
-        self._futures = futures
+        self._futures: Iterable[ProcessFuture[T]] = futures
 
     @property
-    def futures(self) -> list:
+    def futures(self) -> Iterable[ProcessFuture[T]]:
         return self._futures
 
     def cancel(self) -> bool:
@@ -211,16 +215,16 @@ class ProcessMapFuture(ProcessFuture):
         return any(tuple(f.cancel() for f in self._futures))
 
 
-class MapResults:
-    def __init__(self, futures: list, timeout: float = None):
-        self._results = itertools.chain.from_iterable(
+class MapResults(Result[T]):
+    def __init__(self, futures: Iterable[Future], timeout: float | None = None):
+        self._results: Iterator[Result | Exception] = itertools.chain.from_iterable(
             chunk_result(f, timeout) for f in futures)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[T]:
         return self
 
-    def next(self):
-        result = next(self._results)
+    def next(self) -> T:
+        result: Result | Exception = next(self._results)
 
         if isinstance(result, Result):
             if result.status == ResultStatus.SUCCESS:
@@ -228,13 +232,20 @@ class MapResults:
 
             result = result.value
 
-        raise result
+        raise result  # type: ignore[misc]
 
     __next__ = next
 
 
-def map_results(map_future: MapFuture, timeout: Optional[float]) -> MapFuture:
-    futures = map_future.futures
+MapFutureType = TypeVar(
+    "MapFutureType", bound=MapFuture | ProcessMapFuture)
+
+
+def map_results(
+        map_future: MapFutureType,
+        timeout: float | None
+) -> MapFutureType:
+    futures: Iterable[Future] = map_future.futures
     if not futures:
         map_future.set_result(MapResults(futures))
         return map_future
@@ -250,13 +261,13 @@ def map_results(map_future: MapFuture, timeout: Optional[float]) -> MapFuture:
     return map_future
 
 
-def iter_chunks(iterable: iter, chunksize: int) -> iter:
+def iter_chunks(iterable: Iterable[Any], chunksize: int) -> Iterator:
     """Iterates over zipped iterables in chunks."""
     try:
         yield from itertools.batched(iterable, chunksize)
     except AttributeError:  # < Python 3.12
         while 1:
-            chunk = tuple(itertools.islice(iterable, chunksize))
+            chunk: tuple = tuple(itertools.islice(iterable, chunksize))
 
             if not chunk:
                 return
@@ -264,7 +275,7 @@ def iter_chunks(iterable: iter, chunksize: int) -> iter:
             yield chunk
 
 
-def chunk_result(future: ProcessFuture, timeout: Optional[float]) -> Any:
+def chunk_result(future: Future[T], timeout: float | None) -> Any:
     """Returns the results of a processed chunk."""
     try:
         return future.result(timeout=timeout)
@@ -272,7 +283,7 @@ def chunk_result(future: ProcessFuture, timeout: Optional[float]) -> Any:
         return (error, )
 
 
-def run_initializer(initializer: Callable, initargs: list) -> bool:
+def run_initializer(initializer: Callable, initargs: Iterable[Any]) -> bool:
     """Runs the Pool initializer dealing with errors."""
     try:
         initializer(*initargs)
@@ -295,13 +306,13 @@ class PoolStatus(IntEnum):
 class Worker:
     """Worker configuration."""
     max_tasks: int
-    initializer: Callable
-    initargs: list
+    initializer: Callable | None
+    initargs: Iterable[Any]
 
 
 @dataclass
-class TaskPayload:
+class TaskPayload(Generic[T]):
     """The work item wrapped within a Task."""
-    function: Callable
-    args: list
-    kwargs: dict
+    function: Callable[..., T]
+    args: Iterable[Any]
+    kwargs: Mapping[str, Any]

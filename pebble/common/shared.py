@@ -21,36 +21,34 @@ from typing import Callable
 from threading import Thread
 from traceback import format_exc
 
-from pebble.common.types import Result, ResultStatus
+from pebble.common.types import Result, ResultStatus, T, P
 
 
-def launch_thread(name, function, daemon, *args, **kwargs):
-    thread = Thread(target=function, name=name, args=args, kwargs=kwargs)
+def launch_thread(
+        name: str | None,
+        function: Callable[P, T],
+        daemon: bool,
+        *args: P.args,
+        **kwargs: P.kwargs
+) -> Thread:
+    thread: Thread = Thread(target=function, name=name, args=args, kwargs=kwargs)
     thread.daemon = daemon
     thread.start()
 
     return thread
 
 
-def execute(function, *args, **kwargs):
+def execute(function: Callable[P, T], *args: P.args, **kwargs: P.kwargs) -> Result:
     """Runs the given function returning its results or exception."""
     try:
         return Result(ResultStatus.SUCCESS, function(*args, **kwargs))
     except BaseException as error:
         try:
-            error.traceback = format_exc()
+            error.traceback = format_exc()  # type: ignore[attr-defined]
         except AttributeError:  # Frozen exception
             pass
 
         return Result(ResultStatus.FAILURE, error)
-
-
-def get_asyncio_loop() -> asyncio.BaseEventLoop:
-    """Backwards compatible loop getter."""
-    try:
-        return asyncio.get_running_loop()
-    except AttributeError:
-        return asyncio.get_event_loop()
 
 
 ################################################################################
@@ -84,7 +82,7 @@ def decorate_function(wrapper: Callable, *args, **kwargs) -> Callable:
     return decorating_function
 
 
-def _validate_parameters(name: str, daemon: bool, timeout: float):
+def _validate_parameters(name: str | None, daemon: bool, timeout: float | None):
     if name is not None and not isinstance(name, str):
         raise TypeError('Name expected to be None or string')
     if daemon is not None and not isinstance(daemon, bool):

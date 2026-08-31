@@ -17,21 +17,25 @@
 import threading
 
 from time import time
+from queue import Queue
 from types import MethodType
-from typing import Callable, Optional
+from typing import Callable, Iterable
 
 
-def waitforqueues(queues: list, timeout: float = None) -> filter:
+def waitforqueues(
+        queues: Iterable[Queue],
+        timeout: float | None = None
+) -> Iterable[Queue]:
     """Waits for one or more *Queue* to be ready or until *timeout* expires.
 
-    *queues* is a list containing one or more *Queue.Queue* objects.
+    *queues* is a list containing one or more *queue.Queue* objects.
     If *timeout* is not None the function will block
     for the specified amount of seconds.
 
     The function returns a list containing the ready *Queues*.
 
     """
-    lock = threading.Condition(threading.Lock())
+    lock: threading.Condition = threading.Condition(threading.Lock())
 
     prepare_queues(queues, lock)
     try:
@@ -42,33 +46,36 @@ def waitforqueues(queues: list, timeout: float = None) -> filter:
     return filter(lambda q: not q.empty(), queues)
 
 
-def prepare_queues(queues: list, lock: threading.Condition):
+def prepare_queues(queues: Iterable[Queue], lock: threading.Condition):
     """Replaces queue._put() method in order to notify the waiting Condition."""
     for queue in queues:
-        queue._pebble_lock = lock
+        queue._pebble_lock = lock  # type: ignore[attr-defined]
         with queue.mutex:
-            queue._pebble_old_method = queue._put
-            queue._put = MethodType(new_method, queue)
+            queue._pebble_old_method = queue._put  # type: ignore[attr-defined]
+            queue._put = MethodType(new_method, queue)  # type: ignore[method-assign]
 
 
-def wait_queues(queues: list,
+def wait_queues(queues: Iterable[Queue],
                 lock: threading.Condition,
-                timeout: Optional[float]):
+                timeout: float | None):
     with lock:
         if not any(map(lambda q: not q.empty(), queues)):
             lock.wait(timeout)
 
 
-def reset_queues(queues: list):
+def reset_queues(queues: Iterable[Queue]):
     """Resets original queue._put() method."""
     for queue in queues:
         with queue.mutex:
-            queue._put = queue._pebble_old_method
+            queue._put = queue._pebble_old_method  # type: ignore[attr-defined, method-assign]
         delattr(queue, '_pebble_old_method')
         delattr(queue, '_pebble_lock')
 
 
-def waitforthreads(threads: list, timeout: float = None) -> filter:
+def waitforthreads(
+        threads: Iterable[threading.Thread],
+        timeout: float | None = None
+) -> Iterable[threading.Thread]:
     """Waits for one or more *Thread* to exit or until *timeout* expires.
 
     .. note::
@@ -82,11 +89,11 @@ def waitforthreads(threads: list, timeout: float = None) -> filter:
     The function returns a list containing the ready *Threads*.
 
     """
-    old_get_ident = None
-    event = threading.Event()
+    old_get_ident: Callable = lambda *args: 0
+    event: threading.Event = threading.Event()
 
     def new_get_ident(*args) -> int:
-        retval = old_get_ident(*args)
+        retval: int = old_get_ident(*args)
         event.set()
 
         return retval
@@ -103,17 +110,17 @@ def waitforthreads(threads: list, timeout: float = None) -> filter:
 def prepare_threads(new_get_ident: Callable) -> Callable:
     """Replaces threading.get_ident() function in order to notify
     the waiting Condition."""
-    with threading._active_limbo_lock:
-        old_get_ident = threading.get_ident
+    with threading._active_limbo_lock:  # type: ignore[attr-defined]
+        old_get_ident: Callable = threading.get_ident
         threading.get_ident = new_get_ident
 
         return old_get_ident
 
 
-def wait_threads(threads: list,
+def wait_threads(threads: Iterable[threading.Thread],
                  event: threading.Event,
-                 timeout: Optional[float]):
-    timestamp = time()
+                 timeout: float | None):
+    timestamp: float = time()
 
     while not any(map(lambda t: not t.is_alive(), threads)):
         if timeout is None:
@@ -126,7 +133,7 @@ def wait_threads(threads: list,
 
 def reset_threads(old_function: Callable):
     """Resets original threading.get_ident() function."""
-    with threading._active_limbo_lock:
+    with threading._active_limbo_lock:  # type: ignore[attr-defined]
         threading.get_ident = old_function
 
 

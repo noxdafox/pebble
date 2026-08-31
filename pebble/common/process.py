@@ -14,30 +14,33 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with Pebble.  If not, see <http://www.gnu.org/licenses/>.
 
+from __future__ import annotations
 
 import os
 import sys
-import types
 import pickle
 import signal
 import multiprocessing
 
 from traceback import format_exc
-from typing import Any, Callable
+from multiprocessing import connection
+from types import FunctionType, ModuleType
+from typing import Any, Callable, Iterable, Dict, Mapping
 
-from pebble.common.types import Result, ResultStatus, RemoteException, CONSTS
+from pebble.common.types import Result, ResultStatus, RemoteException, CONSTS, T, P
 
 
 def launch_process(
         name: str,
-        function: Callable,
+        function: Callable[P, T],
         daemon: bool,
-        mp_context: multiprocessing.context,
-        *args,
-        **kwargs
+        mp_context: ModuleType,
+        *args: P.args,
+        **kwargs: P.kwargs
 ) -> multiprocessing.Process:
-    process = mp_context.Process(
-        target=function, name=name, args=args, kwargs=kwargs)
+    process: multiprocessing.Process = mp_context.Process(
+        target=function, name=name, args=args, kwargs=kwargs
+    )
     process.daemon = daemon
     process.start()
 
@@ -49,7 +52,7 @@ def stop_process(process: multiprocessing.Process):
     process.terminate()
     process.join(CONSTS.term_timeout)
 
-    if process.is_alive() and os.name != 'nt':
+    if process.is_alive() and os.name != 'nt' and process.pid is not None:
         try:
             os.kill(process.pid, signal.SIGKILL)
             process.join()
@@ -60,7 +63,7 @@ def stop_process(process: multiprocessing.Process):
         raise RuntimeError("Unable to terminate PID %d" % os.getpid())
 
 
-def process_execute(function: Callable, *args, **kwargs) -> Result:
+def process_execute(function: Callable[P, T], *args: P.args, **kwargs: P.kwargs) -> Result[T]:
     """Runs the given function returning its results or exception."""
     try:
         return Result(ResultStatus.SUCCESS, function(*args, **kwargs))
@@ -68,7 +71,7 @@ def process_execute(function: Callable, *args, **kwargs) -> Result:
         return Result(ResultStatus.FAILURE, RemoteException(error, format_exc()))
 
 
-def send_result(pipe: multiprocessing.Pipe, data: Any):
+def send_result(pipe: connection.Connection, data: Any):
     """Send result handling pickling and communication errors."""
     try:
         pipe.send(data)
@@ -77,23 +80,23 @@ def send_result(pipe: multiprocessing.Pipe, data: Any):
 
 
 def function_handler(
-        function: Callable,
-        args: list,
-        kwargs: dict,
-        writer: multiprocessing.Pipe
+        function: Callable[..., T],
+        args: Iterable[Any],
+        kwargs: Mapping[str, Any],
+        writer: connection.Connection
 ):
     """Runs the actual function in separate process and returns its result."""
     signal.signal(signal.SIGINT, signal.SIG_IGN)
     signal.signal(signal.SIGTERM, process_exit)
 
-    result = process_execute(function, *args, **kwargs)
+    result: Result = process_execute(function, *args, **kwargs)
 
     send_result(writer, result)
 
 
-def process_exit(exitcode, *_):
+def process_exit(exitcode: int, *_):
     """Ensure mltiprocessing cleanup is performed to avoid resources leak."""
-    multiprocessing.util._exit_function()
+    multiprocessing.util._exit_function()  # type: ignore[attr-defined]
     os._exit(exitcode)
 
 
@@ -105,10 +108,10 @@ def process_exit(exitcode, *_):
 # making the child process unable to execute them.                             #
 ################################################################################
 
-_registered_functions = {}
+_registered_functions: Dict[str, FunctionType] = {}
 
 
-def register_function(function: Callable) -> Callable:
+def register_function(function: FunctionType) -> FunctionType:
     """Registers the function to be used within the trampoline."""
     _registered_functions[function.__qualname__] = function
 
@@ -116,12 +119,12 @@ def register_function(function: Callable) -> Callable:
 
 
 def maybe_install_trampoline(
-        function: Callable,
-        args: list,
+        function: FunctionType,
+        args: Iterable[Any],
         start_method: str
 ) -> tuple:
     """Install the trampoline on the right process start methods."""
-    if isinstance(function, types.FunctionType) and start_method != 'fork':
+    if isinstance(function, FunctionType) and start_method != 'fork':
         target = _trampoline
         args = [function.__qualname__, function.__module__] + list(args)
     else:
@@ -130,19 +133,19 @@ def maybe_install_trampoline(
     return target, args
 
 
-def _trampoline(name: str, module: Any, *args, **kwargs) -> Any:
+def _trampoline(name: str, module: ModuleType, *args, **kwargs) -> Any:
     """Trampoline function for decorators.
 
     Lookups the function between the registered ones;
     if not found, forces its registering and then executes it.
 
     """
-    function = _function_lookup(name, module)
+    function: FunctionType = _function_lookup(name, module)
 
     return function(*args, **kwargs)
 
 
-def _function_lookup(name: str, module: Any) -> Callable:
+def _function_lookup(name: str, module: Any) -> FunctionType:
     """Searches the function between the registered ones.
     If not found, it imports the module forcing its registration.
 

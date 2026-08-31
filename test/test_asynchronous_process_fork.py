@@ -110,7 +110,7 @@ def daemon_keyword_decorated():
 
 
 @asynchronous.process(pool=ProcessPool(1, context=mp_context))
-def pool_decorated(_argument, _keyword_argument=0):
+def pool_decorated(_argument):
     return multiprocessing.current_process().pid
 
 
@@ -444,6 +444,6 @@ class TestProcessAsynchronous(unittest.TestCase):
     def test_pool_decorated(self):
         """Process Fork pool decorated function."""
         async def test():
-            return await pool_decorated(1, 1)
+            return await pool_decorated(1)
 
         self.assertEqual(asyncio.run(test()), asyncio.run(test()))

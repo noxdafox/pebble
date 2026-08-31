@@ -58,7 +58,7 @@ def daemon_keyword_decorated():
 
 
 @asynchronous.thread(pool=ThreadPool(1))
-def pool_decorated(_argument, _keyword_argument=0):
+def pool_decorated(_argument):
     return threading.current_thread().ident
 
 
@@ -228,6 +228,6 @@ class TestThreadAsynchronous(unittest.TestCase):
     def test_pool_decorated(self):
         """Thread pool decorated function."""
         async def test():
-            return await pool_decorated(1, 1)
+            return await pool_decorated(1)
 
         self.assertEqual(asyncio.run(test()), asyncio.run(test()))

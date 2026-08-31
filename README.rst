@@ -9,8 +9,8 @@ Pebble provides a neat API to manage threads and processes within an application
 
 |build badge| |docs badge| |downloads badge|
 
-.. |build badge| image:: https://github.com/noxdafox/pebble/actions/workflows/action.yml/badge.svg
-   :target: https://github.com/noxdafox/pebble/actions/workflows/action.yml
+.. |build badge| image:: https://github.com/noxdafox/pebble/actions/workflows/tests.yml/badge.svg
+   :target: https://github.com/noxdafox/pebble/actions/workflows/tests.yml
    :alt: Build Status
 .. |docs badge| image:: https://readthedocs.org/projects/pebble/badge/?version=latest
    :target: https://pebble.readthedocs.io

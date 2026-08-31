@@ -264,7 +264,7 @@ def map_results(
 def iter_chunks(iterable: Iterable[Any], chunksize: int) -> Iterator:
     """Iterates over zipped iterables in chunks."""
     try:
-        yield from itertools.batched(iterable, chunksize)
+        yield from itertools.batched(iterable, chunksize)  # type: ignore[attr-defined] - > Python 3.12
     except AttributeError:  # < Python 3.12
         while 1:
             chunk: tuple = tuple(itertools.islice(iterable, chunksize))

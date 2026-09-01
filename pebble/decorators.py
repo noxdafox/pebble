@@ -31,7 +31,9 @@ _synchronized_lock: threading.Lock = threading.Lock()
 @overload
 def synchronized(function: Callable[P, T]) -> Callable[P, T]: ...
 @overload
-def synchronized(lock: threading.Lock | None) -> Callable[[Callable[P, T]], Callable[P, T]]: ...
+def synchronized(
+    lock: threading.Lock | None,
+) -> Callable[[Callable[P, T]], Callable[P, T]]: ...
 def synchronized(*args, **kwargs):
     """A synchronized function prevents two or more callers to interleave
     its execution preventing race conditions.
@@ -47,6 +49,7 @@ def synchronized(*args, **kwargs):
     if callable(args[0]):
         return decorate_synchronized(args[0], _synchronized_lock)
     else:
+
         def wrap(function: Callable[P, T]) -> Callable[P, T]:
             return decorate_synchronized(function, args[0])
 

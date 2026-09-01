@@ -26,6 +26,7 @@ P = ParamSpec("P")
 
 class ProcessExpired(OSError):
     """Raised when process dies unexpectedly."""
+
     def __init__(self, msg, code=0, pid=None):
         super(ProcessExpired, self).__init__(msg)
         self.exitcode = code
@@ -68,7 +69,7 @@ class ProcessFuture(Future[T]):
 
                 return True
             else:
-                raise RuntimeError('Future in unexpected state')
+                raise RuntimeError("Future in unexpected state")
 
     def cancel(self):
         """Cancel the future.
@@ -80,8 +81,10 @@ class ProcessFuture(Future[T]):
             if self._state == FutureStatus.FINISHED:
                 return False
 
-            if self._state in (FutureStatus.CANCELLED,
-                               FutureStatus.CANCELLED_AND_NOTIFIED):
+            if self._state in (
+                FutureStatus.CANCELLED,
+                FutureStatus.CANCELLED_AND_NOTIFIED,
+            ):
                 return True
 
             self._state = FutureStatus.CANCELLED
@@ -129,6 +132,7 @@ class RemoteException:
 
 class ResultStatus(IntEnum):
     """Status of results of a function execution."""
+
     SUCCESS = 0
     FAILURE = 1
     ERROR = 2
@@ -137,17 +141,19 @@ class ResultStatus(IntEnum):
 @dataclass
 class Result(Generic[T]):
     """Result of a function execution."""
+
     status: ResultStatus
     value: Any
 
 
 class FutureStatus(str, Enum):
     """Borrowed from concurrent.futures."""
-    PENDING = 'PENDING'
-    RUNNING = 'RUNNING'
-    FINISHED = 'FINISHED'
-    CANCELLED = 'CANCELLED'
-    CANCELLED_AND_NOTIFIED = 'CANCELLED_AND_NOTIFIED'
+
+    PENDING = "PENDING"
+    RUNNING = "RUNNING"
+    FINISHED = "FINISHED"
+    CANCELLED = "CANCELLED"
+    CANCELLED_AND_NOTIFIED = "CANCELLED_AND_NOTIFIED"
 
 
 @dataclass
@@ -158,6 +164,7 @@ class Consts:
     of Pools and decorators.
 
     """
+
     sleep_unit: float = 0.1
     """Any cycle which needs to periodically assess the state."""
     term_timeout: float = 3

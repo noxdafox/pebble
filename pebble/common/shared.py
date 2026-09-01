@@ -25,11 +25,11 @@ from pebble.common.types import Result, ResultStatus, T, P
 
 
 def launch_thread(
-        name: str | None,
-        function: Callable[P, T],
-        daemon: bool,
-        *args: P.args,
-        **kwargs: P.kwargs
+    name: str | None,
+    function: Callable[P, T],
+    daemon: bool,
+    *args: P.args,
+    **kwargs: P.kwargs,
 ) -> Thread:
     thread: Thread = Thread(target=function, name=name, args=args, kwargs=kwargs)
     thread.daemon = daemon
@@ -55,13 +55,14 @@ def execute(function: Callable[P, T], *args: P.args, **kwargs: P.kwargs) -> Resu
 # @concurrent/@asyncrhonous decorators.                                        #
 ################################################################################
 
+
 def decorate_function(wrapper: Callable, *args, **kwargs) -> Callable:
     """Decorate the function taking care of all the possible uses."""
-    name = kwargs.get('name')
-    pool = kwargs.get('pool')
-    daemon = kwargs.get('daemon', True)
-    timeout = kwargs.get('timeout')
-    mp_context = kwargs.get('context')
+    name = kwargs.get("name")
+    pool = kwargs.get("pool")
+    daemon = kwargs.get("daemon", True)
+    timeout = kwargs.get("timeout")
+    mp_context = kwargs.get("context")
 
     # decorator without parameters: @process/process(function)
     if not kwargs and len(args) == 1 and callable(args[0]):
@@ -84,8 +85,8 @@ def decorate_function(wrapper: Callable, *args, **kwargs) -> Callable:
 
 def _validate_parameters(name: str | None, daemon: bool, timeout: float | None):
     if name is not None and not isinstance(name, str):
-        raise TypeError('Name expected to be None or string')
+        raise TypeError("Name expected to be None or string")
     if daemon is not None and not isinstance(daemon, bool):
-        raise TypeError('Daemon expected to be None or bool')
+        raise TypeError("Daemon expected to be None or bool")
     if timeout is not None and not isinstance(timeout, (int, float)):
-        raise TypeError('Timeout expected to be None or integer or float')
+        raise TypeError("Timeout expected to be None or integer or float")

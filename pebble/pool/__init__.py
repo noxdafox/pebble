@@ -1,7 +1,4 @@
-__all__ = ['ThreadPool',
-           'ProcessPool',
-           'MapFuture',
-           'ProcessMapFuture']
+__all__ = ["ThreadPool", "ProcessPool", "MapFuture", "ProcessMapFuture"]
 
 
 from pebble.pool.thread import ThreadPool

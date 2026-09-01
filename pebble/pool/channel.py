@@ -17,7 +17,6 @@
 
 import os
 import select
-import multiprocessing
 
 from types import ModuleType
 from contextlib import contextmanager
@@ -35,23 +34,23 @@ def channels(mp_context: ModuleType) -> tuple:
     read0, write0 = mp_context.Pipe(duplex=False)
     read1, write1 = mp_context.Pipe(duplex=False)
 
-    return (Channel(read1, write0),
-            WorkerChannel(read0, write1, (read1, write0), mp_context))
+    return (
+        Channel(read1, write0),
+        WorkerChannel(read0, write1, (read1, write0), mp_context),
+    )
 
 
 class Channel:
-    def __init__(self, reader: connection.Connection,
-                 writer: connection.Connection):
+    def __init__(self, reader: connection.Connection, writer: connection.Connection):
         self.reader = reader
         self.writer = writer
         self.poll = self._make_poll_method()
 
     def _make_poll_method(self):
         def unix_poll(timeout: float | None = None) -> bool:
-            readonly_mask = (select.POLLIN  |
-                             select.POLLPRI |
-                             select.POLLHUP |
-                             select.POLLERR)
+            readonly_mask = (
+                select.POLLIN | select.POLLPRI | select.POLLHUP | select.POLLERR
+            )
 
             poll = select.poll()
             poll.register(self.reader, readonly_mask)
@@ -65,7 +64,7 @@ class Channel:
         def windows_poll(timeout: float | None = None) -> bool:
             return self.reader.poll(timeout)
 
-        return unix_poll if os.name != 'nt' else windows_poll
+        return unix_poll if os.name != "nt" else windows_poll
 
     def recv(self) -> Any:
         return self.reader.recv()
@@ -81,11 +80,11 @@ class Channel:
 
 class WorkerChannel(Channel):
     def __init__(
-            self,
-            reader: connection.Connection,
-            writer: connection.Connection,
-            unused_connections: tuple,
-            mp_context: ModuleType
+        self,
+        reader: connection.Connection,
+        writer: connection.Connection,
+        unused_connections: tuple,
+        mp_context: ModuleType,
     ):
         super().__init__(reader, writer)
         self.mutex: ChannelMutex = ChannelMutex(mp_context)
@@ -118,7 +117,7 @@ class WorkerChannel(Channel):
         def windows_send(obj: Any):
             return self.writer.send(obj)
 
-        return unix_send if os.name != 'nt' else windows_send
+        return unix_send if os.name != "nt" else windows_send
 
     @contextmanager
     def lock(self, block: bool = True, timeout: float | None = None) -> Iterator[bool]:
@@ -145,7 +144,7 @@ class ChannelMutex:
     def __init__(self, mp_context: ModuleType):
         # Not typing locks until multiprocessing and threading fixes it
         self.reader_mutex = mp_context.RLock()
-        self.writer_mutex = mp_context.RLock() if os.name != 'nt' else None
+        self.writer_mutex = mp_context.RLock() if os.name != "nt" else None
         self.acquire: Callable = self._make_acquire_method()
         self.release: Callable = self._make_release_method()
 
@@ -184,7 +183,7 @@ class ChannelMutex:
             """Acquire the reader lock (on NT OS, writes are atomic)."""
             return self.reader_mutex.acquire(block=block, timeout=timeout)  # type: ignore[union-attr]
 
-        return windows_acquire if os.name == 'nt' else unix_acquire
+        return windows_acquire if os.name == "nt" else unix_acquire
 
     def _make_release_method(self) -> Callable:
         def unix_release():
@@ -196,7 +195,7 @@ class ChannelMutex:
             """Release the reader lock (on NT OS, writes are atomic)."""
             self.reader_mutex.release()  # type: ignore[union-attr]
 
-        return windows_release if os.name == 'nt' else unix_release
+        return windows_release if os.name == "nt" else unix_release
 
     def unlink(self):
         """Ensure named semaphores are cleaned up on Posix OSes using spawn."""

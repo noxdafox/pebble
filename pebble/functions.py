@@ -23,8 +23,7 @@ from typing import Callable, Iterable
 
 
 def waitforqueues(
-        queues: Iterable[Queue],
-        timeout: float | None = None
+    queues: Iterable[Queue], timeout: float | None = None
 ) -> Iterable[Queue]:
     """Waits for one or more *Queue* to be ready or until *timeout* expires.
 
@@ -55,9 +54,9 @@ def prepare_queues(queues: Iterable[Queue], lock: threading.Condition):
             queue._put = MethodType(new_method, queue)  # type: ignore[method-assign]
 
 
-def wait_queues(queues: Iterable[Queue],
-                lock: threading.Condition,
-                timeout: float | None):
+def wait_queues(
+    queues: Iterable[Queue], lock: threading.Condition, timeout: float | None
+):
     with lock:
         if not any(map(lambda q: not q.empty(), queues)):
             lock.wait(timeout)
@@ -68,13 +67,12 @@ def reset_queues(queues: Iterable[Queue]):
     for queue in queues:
         with queue.mutex:
             queue._put = queue._pebble_old_method  # type: ignore[attr-defined, method-assign]
-        delattr(queue, '_pebble_old_method')
-        delattr(queue, '_pebble_lock')
+        delattr(queue, "_pebble_old_method")
+        delattr(queue, "_pebble_lock")
 
 
 def waitforthreads(
-        threads: Iterable[threading.Thread],
-        timeout: float | None = None
+    threads: Iterable[threading.Thread], timeout: float | None = None
 ) -> Iterable[threading.Thread]:
     """Waits for one or more *Thread* to exit or until *timeout* expires.
 
@@ -117,9 +115,9 @@ def prepare_threads(new_get_ident: Callable) -> Callable:
         return old_get_ident
 
 
-def wait_threads(threads: Iterable[threading.Thread],
-                 event: threading.Event,
-                 timeout: float | None):
+def wait_threads(
+    threads: Iterable[threading.Thread], event: threading.Event, timeout: float | None
+):
     timestamp: float = time()
 
     while not any(map(lambda t: not t.is_alive(), threads)):

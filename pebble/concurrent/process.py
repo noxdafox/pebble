@@ -35,11 +35,11 @@ from pebble.pool.process import ProcessPool
 def process(func: Callable[P, T]) -> Callable[P, common.ProcessFuture[T]]: ...
 @overload
 def process(
-        name: str | None = None,
-        daemon: bool = True,
-        timeout: float | None = None,
-        mp_context: ModuleType | None = None,
-        pool: ProcessPool | None = None
+    name: str | None = None,
+    daemon: bool = True,
+    timeout: float | None = None,
+    mp_context: ModuleType | None = None,
+    pool: ProcessPool | None = None,
 ) -> Callable[[Callable[P, T]], Callable[P, common.ProcessFuture[T]]]: ...
 def process(*args, **kwargs):
     """Runs the decorated function in a concurrent process,
@@ -68,25 +68,25 @@ def process(*args, **kwargs):
 
 
 def _process_wrapper(
-        function: Callable[P, T],
-        name: str,
-        daemon: bool,
-        timeout: float,
-        mp_context: ModuleType,
-        pool: ProcessPool | None
+    function: Callable[P, T],
+    name: str,
+    daemon: bool,
+    timeout: float,
+    mp_context: ModuleType,
+    pool: ProcessPool | None,
 ) -> Callable:
     if isinstance(function, FunctionType):
         common.register_function(function)
 
-    if hasattr(mp_context, 'get_start_method'):
+    if hasattr(mp_context, "get_start_method"):
         start_method: str = mp_context.get_start_method()
     else:
-        start_method = 'spawn' if os.name == 'nt' else 'fork'
+        start_method = "spawn" if os.name == "nt" else "fork"
 
     if pool is not None:
         if not isinstance(pool, ProcessPool):
-            raise TypeError('Pool expected to be ProcessPool')
-        start_method = 'pool'
+            raise TypeError("Pool expected to be ProcessPool")
+        start_method = "pool"
 
     @wraps(function)  # type: ignore[arg-type] - FunctionType confuses pyright
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> common.ProcessFuture[T]:
@@ -107,7 +107,7 @@ def _process_wrapper(
                 target,
                 args,
                 kwargs,
-                writer
+                writer,
             )
 
             writer.close()
@@ -123,10 +123,10 @@ def _process_wrapper(
 
 
 def _worker_handler(
-        future: common.ProcessFuture,
-        worker: multiprocessing.Process,
-        pipe: connection.Connection,
-        timeout: float
+    future: common.ProcessFuture,
+    worker: multiprocessing.Process,
+    pipe: connection.Connection,
+    timeout: float,
 ):
     """Worker lifecycle manager.
 
@@ -150,7 +150,7 @@ def _worker_handler(
 
 
 def _get_result(
-        future: common.ProcessFuture, pipe: connection.Connection, timeout: float
+    future: common.ProcessFuture, pipe: connection.Connection, timeout: float
 ) -> common.Result:
     """Waits for result and handles communication errors."""
     error: BaseException | None = None
@@ -159,7 +159,7 @@ def _get_result(
     try:
         while not pipe.poll(common.CONSTS.sleep_unit):
             if timeout is not None and next(counter) >= timeout:
-                error = TimeoutError('Task Timeout', timeout)
+                error = TimeoutError("Task Timeout", timeout)
                 return common.Result(common.ResultStatus.FAILURE, error)
             if future.cancelled():
                 error = CancelledError()
@@ -167,7 +167,7 @@ def _get_result(
 
         return pipe.recv()
     except (EOFError, OSError):
-        error = common.ProcessExpired('Abnormal termination')
+        error = common.ProcessExpired("Abnormal termination")
         return common.Result(common.ResultStatus.ERROR, error)
     except Exception as error:
         return common.Result(common.ResultStatus.ERROR, error)

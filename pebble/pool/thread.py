@@ -45,12 +45,13 @@ class ThreadPool(BasePool):
     every time a worker is started, receiving initargs as arguments.
 
     """
+
     def __init__(
-            self,
-            max_workers: int = multiprocessing.cpu_count(),
-            max_tasks: int = 0,
-            initializer: Callable | None = None,
-            initargs: Iterable[Any] = ()
+        self,
+        max_workers: int = multiprocessing.cpu_count(),
+        max_tasks: int = 0,
+        initializer: Callable | None = None,
+        initargs: Iterable[Any] = (),
     ):
         super().__init__(max_workers, max_tasks, initializer, initargs)
         self._pool_manager: PoolManager = PoolManager(self._context)
@@ -61,7 +62,8 @@ class ThreadPool(BasePool):
             if self._context.status == PoolStatus.CREATED:
                 self._pool_manager.start()
                 self._pool_manager_loop = launch_thread(
-                    None, pool_manager_loop, True, self._pool_manager)
+                    None, pool_manager_loop, True, self._pool_manager
+                )
 
                 self._context.status = PoolStatus.RUNNING
 
@@ -71,10 +73,10 @@ class ThreadPool(BasePool):
         self._pool_manager.stop()
 
     def schedule(
-            self,
-            function: Callable[P, T],
-            args: Iterable[Any] = (),
-            kwargs: Mapping[str, Any] = {}
+        self,
+        function: Callable[P, T],
+        args: Iterable[Any] = (),
+        kwargs: Mapping[str, Any] = {},
     ) -> Future[T]:
         """Schedules *function* to be run the Pool.
 
@@ -95,11 +97,7 @@ class ThreadPool(BasePool):
         return future
 
     def submit(
-            self,
-            function: Callable[P, T],
-            /,
-            *args: P.args,
-            **kwargs: P.kwargs
+        self, function: Callable[P, T], /, *args: P.args, **kwargs: P.kwargs
     ) -> Future[T]:
         """This function is provided for compatibility with
         `asyncio.loop.run_in_executor`.
@@ -109,8 +107,9 @@ class ThreadPool(BasePool):
         """
         return self.schedule(function, args=args, kwargs=kwargs)
 
-    def map(self, function: Callable[..., T],
-            *iterables, **kwargs) -> MapFuture[MapResults[T]]:
+    def map(
+        self, function: Callable[..., T], *iterables, **kwargs
+    ) -> MapFuture[MapResults[T]]:
         """Returns an iterator equivalent to map(function, iterables).
 
         *chunksize* controls the size of the chunks the iterable will
@@ -120,8 +119,8 @@ class ThreadPool(BasePool):
         """
         self._check_pool_status()
 
-        timeout: float | None = kwargs.get('timeout')
-        chunksize: int = kwargs.get('chunksize', 1)
+        timeout: float | None = kwargs.get("timeout")
+        chunksize: int = kwargs.get("chunksize", 1)
 
         if chunksize < 1:
             raise ValueError("chunksize must be >= 1")
@@ -170,12 +169,7 @@ class PoolManager:
 
     def create_workers(self):
         for _ in range(self.context.workers - len(self.workers)):
-            worker: Thread = launch_thread(
-                None,
-                worker_thread,
-                True,
-                self.context
-            )
+            worker: Thread = launch_thread(None, worker_thread, True, self.context)
 
             self.workers.append(worker)
 

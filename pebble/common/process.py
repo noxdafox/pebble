@@ -31,12 +31,12 @@ from pebble.common.types import Result, ResultStatus, RemoteException, CONSTS, T
 
 
 def launch_process(
-        name: str,
-        function: Callable[P, T],
-        daemon: bool,
-        mp_context: ModuleType,
-        *args: P.args,
-        **kwargs: P.kwargs
+    name: str,
+    function: Callable[P, T],
+    daemon: bool,
+    mp_context: ModuleType,
+    *args: P.args,
+    **kwargs: P.kwargs,
 ) -> multiprocessing.Process:
     process: multiprocessing.Process = mp_context.Process(
         target=function, name=name, args=args, kwargs=kwargs
@@ -52,7 +52,7 @@ def stop_process(process: multiprocessing.Process):
     process.terminate()
     process.join(CONSTS.term_timeout)
 
-    if process.is_alive() and os.name != 'nt' and process.pid is not None:
+    if process.is_alive() and os.name != "nt" and process.pid is not None:
         try:
             os.kill(process.pid, signal.SIGKILL)
             process.join()
@@ -63,7 +63,9 @@ def stop_process(process: multiprocessing.Process):
         raise RuntimeError("Unable to terminate PID %d" % os.getpid())
 
 
-def process_execute(function: Callable[P, T], *args: P.args, **kwargs: P.kwargs) -> Result[T]:
+def process_execute(
+    function: Callable[P, T], *args: P.args, **kwargs: P.kwargs
+) -> Result[T]:
     """Runs the given function returning its results or exception."""
     try:
         return Result(ResultStatus.SUCCESS, function(*args, **kwargs))
@@ -80,10 +82,10 @@ def send_result(pipe: connection.Connection, data: Any):
 
 
 def function_handler(
-        function: Callable[..., T],
-        args: Iterable[Any],
-        kwargs: Mapping[str, Any],
-        writer: connection.Connection
+    function: Callable[..., T],
+    args: Iterable[Any],
+    kwargs: Mapping[str, Any],
+    writer: connection.Connection,
 ):
     """Runs the actual function in separate process and returns its result."""
     signal.signal(signal.SIGINT, signal.SIG_IGN)
@@ -119,12 +121,10 @@ def register_function(function: FunctionType) -> FunctionType:
 
 
 def maybe_install_trampoline(
-        function: FunctionType,
-        args: Iterable[Any],
-        start_method: str
+    function: FunctionType, args: Iterable[Any], start_method: str
 ) -> tuple:
     """Install the trampoline on the right process start methods."""
-    if isinstance(function, FunctionType) and start_method != 'fork':
+    if isinstance(function, FunctionType) and start_method != "fork":
         target = _trampoline
         args = [function.__qualname__, function.__module__] + list(args)
     else:

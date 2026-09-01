@@ -24,16 +24,13 @@ from pebble import common
 from pebble.common.types import P, T
 from pebble.pool.thread import ThreadPool
 
+
 @overload
-def thread(func: Callable[P, T]) -> Callable[P, Future[T]]:
-    ...
+def thread(func: Callable[P, T]) -> Callable[P, Future[T]]: ...
 @overload
 def thread(
-        name: str | None = None,
-        daemon: bool = True,
-        pool: ThreadPool | None = None
-) -> Callable[[Callable[P, T]], Callable[P, Future[T]]]:
-    ...
+    name: str | None = None, daemon: bool = True, pool: ThreadPool | None = None
+) -> Callable[[Callable[P, T]], Callable[P, Future[T]]]: ...
 def thread(*args, **kwargs):
     """Runs the decorated function within a concurrent thread,
     taking care of the result and error management.
@@ -54,16 +51,16 @@ def thread(*args, **kwargs):
 
 
 def _thread_wrapper(
-        function: Callable[P, T],
-        name: str,
-        daemon: bool,
-        _timeout: float,
-        _mp_context,
-        pool: ThreadPool
+    function: Callable[P, T],
+    name: str,
+    daemon: bool,
+    _timeout: float,
+    _mp_context,
+    pool: ThreadPool,
 ) -> Callable:
     if pool is not None:
         if not isinstance(pool, ThreadPool):
-            raise TypeError('Pool expected to be ThreadPool')
+            raise TypeError("Pool expected to be ThreadPool")
 
     @wraps(function)
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> Future[T]:
@@ -82,10 +79,10 @@ def _thread_wrapper(
 
 
 def _function_handler(
-        function: Callable[..., T],
-        args: Iterable[Any],
-        kwargs: Mapping[str, Any],
-        future: Future
+    function: Callable[..., T],
+    args: Iterable[Any],
+    kwargs: Mapping[str, Any],
+    future: Future,
 ):
     """Runs the actual function in separate thread and returns its result."""
     future.set_running_or_notify_cancel()

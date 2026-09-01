@@ -99,7 +99,7 @@ def _process_wrapper(
                 pool,  # type: ignore[arg-type] - Executor compatible API
                 target,
                 timeout,
-                *args
+                *args,
             )
         else:
             future: asyncio.Future = loop.create_future()
@@ -127,7 +127,7 @@ async def _worker_handler(
     future: asyncio.Future,
     worker: multiprocessing.Process,
     pipe: connection.Connection,
-    timeout: float
+    timeout: float,
 ):
     """Worker lifecycle manager.
 

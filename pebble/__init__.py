@@ -1,21 +1,23 @@
-__author__ = 'Matteo Cafasso'
-__version__ = '5.2.1'
-__license__ = 'LGPL'
+__author__ = "Matteo Cafasso"
+__version__ = "5.2.1"
+__license__ = "LGPL"
 
 
-__all__ = ['concurrent',
-           'asynchronous',
-           'waitforthreads',
-           'waitforqueues',
-           'synchronized',
-           'sighandler',
-           'ProcessFuture',
-           'MapFuture',
-           'ProcessMapFuture',
-           'ProcessExpired',
-           'ProcessPool',
-           'ThreadPool',
-           'CONSTS']
+__all__ = [
+    "concurrent",
+    "asynchronous",
+    "waitforthreads",
+    "waitforqueues",
+    "synchronized",
+    "sighandler",
+    "ProcessFuture",
+    "MapFuture",
+    "ProcessMapFuture",
+    "ProcessExpired",
+    "ProcessPool",
+    "ThreadPool",
+    "CONSTS",
+]
 
 
 from pebble import concurrent, asynchronous

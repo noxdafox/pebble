@@ -25,15 +25,11 @@ from pebble.pool.thread import ThreadPool
 
 
 @overload
-def thread(func: Callable[P, T]) -> Callable[P, asyncio.Future[T]]:
-    ...
+def thread(func: Callable[P, T]) -> Callable[P, asyncio.Future[T]]: ...
 @overload
 def thread(
-        name: str | None = None,
-        daemon: bool = True,
-        pool: ThreadPool | None = None
-) -> Callable[[Callable[P, T]], Callable[P, asyncio.Future[T]]]:
-    ...
+    name: str | None = None, daemon: bool = True, pool: ThreadPool | None = None
+) -> Callable[[Callable[P, T]], Callable[P, asyncio.Future[T]]]: ...
 def thread(*args, **kwargs):
     """Runs the decorated function within a concurrent thread,
     taking care of the result and error management.
@@ -54,16 +50,16 @@ def thread(*args, **kwargs):
 
 
 def _thread_wrapper(
-        function: Callable[P, T],
-        name: str,
-        daemon: bool,
-        _timeout: float,
-        _unused_mp_context: None,
-        pool: ThreadPool | None
+    function: Callable[P, T],
+    name: str,
+    daemon: bool,
+    _timeout: float,
+    _unused_mp_context: None,
+    pool: ThreadPool | None,
 ) -> Callable:
     if pool is not None:
         if not isinstance(pool, ThreadPool):
-            raise TypeError('Pool expected to be ThreadPool')
+            raise TypeError("Pool expected to be ThreadPool")
 
     @wraps(function)
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> asyncio.Future[T]:
@@ -73,7 +69,7 @@ def _thread_wrapper(
             future = loop.run_in_executor(
                 pool,  # type: ignore[arg-type] - Executor compatible API
                 function,
-                *args  # type: ignore[arg-type] - Unknown error
+                *args,  # type: ignore[arg-type] - Unknown error
             )
         else:
             future = loop.create_future()
@@ -88,10 +84,10 @@ def _thread_wrapper(
 
 
 def _function_handler(
-        function: Callable[..., T],
-        args: Iterable[Any],
-        kwargs: Mapping[str, Any],
-        future: asyncio.Future
+    function: Callable[..., T],
+    args: Iterable[Any],
+    kwargs: Mapping[str, Any],
+    future: asyncio.Future,
 ):
     """Runs the actual function in separate thread and returns its result."""
     loop = future.get_loop()

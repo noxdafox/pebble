@@ -33,12 +33,16 @@ from pebble.common import Result, ResultStatus, ProcessFuture, CONSTS
 
 
 class BasePool:
-    def __init__(self, max_workers: int,
-                 max_tasks: int,
-                 initializer: Callable | None,
-                 initargs: Iterable[Any]):
+    def __init__(
+        self,
+        max_workers: int,
+        max_tasks: int,
+        initializer: Callable | None,
+        initargs: Iterable[Any],
+    ):
         self._context: PoolContext = PoolContext(
-            max_workers, max_tasks, initializer, initargs)
+            max_workers, max_tasks, initializer, initargs
+        )
         self._loops: Iterable[Any] = ()
         self._task_counter: itertools.count = itertools.count()
 
@@ -73,7 +77,7 @@ class BasePool:
         or raises TimeoutError.
         """
         if self._context.status == PoolStatus.RUNNING:
-            raise RuntimeError('The Pool is still running')
+            raise RuntimeError("The Pool is still running")
         if self._context.status == PoolStatus.CLOSED:
             self._wait_queue_depletion(timeout)
             self.stop()
@@ -97,9 +101,9 @@ class BasePool:
         self._update_pool_status()
 
         if self._context.status == PoolStatus.ERROR:
-            raise RuntimeError('Unexpected error within the Pool')
+            raise RuntimeError("Unexpected error within the Pool")
         elif self._context.status != PoolStatus.RUNNING:
-            raise RuntimeError('The Pool is not active')
+            raise RuntimeError("The Pool is not active")
 
     def _update_pool_status(self):
         if self._context.status == PoolStatus.CREATED:
@@ -117,10 +121,13 @@ class BasePool:
 
 
 class PoolContext:
-    def __init__(self, max_workers: int,
-                 max_tasks: int,
-                 initializer: Callable | None,
-                 initargs: Iterable[Any]):
+    def __init__(
+        self,
+        max_workers: int,
+        max_tasks: int,
+        initializer: Callable | None,
+        initargs: Iterable[Any],
+    ):
         self._status: PoolStatus = PoolStatus.CREATED
         self.status_mutex: RLock = RLock()
 
@@ -145,10 +152,13 @@ class PoolContext:
 
 
 class Task:
-    def __init__(self, identifier: int,
-                 future: Future,
-                 timeout: float | None,
-                 payload: TaskPayload):
+    def __init__(
+        self,
+        identifier: int,
+        future: Future,
+        timeout: float | None,
+        payload: TaskPayload,
+    ):
         self.id: int = identifier
         self.future: Future = future
         self.timeout: float | None = timeout
@@ -161,7 +171,7 @@ class Task:
         return bool(self.timestamp > 0)
 
     def set_running_or_notify_cancel(self):
-        map_future: MapFuture | None = getattr(self.future, 'map_future', None)
+        map_future: MapFuture | None = getattr(self.future, "map_future", None)
         if map_future is not None:
             if not map_future.done():
                 try:
@@ -218,7 +228,8 @@ class ProcessMapFuture(ProcessFuture[T]):
 class MapResults(Result[T]):
     def __init__(self, futures: Iterable[Future], timeout: float | None = None):
         self._results: Iterator[Result | Exception] = itertools.chain.from_iterable(
-            chunk_result(f, timeout) for f in futures)
+            chunk_result(f, timeout) for f in futures
+        )
 
     def __iter__(self) -> Iterator[T]:
         return self
@@ -237,14 +248,10 @@ class MapResults(Result[T]):
     __next__ = next
 
 
-MapFutureType = TypeVar(
-    "MapFutureType", bound=MapFuture | ProcessMapFuture)
+MapFutureType = TypeVar("MapFutureType", bound=MapFuture | ProcessMapFuture)
 
 
-def map_results(
-        map_future: MapFutureType,
-        timeout: float | None
-) -> MapFutureType:
+def map_results(map_future: MapFutureType, timeout: float | None) -> MapFutureType:
     futures: Iterable[Future] = map_future.futures
     if not futures:
         map_future.set_result(MapResults(futures))
@@ -256,7 +263,7 @@ def map_results(
 
     for future in futures:
         future.add_done_callback(done_map)
-        setattr(future, 'map_future', map_future)
+        setattr(future, "map_future", map_future)
 
     return map_future
 
@@ -280,7 +287,7 @@ def chunk_result(future: Future[T], timeout: float | None) -> Any:
     try:
         return future.result(timeout=timeout)
     except BaseException as error:
-        return (error, )
+        return (error,)
 
 
 def run_initializer(initializer: Callable, initargs: Iterable[Any]) -> bool:
@@ -295,6 +302,7 @@ def run_initializer(initializer: Callable, initargs: Iterable[Any]) -> bool:
 
 class PoolStatus(IntEnum):
     """Current status of the Pool."""
+
     CREATED = 0
     RUNNING = 1
     CLOSED = 2
@@ -305,6 +313,7 @@ class PoolStatus(IntEnum):
 @dataclass
 class Worker:
     """Worker configuration."""
+
     max_tasks: int
     initializer: Callable | None
     initargs: Iterable[Any]
@@ -313,6 +322,7 @@ class Worker:
 @dataclass
 class TaskPayload(Generic[T]):
     """The work item wrapped within a Task."""
+
     function: Callable[..., T]
     args: Iterable[Any]
     kwargs: Mapping[str, Any]

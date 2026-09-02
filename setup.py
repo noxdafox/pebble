@@ -10,7 +10,7 @@ def package_version():
     module_path = os.path.join(CWD, 'pebble', '__init__.py')
     for line in fileinput.FileInput(module_path):
         if line.startswith('__version__'):
-            return line.split('=')[-1].strip().replace('\'', '')
+            return line.split('=')[-1].strip().replace('"', '')
 
 
 setup(

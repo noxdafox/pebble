@@ -74,7 +74,7 @@ class ThreadPool(BasePool):
 
     def schedule(
         self,
-        function: Callable[P, T],
+        function: Callable[..., T],
         args: Iterable[Any] = (),
         kwargs: Mapping[str, Any] = {},
     ) -> Future[T]:
@@ -108,7 +108,11 @@ class ThreadPool(BasePool):
         return self.schedule(function, args=args, kwargs=kwargs)
 
     def map(
-        self, function: Callable[..., T], *iterables, **kwargs
+        self,
+        function: Callable[..., T],
+        *iterables: Iterable[Any],
+        timeout: float | None = None,
+        chunksize: int = 1
     ) -> MapFuture[MapResults[T]]:
         """Returns an iterator equivalent to map(function, iterables).
 
@@ -118,9 +122,6 @@ class ThreadPool(BasePool):
 
         """
         self._check_pool_status()
-
-        timeout: float | None = kwargs.get("timeout")
-        chunksize: int = kwargs.get("chunksize", 1)
 
         if chunksize < 1:
             raise ValueError("chunksize must be >= 1")

@@ -104,7 +104,7 @@ class ProcessPool(BasePool):
 
     def schedule(
         self,
-        function: Callable[P, T],
+        function: Callable[..., T],
         args: Iterable[Any] = (),
         kwargs: Mapping[str, Any] = {},
         timeout: float | None = None,
@@ -147,7 +147,11 @@ class ProcessPool(BasePool):
         return self.schedule(function, args=args, kwargs=kwargs, timeout=timeout)
 
     def map(
-        self, function: Callable[..., T], *iterables, **kwargs
+        self,
+        function: Callable[..., T],
+        *iterables: Iterable[Any],
+        timeout: float | None = None,
+        chunksize: int = 1
     ) -> ProcessMapFuture[MapResults[T]]:
         """Computes the *function* using arguments from
         each of the iterables. Stops when the shortest iterable is exhausted.
@@ -163,9 +167,6 @@ class ProcessPool(BasePool):
 
         """
         self._check_pool_status()
-
-        timeout: float | None = kwargs.get("timeout")
-        chunksize: int = kwargs.get("chunksize", 1)
 
         if chunksize < 1:
             raise ValueError("chunksize must be >= 1")

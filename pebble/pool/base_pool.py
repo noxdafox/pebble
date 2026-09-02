@@ -25,8 +25,8 @@ from enum import IntEnum
 from threading import RLock
 from dataclasses import dataclass
 from concurrent.futures import Future, TimeoutError
-from typing import Any, Callable, Generic, Iterable
 from typing import Iterator, TypeVar, Mapping
+from typing import Any, Callable, Generic, Iterable
 
 from pebble.common.types import T
 from pebble.common import Result, ResultStatus, ProcessFuture, CONSTS
@@ -46,10 +46,10 @@ class BasePool:
         self._loops: Iterable[Any] = ()
         self._task_counter: itertools.count = itertools.count()
 
-    def __enter__(self):
+    def __enter__(self: PoolT) -> PoolT:
         return self
 
-    def __exit__(self, *args):
+    def __exit__(self, *_):
         self.close()
         self.join()
 
@@ -248,9 +248,6 @@ class MapResults(Result[T]):
     __next__ = next
 
 
-MapFutureType = TypeVar("MapFutureType", bound=MapFuture | ProcessMapFuture)
-
-
 def map_results(map_future: MapFutureType, timeout: float | None) -> MapFutureType:
     futures: Iterable[Future] = map_future.futures
     if not futures:
@@ -326,3 +323,7 @@ class TaskPayload(Generic[T]):
     function: Callable[..., T]
     args: Iterable[Any]
     kwargs: Mapping[str, Any]
+
+
+PoolT = TypeVar("PoolT", bound=BasePool)
+MapFutureType = TypeVar("MapFutureType", bound=MapFuture | ProcessMapFuture)

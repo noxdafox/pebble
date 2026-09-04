@@ -17,11 +17,36 @@
 from enum import Enum, IntEnum
 from dataclasses import dataclass
 from concurrent.futures import Future
-from typing import Any, ParamSpec, Generic, TypeVar
+from multiprocessing.connection import Connection
+from multiprocessing.synchronize import RLock as RLockType
+from typing import Any, ParamSpec, Generic, Protocol, Tuple, TypeVar
 
 
 T = TypeVar("T")
 P = ParamSpec("P")
+
+
+class MultiprocessingContext(Protocol):
+    """Structural type of the objects Pebble accepts as a multiprocessing context.
+
+    Either the multiprocessing module itself (the default) or a
+    multiprocessing.context.BaseContext instance returned by
+    multiprocessing.get_context(), such as SpawnContext, ForkContext
+    or ForkServerContext.
+
+    Process is intentionally not declared here: each start-method context
+    exposes it as a differently-typed ClassVar (e.g. SpawnContext.Process is
+    type[SpawnProcess]), which pyright cannot match structurally against a
+    single Protocol member. typeshed's own BaseContext omits it for the same
+    reason.
+
+    """
+
+    def Pipe(self, duplex: bool = True) -> Tuple[Connection, Connection]: ...
+
+    def RLock(self) -> RLockType: ...
+
+    def get_start_method(self) -> str: ...
 
 
 class ProcessExpired(OSError):

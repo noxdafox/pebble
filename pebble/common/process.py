@@ -24,21 +24,26 @@ import multiprocessing
 
 from traceback import format_exc
 from multiprocessing import connection
+from multiprocessing.process import BaseProcess
 from types import FunctionType, ModuleType
 from typing import Any, Callable, Iterable, Dict, Mapping
 
 from pebble.common.types import Result, ResultStatus, RemoteException, CONSTS, T, P
+from pebble.common.types import MultiprocessingContext
 
 
 def launch_process(
     name: str,
     function: Callable[P, T],
     daemon: bool,
-    mp_context: ModuleType,
+    mp_context: MultiprocessingContext,
     *args: P.args,
     **kwargs: P.kwargs,
-) -> multiprocessing.Process:
-    process: multiprocessing.Process = mp_context.Process(
+) -> BaseProcess:
+    # Process is deliberately absent from MultiprocessingContext: typeshed itself
+    # omits it from BaseContext since each start-method context declares it as a
+    # differently-typed ClassVar, which pyright cannot match structurally.
+    process: BaseProcess = mp_context.Process(  # type: ignore[attr-defined]
         target=function, name=name, args=args, kwargs=kwargs
     )
     process.daemon = daemon
@@ -47,7 +52,7 @@ def launch_process(
     return process
 
 
-def stop_process(process: multiprocessing.Process):
+def stop_process(process: BaseProcess):
     """Does its best to stop the process."""
     process.terminate()
     process.join(CONSTS.term_timeout)

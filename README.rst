@@ -79,24 +79,28 @@ Pools support workers restart, timeout for long running tasks and more.
 
 .. code:: python
 
-    from pebble import ProcessPool
-    from concurrent.futures import TimeoutError
-
-    TIMEOUT_SECONDS = 3
-
-    def function(foo, bar=0):
-        return foo + bar
-
-    def task_done(future):
-        try:
-            result = future.result()  # blocks until results are ready
-        except TimeoutError as error:
-            print("Function took longer than %d seconds" % error.args[1])
-        except Exception as error:
-            print("Function raised %s" % error)
-            print(error.traceback)  # traceback of the function
-
-    with ProcessPool(max_workers=5, max_tasks=10) as pool:
-        for index in range(0, 10):
-            future = pool.schedule(function, index, bar=1, timeout=TIMEOUT_SECONDS)
-            future.add_done_callback(task_done)
+   from pebble import ProcessPool
+   from concurrent.futures import TimeoutError
+   
+   import time
+   
+   TIMEOUT_SECONDS = 3
+   
+   def function(foo, bar=0):
+       time.sleep(foo)  # simulate a task
+       return foo
+   
+   def task_done(future):
+       try:
+           result = future.result()  # blocks until results are ready
+           print("Process %d returned result" % result)
+       except TimeoutError as error:
+           print("Process took longer than %d seconds" % error.args[1])
+       except Exception as error:
+           print("Process raised %s" % error)
+           print(error.traceback)  # traceback of the function
+   
+   with ProcessPool(max_workers=5, max_tasks=10) as pool:
+       for index in range(0, 10):
+           future = pool.schedule(function, [index], {'bar':1}, timeout=TIMEOUT_SECONDS)
+           future.add_done_callback(task_done)

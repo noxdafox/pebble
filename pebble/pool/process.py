@@ -453,7 +453,7 @@ class WorkerManager:
             )
 
             self.workers[worker.pid] = worker  # type: ignore[index]
-        except OSError as error:
+        except (OSError, EOFError) as error:
             raise BrokenProcessPool from error
 
     def maybe_stop_worker(self, worker_id: int) -> bool:

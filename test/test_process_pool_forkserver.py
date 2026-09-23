@@ -10,6 +10,7 @@ import concurrent
 import dataclasses
 import multiprocessing
 
+from unittest import mock
 from concurrent.futures.process import BrokenProcessPool
 from concurrent.futures import CancelledError, TimeoutError
 
@@ -309,6 +310,29 @@ class TestProcessPool(unittest.TestCase):
                 pool.active
                 time.sleep(1)
                 pool.schedule(function)
+
+    def test_process_pool_broken_worker_spawn(self):
+        """Process Pool Forkserver is broken if a worker spawn hits EOF."""
+        launch_process = pebble.pool.process.launch_process
+        launched = []
+
+        def launch_once(*args, **kwargs):
+            if launched:
+                raise EOFError("unexpected EOF")
+            launched.append(launch_process(*args, **kwargs))
+            return launched[0]
+
+        pool = ProcessPool(max_workers=1, max_tasks=1, context=mp_context)
+        try:
+            with mock.patch.object(pebble.pool.process, "launch_process", launch_once):
+                first = pool.schedule(function, args=[1])
+                second = pool.schedule(function, args=[1])
+                self.assertEqual(first.result(timeout=5), 1)
+                self.assertRaises(BrokenProcessPool, second.result, timeout=5)
+            self.assertFalse(pool.active)
+        finally:
+            pool.stop()
+            pool.join()
 
     def test_process_pool_running(self):
         """Process Pool Forkserver is active if a future is scheduled."""

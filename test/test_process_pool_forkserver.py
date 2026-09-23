@@ -311,8 +311,8 @@ class TestProcessPool(unittest.TestCase):
                 time.sleep(1)
                 pool.schedule(function)
 
-    def test_process_pool_broken_worker_spawn(self):
-        """Process Pool Forkserver is broken if a worker spawn hits EOF."""
+    def test_process_pool_broken_worker_launch(self):
+        """Process Pool Forkserver is broken if a worker launch hits EOF."""
         launch_process = pebble.pool.process.launch_process
         launched = []
 

@@ -18,19 +18,19 @@
 import os
 import select
 
-from types import ModuleType
 from contextlib import contextmanager
 from multiprocessing import connection
 from typing import Any, Callable, Iterator
 
 from pebble.common import CONSTS
+from pebble.common.types import MultiprocessingContext
 
 
 class ChannelError(OSError):
     """Error occurring within the process channel."""
 
 
-def channels(mp_context: ModuleType) -> tuple:
+def channels(mp_context: MultiprocessingContext) -> tuple:
     read0, write0 = mp_context.Pipe(duplex=False)
     read1, write1 = mp_context.Pipe(duplex=False)
 
@@ -84,7 +84,7 @@ class WorkerChannel(Channel):
         reader: connection.Connection,
         writer: connection.Connection,
         unused_connections: tuple,
-        mp_context: ModuleType,
+        mp_context: MultiprocessingContext,
     ):
         super().__init__(reader, writer)
         self.mutex: ChannelMutex = ChannelMutex(mp_context)
@@ -141,7 +141,7 @@ class WorkerChannel(Channel):
 
 
 class ChannelMutex:
-    def __init__(self, mp_context: ModuleType):
+    def __init__(self, mp_context: MultiprocessingContext):
         # Not typing locks until multiprocessing and threading fixes it
         self.reader_mutex = mp_context.RLock()
         self.writer_mutex = mp_context.RLock() if os.name != "nt" else None

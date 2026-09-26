@@ -25,11 +25,10 @@ import pickle
 import multiprocessing
 
 from queue import Queue
-from types import ModuleType
 from itertools import count
 from threading import Thread
 from dataclasses import dataclass
-from multiprocessing import Process
+from multiprocessing.process import BaseProcess
 from concurrent.futures.process import BrokenProcessPool
 from concurrent.futures import CancelledError, TimeoutError
 from typing import Any, Callable, Dict, Mapping, Iterable, Iterator, List, Tuple
@@ -41,7 +40,7 @@ from pebble.pool.base_pool import MapResults
 from pebble.pool.base_pool import PoolStatus, ProcessMapFuture, map_results
 from pebble.common import Result, ResultStatus, CONSTS
 from pebble.common import ProcessExpired, ProcessFuture
-from pebble.common.types import P, T
+from pebble.common.types import MultiprocessingContext, P, T
 from pebble.common import process_execute, launch_thread
 from pebble.common import launch_process, stop_process, process_exit
 
@@ -57,8 +56,8 @@ class ProcessPool(BasePool):
     initializer must be callable, if passed, it will be called
     every time a worker is started, receiving initargs as arguments.
 
-    The context parameter can be used to specify the multiprocessing.context object
-    used for starting the worker processes.
+    The context parameter can be used to specify the multiprocessing module
+    or the multiprocessing.context object used for starting the worker processes.
 
     """
 
@@ -68,7 +67,7 @@ class ProcessPool(BasePool):
         max_tasks: int = 0,
         initializer: Callable | None = None,
         initargs: Iterable[Any] = (),
-        context: ModuleType = multiprocessing,
+        context: MultiprocessingContext = multiprocessing,
     ):
         super().__init__(max_workers, max_tasks, initializer, initargs)
         self._pool_manager: PoolManager = PoolManager(self._context, context)
@@ -219,7 +218,7 @@ def message_manager_loop(pool_manager: PoolManager):
 class PoolManager:
     """Combines Task and Worker Managers providing a higher level one."""
 
-    def __init__(self, context: PoolContext, mp_context: ModuleType):
+    def __init__(self, context: PoolContext, mp_context: MultiprocessingContext):
         self.context: PoolContext = context
         self.task_manager: TaskManager = TaskManager(context.task_queue.task_done)
         self.worker_manager: WorkerManager = WorkerManager(
@@ -379,11 +378,16 @@ class WorkerManager:
     Maintains the workers active and encapsulates their communication logic.
     """
 
-    def __init__(self, workers: int, worker_parameters: Worker, mp_context: ModuleType):
-        self.workers: Dict[int, Process] = {}
+    def __init__(
+        self,
+        workers: int,
+        worker_parameters: Worker,
+        mp_context: MultiprocessingContext,
+    ):
+        self.workers: Dict[int, BaseProcess] = {}
         self.workers_number: int = workers
         self.worker_parameters: Worker = worker_parameters
-        self.mp_context: ModuleType = mp_context
+        self.mp_context: MultiprocessingContext = mp_context
         self.pool_channel: Channel | None = None
         self.workers_channel: WorkerChannel | None = None
 
@@ -414,7 +418,7 @@ class WorkerManager:
         Returns the workers which have unexpectedly ended.
 
         """
-        expired: Tuple[Process] = tuple(
+        expired: Tuple[BaseProcess] = tuple(
             w for w in dictionary_values(self.workers) if not w.is_alive()
         )
 
@@ -443,7 +447,7 @@ class WorkerManager:
 
     def new_worker(self):
         try:
-            worker: Process = launch_process(
+            worker: BaseProcess = launch_process(
                 WORKERS_NAME,
                 worker_process,
                 False,
@@ -555,7 +559,7 @@ def interpreter_shutdown():
     workers = [p for p in multiprocessing.active_children() if p.name == WORKERS_NAME]
 
     for worker in workers:
-        stop_process(worker)  # type: ignore[arg-type]
+        stop_process(worker)
 
 
 def dictionary_keys(dictionary: dict) -> tuple:

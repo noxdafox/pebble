@@ -18,17 +18,17 @@ from __future__ import annotations
 
 import os
 import asyncio
-import multiprocessing
 
 from itertools import count
 from functools import wraps
 from multiprocessing import connection
-from types import FunctionType, ModuleType
+from multiprocessing.process import BaseProcess
+from types import FunctionType
 from concurrent.futures import TimeoutError
 from typing import Any, Callable, overload
 
 from pebble import common
-from pebble.common.types import P, T
+from pebble.common.types import MultiprocessingContext, P, T
 from pebble.pool.process import ProcessPool
 
 
@@ -39,7 +39,7 @@ def process(
     name: str | None = None,
     daemon: bool = True,
     timeout: float | None = None,
-    mp_context: ModuleType | None = None,
+    mp_context: MultiprocessingContext | None = None,
     pool: ProcessPool | None = None,
 ) -> Callable[[Callable[P, T]], Callable[P, asyncio.Future[T]]]: ...
 def process(*args, **kwargs):
@@ -73,7 +73,7 @@ def _process_wrapper(
     name: str,
     daemon: bool,
     timeout: float,
-    mp_context: ModuleType,
+    mp_context: MultiprocessingContext,
     pool: ProcessPool | None,
 ) -> Callable:
     if isinstance(function, FunctionType):
@@ -104,7 +104,7 @@ def _process_wrapper(
         else:
             future: asyncio.Future = loop.create_future()
             reader, writer = mp_context.Pipe(duplex=False)
-            worker: multiprocessing.Process = common.launch_process(
+            worker: BaseProcess = common.launch_process(
                 name,
                 common.function_handler,
                 daemon,
@@ -125,7 +125,7 @@ def _process_wrapper(
 
 async def _worker_handler(
     future: asyncio.Future,
-    worker: multiprocessing.Process,
+    worker: BaseProcess,
     pipe: connection.Connection,
     timeout: float,
 ):

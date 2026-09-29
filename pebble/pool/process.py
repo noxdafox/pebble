@@ -89,6 +89,11 @@ class ProcessPool(BasePool):
                 self._message_manager_loop = launch_thread(
                     None, message_manager_loop, True, self._pool_manager
                 )
+                self._loops = (
+                    self._task_scheduler_loop,
+                    self._pool_manager_loop,
+                    self._message_manager_loop,
+                )
 
                 self._context.status = PoolStatus.RUNNING
 

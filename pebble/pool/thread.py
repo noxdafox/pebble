@@ -64,6 +64,7 @@ class ThreadPool(BasePool):
                 self._pool_manager_loop = launch_thread(
                     None, pool_manager_loop, True, self._pool_manager
                 )
+                self._loops = (self._pool_manager_loop,)
 
                 self._context.status = PoolStatus.RUNNING
 

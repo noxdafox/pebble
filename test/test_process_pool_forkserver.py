@@ -141,6 +141,11 @@ def pebble_function():
     return f.result()
 
 
+def dead_manager_loop(*args, **kwargs):
+    """Stand-in for pool_manager_loop that crashes."""
+    time.sleep(0.1)
+
+
 @unittest.skipIf(not supported, "Start method is not supported")
 class TestProcessPool(unittest.TestCase):
     def setUp(self):
@@ -324,7 +329,9 @@ class TestProcessPool(unittest.TestCase):
 
         pool = ProcessPool(max_workers=1, max_tasks=1, context=mp_context)
         try:
-            with mock.patch.object(pebble.pool.process, "launch_process", launch_once):
+            with mock.patch.object(
+                    pebble.pool.process, "launch_process", launch_once
+            ):
                 first = pool.schedule(function, args=[1])
                 second = pool.schedule(function, args=[1])
                 self.assertEqual(first.result(timeout=5), 1)
@@ -637,6 +644,16 @@ class TestProcessPool(unittest.TestCase):
         with ProcessPool(max_workers=1, context=mp_context) as pool:
             pool.schedule(queue.put, args=[1])
         self.assertEqual(queue.get(timeout=1), 1)
+
+    def test_process_pool_active_error(self):
+        """Process Pool Forkserver is not active if its manager thread dies."""
+        with mock.patch(
+            "pebble.pool.process.pool_manager_loop", dead_manager_loop
+        ):
+            with ProcessPool(max_workers=1, context=mp_context) as pool:
+                self.assertTrue(pool.active)  # start the pool
+                time.sleep(0.3)               # wait for manager to die
+                self.assertFalse(pool.active)
 
 
 @unittest.skipIf(not supported, "Start method is not supported")

@@ -10,9 +10,9 @@ import concurrent
 import dataclasses
 import multiprocessing
 
+from unittest import mock
 from concurrent.futures.process import BrokenProcessPool
 from concurrent.futures import CancelledError, TimeoutError
-from unittest import mock
 
 import pebble
 from pebble import ProcessPool, ProcessExpired
@@ -140,8 +140,9 @@ def pebble_function():
 
 
 def dead_manager_loop(*args, **kwargs):
-    """Stand-in for pool_manager_loop that exits right away."""
-    return
+    """Stand-in for pool_manager_loop that crashes."""
+    time.sleep(0.1)
+
 
 @unittest.skipIf(not supported, "Start method is not supported")
 class TestProcessPool(unittest.TestCase):
@@ -618,6 +619,16 @@ class TestProcessPool(unittest.TestCase):
             pool.schedule(queue.put, args=[1])
         self.assertEqual(queue.get(timeout=1), 1)
 
+    def test_process_pool_active_error(self):
+        """Process Pool Fork is not active if its manager thread dies."""
+        with mock.patch(
+            "pebble.pool.process.pool_manager_loop", dead_manager_loop
+        ):
+            with ProcessPool(max_workers=1, context=mp_context) as pool:
+                self.assertTrue(pool.active)  # start the pool
+                time.sleep(0.3)               # wait for manager to die
+                self.assertFalse(pool.active)
+
 
 @unittest.skipIf(not supported, "Start method is not supported")
 class TestAsyncIOProcessPool(unittest.TestCase):
@@ -811,17 +822,6 @@ class TestAsyncIOProcessPool(unittest.TestCase):
         with ProcessPool(max_workers=1, context=mp_context) as pool:
             asyncio.run(test(pool))
 
-    def test_process_pool_inactive_if_manager_dies(self):
-        """Process Pool Fork is not active if its manager thread dies."""
-        with mock.patch(
-            "pebble.pool.process.pool_manager_loop", dead_manager_loop
-        ):
-            pool = ProcessPool(max_workers=1, context=mp_context)
-            pool.active
-            pool._pool_manager_loop.join()
-            self.assertFalse(pool.active)
-            pool.stop()
-            pool.join()
 
 # DEADLOCK TESTS
 def broken_worker_process_tasks(channel, *_):

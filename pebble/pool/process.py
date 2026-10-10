@@ -262,7 +262,12 @@ class PoolManager:
         self.update_workers()
 
     def update_tasks(self):
-        """Handles cancelled and timing out Tasks."""
+        self.handle_timeout_tasks()
+        self.handle_cancelled_tasks()
+        self.handle_orphaned_tasks()
+
+    def handle_timeout_tasks(self):
+        """Handle tasks which reached timeout."""
         for task in self.task_manager.timeout_tasks():
             if self.worker_manager.maybe_stop_worker(task.worker_id):
                 self.task_manager.task_done(
@@ -272,11 +277,26 @@ class PoolManager:
                     ),
                 )
 
+    def handle_cancelled_tasks(self):
+        """Handle tasks which have been cancelled."""
         for task in self.task_manager.cancelled_tasks():
             if self.worker_manager.maybe_stop_worker(task.worker_id):
                 self.task_manager.task_done(
                     task.id, Result(ResultStatus.FAILURE, CancelledError())
                 )
+
+    def handle_orphaned_tasks(self):
+        """Orphaned tasks are those which workers have been mistakenly stopped.
+        A worker believed to be assigned to a task already completed it
+        and started a new one while the previous timed out or was cancelled.
+
+        The lead cause for the above is results within the pipe not yet acknowledged.
+
+        """
+        for task in self.task_manager.running_tasks():
+            if task.worker_id not in self.worker_manager.workers:
+                error = ProcessExpired("Abnormal termination", pid=task.worker_id)
+                self.task_manager.task_done(task.id, Result(ResultStatus.ERROR, error))
 
     def update_workers(self):
         """Handles unexpected processes termination."""
@@ -367,6 +387,13 @@ class TaskManager:
             t
             for t in dictionary_values(self.tasks)
             if t.started and t.future.cancelled()
+        )
+
+    def running_tasks(self) -> tuple:
+        return tuple(
+            t
+            for t in dictionary_values(self.tasks)
+            if t.started and not t.future.done()
         )
 
     @staticmethod

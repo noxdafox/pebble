@@ -52,10 +52,10 @@ class MultiprocessingContext(Protocol):
 class ProcessExpired(OSError):
     """Raised when process dies unexpectedly."""
 
-    def __init__(self, msg, code=0, pid=None):
+    def __init__(self, msg: str, code: int | None = None, pid: int | None = None):
         super(ProcessExpired, self).__init__(msg)
-        self.exitcode = code
-        self.pid = pid
+        self.exitcode: int | None = code
+        self.pid: int | None = pid
 
 
 class ProcessFuture(Future[T]):

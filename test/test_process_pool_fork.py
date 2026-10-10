@@ -629,6 +629,26 @@ class TestProcessPool(unittest.TestCase):
                 time.sleep(0.3)               # wait for manager to die
                 self.assertFalse(pool.active)
 
+    def test_process_pool_orphan_tasks(self):
+        """Process Pool Fork orphan tasks are handled."""
+        def long_callback(_):
+            time.sleep(1)
+
+        with ProcessPool(max_workers=2, context=mp_context) as pool:
+            f1 = pool.schedule(long_function, args=[0.3])
+            f2 = pool.schedule(long_function, args=[0.01])
+            f2.add_done_callback(long_callback)
+            pool.schedule(long_function, args=[1])
+            f3 = pool.schedule(long_function, args=[1.5])
+
+            while not f1.running():
+                time.sleep(0.001)
+            time.sleep(0.5)
+
+            self.assertTrue(f1.cancel())
+            with self.assertRaises(ProcessExpired):
+                f3.result(timeout=3)
+
 
 @unittest.skipIf(not supported, "Start method is not supported")
 class TestAsyncIOProcessPool(unittest.TestCase):

@@ -586,7 +586,7 @@ class TestProcessPool(unittest.TestCase):
             while True:
                 try:
                     next(generator)
-                except TimeoutError as error:
+                except (ProcessExpired, TimeoutError):
                     self.assertFalse(pool.active)
                     future.cancel()
                     break

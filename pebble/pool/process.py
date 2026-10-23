@@ -42,7 +42,8 @@ from pebble.common import Result, ResultStatus, CONSTS
 from pebble.common import ProcessExpired, ProcessFuture
 from pebble.common.types import MultiprocessingContext, P, T
 from pebble.common import process_execute, launch_thread
-from pebble.common import launch_process, stop_process, process_exit
+from pebble.common import launch_process, stop_process, stop_processes
+from pebble.common import process_exit
 
 
 class ProcessPool(BasePool):
@@ -474,8 +475,9 @@ class WorkerManager:
             self.new_worker()
 
     def force_stop_workers(self):
-        for worker_id in tuple(self.workers.keys()):
-            stop_process(self.workers.pop(worker_id))
+        workers = tuple(self.workers.values())
+        self.workers.clear()
+        stop_processes(workers)
 
     def new_worker(self):
         try:

@@ -406,6 +406,35 @@ class TestProcessPool(unittest.TestCase):
         pool.join()
         self.assertEqual(len(pool._pool_manager.worker_manager.workers), 0)
 
+    def test_process_pool_join_stops_all_workers_on_termination_failure(self):
+        """Process Pool Spawn all workers are terminated even if one cannot be stopped in time."""
+        term_timeout = pebble.CONSTS.term_timeout
+        # Checked right after terminate(), every worker still looks alive,
+        # like a worker which takes longer than term_timeout to exit.
+        pebble.CONSTS.term_timeout = 0
+        pool = ProcessPool(max_workers=4, context=mp_context)
+        workers = []
+        try:
+            futures = [pool.schedule(long_function, args=[600]) for _ in range(4)]
+            while not all(future.running() for future in futures):
+                time.sleep(0.1)
+            workers = list(pool._pool_manager.worker_manager.workers.values())
+            pool.stop()
+            try:
+                pool.join()
+            except RuntimeError:
+                pass  # the workers were not dead yet when checked
+            for worker in workers:
+                worker.join(10)
+
+            self.assertEqual(len(workers), 4)
+            self.assertEqual([w.pid for w in workers if w.is_alive()], [])
+        finally:
+            pebble.CONSTS.term_timeout = term_timeout
+            for worker in workers:
+                if worker.is_alive():
+                    worker.kill()
+
     def test_process_pool_join_running(self):
         """Process Pool Spawn RuntimeError is raised if active pool joined."""
         with ProcessPool(max_workers=1, context=mp_context) as pool:

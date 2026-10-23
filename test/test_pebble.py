@@ -4,10 +4,11 @@ import signal
 import unittest
 import threading
 from queue import Queue
+from unittest import mock
 
 from pebble import decorators
 
-from pebble.common import launch_thread
+from pebble.common import launch_thread, stop_process
 from pebble import synchronized, sighandler
 from pebble import waitforthreads, waitforqueues
 
@@ -185,3 +186,14 @@ class TestWaitForQueues(unittest.TestCase):
         launch_thread(None, queue_function, True, self.queues, 0, 0)
         waitforqueues(self.queues)
         self.assertEqual(sorted(dir(self.queues[0])), expected)
+
+
+class TestStopProcess(unittest.TestCase):
+    def test_stop_process_error_reports_process_pid(self):
+        """Stop process error names the process which could not be stopped."""
+        process = mock.Mock(pid=424242)
+        process.is_alive.return_value = True
+
+        with mock.patch("pebble.common.process.os.kill"):
+            with self.assertRaisesRegex(RuntimeError, "PID 424242"):
+                stop_process(process)

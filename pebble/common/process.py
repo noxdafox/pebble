@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 import pickle
 import signal
 import multiprocessing
@@ -54,18 +55,38 @@ def launch_process(
 
 def stop_process(process: BaseProcess):
     """Does its best to stop the process."""
-    process.terminate()
-    process.join(CONSTS.term_timeout)
+    stop_processes((process,))
 
-    if process.is_alive() and os.name != "nt" and process.pid is not None:
-        try:
-            os.kill(process.pid, signal.SIGKILL)
-            process.join()
-        except OSError:
-            return
 
-    if process.is_alive():
-        raise RuntimeError("Unable to terminate PID %d" % os.getpid())
+def stop_processes(processes: Iterable[BaseProcess]):
+    """Does its best to stop all the processes.
+
+    All the processes are terminated first and then awaited together,
+    so a process which cannot be stopped does not prevent the others
+    from being stopped.
+
+    """
+    processes = tuple(processes)
+
+    for process in processes:
+        process.terminate()
+
+    deadline = time.monotonic() + CONSTS.term_timeout
+    for process in processes:
+        process.join(max(0.0, deadline - time.monotonic()))
+
+    if os.name != "nt":
+        for process in processes:
+            if process.is_alive() and process.pid is not None:
+                try:
+                    os.kill(process.pid, signal.SIGKILL)
+                    process.join()
+                except OSError:
+                    pass
+
+    alive = [str(process.pid) for process in processes if process.is_alive()]
+    if alive:
+        raise RuntimeError("Unable to terminate PID %s" % ", ".join(alive))
 
 
 def process_execute(
